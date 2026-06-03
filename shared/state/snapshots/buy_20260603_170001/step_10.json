@@ -1,0 +1,102 @@
+{
+  "execution_id": "buy_20260603_170001",
+  "step": 10,
+  "completed_at": "2026-06-03T17:13:58.013291",
+  "duration_ms": 15,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "MRVL",
+        "action": "보류"
+      },
+      {
+        "rank": 2,
+        "ticker": "AMD",
+        "action": "보류"
+      },
+      {
+        "rank": 3,
+        "ticker": "CTRA",
+        "action": "보류"
+      },
+      {
+        "rank": 4,
+        "ticker": "GOOGL",
+        "action": "보류"
+      },
+      {
+        "rank": 5,
+        "ticker": "VICR",
+        "action": "보류"
+      },
+      {
+        "rank": 6,
+        "ticker": "CRDO",
+        "action": "보류"
+      },
+      {
+        "rank": 7,
+        "ticker": "DGII",
+        "action": "보류"
+      },
+      {
+        "rank": 8,
+        "ticker": "ALAB",
+        "action": "탈락"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "AMD",
+        "action": "보류"
+      },
+      {
+        "rank": 2,
+        "ticker": "MRVL",
+        "action": "보류"
+      },
+      {
+        "rank": 3,
+        "ticker": "ALAB",
+        "action": "탈락"
+      },
+      {
+        "rank": 4,
+        "ticker": "GOOGL",
+        "action": "보류"
+      },
+      {
+        "rank": 5,
+        "ticker": "VICR",
+        "action": "보류"
+      },
+      {
+        "rank": 6,
+        "ticker": "CRDO",
+        "action": "보류"
+      },
+      {
+        "rank": 7,
+        "ticker": "CTRA",
+        "action": "보류"
+      },
+      {
+        "rank": 8,
+        "ticker": "DGII",
+        "action": "보류"
+      }
+    ],
+    "high_downside": [
+      "CTRA",
+      "MRVL",
+      "AMD",
+      "DGII",
+      "VICR",
+      "ALAB",
+      "CRDO",
+      "GOOGL"
+    ]
+  }
+}

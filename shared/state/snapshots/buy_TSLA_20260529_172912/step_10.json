@@ -1,0 +1,25 @@
+{
+  "execution_id": "buy_TSLA_20260529_172912",
+  "step": 10,
+  "completed_at": "2026-05-29T17:34:54.147412",
+  "duration_ms": 0,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "TSLA",
+        "action": "보류"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "TSLA",
+        "action": "보류"
+      }
+    ],
+    "high_downside": [
+      "TSLA"
+    ]
+  }
+}

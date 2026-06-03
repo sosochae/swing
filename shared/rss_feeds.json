@@ -1,0 +1,71 @@
+{
+  "_comment": "RSS 피드 설정 — feedparser 호환 URL만 지원. 추가/제거 자유롭게 편집 가능.",
+
+  "_market_comment": "시장 전체 RSS: 모든 종목 분석 시 공통 수집. 최대 50개/피드.",
+  "market": [
+    "https://feed.informer.com/digests/GVTPHV2D6A/feeder.rss",
+    "https://feed.informer.com/digests/TKGDRD2DCC/feeder.rss",
+    "https://feeds.reuters.com/reuters/businessNews",
+    "https://feeds.reuters.com/reuters/technologyNews",
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+    "https://www.cnbc.com/id/10000664/device/rss/rss.html",
+    "https://feeds.marketwatch.com/marketwatch/topstories/",
+    "https://finance.yahoo.com/news/rssindex",
+    "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    "https://www.investing.com/rss/news_301.rss",
+    "https://www.investing.com/rss/stock_market_news.rss",
+    "https://feeds.content.dowjones.io/public/rss/mw_marketpulse"
+  ],
+
+  "_tickers_comment": "종목별 RSS: 해당 티커 분석 시에만 수집. watchlist에 없는 종목도 코드에서 Yahoo Finance로 자동 생성.",
+  "tickers": {
+    "NVDA": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA&region=US&lang=en-US"
+    ],
+    "AMD": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AMD&region=US&lang=en-US"
+    ],
+    "TSLA": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=TSLA&region=US&lang=en-US"
+    ],
+    "AAPL": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US"
+    ],
+    "MSFT": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=MSFT&region=US&lang=en-US"
+    ],
+    "MU": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=MU&region=US&lang=en-US"
+    ],
+    "META": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=META&region=US&lang=en-US"
+    ],
+    "GOOGL": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GOOGL&region=US&lang=en-US"
+    ],
+    "AMZN": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AMZN&region=US&lang=en-US"
+    ],
+    "NFLX": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NFLX&region=US&lang=en-US"
+    ],
+    "SMCI": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=SMCI&region=US&lang=en-US"
+    ],
+    "PLTR": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=PLTR&region=US&lang=en-US"
+    ],
+    "MSTR": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=MSTR&region=US&lang=en-US"
+    ],
+    "COIN": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=COIN&region=US&lang=en-US"
+    ],
+    "SPY": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY&region=US&lang=en-US"
+    ],
+    "QQQ": [
+      "https://feeds.finance.yahoo.com/rss/2.0/headline?s=QQQ&region=US&lang=en-US"
+    ]
+  }
+}

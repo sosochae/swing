@@ -1,0 +1,12 @@
+{
+  "execution_id": "buy_TSLA_20260529_225042",
+  "step": 1,
+  "completed_at": "2026-05-29T22:51:17.064048",
+  "duration_ms": 13218,
+  "data": {
+    "watchlist": [
+      "TSLA"
+    ],
+    "finviz_count": 74
+  }
+}

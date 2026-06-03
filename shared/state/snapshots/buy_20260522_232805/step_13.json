@@ -1,0 +1,9 @@
+{
+  "execution_id": "buy_20260522_232805",
+  "step": 13,
+  "completed_at": "2026-05-22T23:28:49.041638",
+  "duration_ms": 47,
+  "data": {
+    "slack_ts": "mock_ts"
+  }
+}

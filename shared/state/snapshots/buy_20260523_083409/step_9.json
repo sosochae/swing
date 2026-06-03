@@ -1,0 +1,12 @@
+{
+  "execution_id": "buy_20260523_083409",
+  "step": 9,
+  "completed_at": "2026-05-23T08:37:21.406897",
+  "duration_ms": 405,
+  "data": {
+    "remaining_cash": 0.0,
+    "warnings": [
+      "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비"
+    ]
+  }
+}

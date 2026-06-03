@@ -1,0 +1,64 @@
+{"timestamp": "2026-05-24T01:10:44.620934+00:00", "execution_id": "sell_dry_20260524_101020", "step": 0, "status": "completed", "duration_ms": 1484, "data": {"positions": 3, "summary_tickers": 3, "finviz_rows": 74, "earnings": 49, "finviz_detail": 108, "kavout": 41}}
+{"timestamp": "2026-05-24T01:10:44.629320+00:00", "execution_id": "sell_dry_20260524_101020", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "reversed": []}}
+{"timestamp": "2026-05-24T01:10:44.671172+00:00", "execution_id": "sell_dry_20260524_101020", "step": 3, "status": "completed", "duration_ms": 32}
+{"timestamp": "2026-05-24T01:12:34.163005+00:00", "execution_id": "sell_dry_20260524_101020", "step": 4, "status": "completed", "duration_ms": 109469, "data": {"tickers": ["MU", "AMD", "TSLA"]}}
+{"timestamp": "2026-05-24T01:13:41.136290+00:00", "execution_id": "sell_dry_20260524_101020", "step": 5, "status": "completed", "duration_ms": 66968, "data": {"tickers": ["MU", "AMD", "TSLA"]}}
+{"timestamp": "2026-05-24T01:13:41.140428+00:00", "execution_id": "sell_dry_20260524_101020", "step": 6, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:13:41.144887+00:00", "execution_id": "sell_dry_20260524_101020", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:13:41.147728+00:00", "execution_id": "sell_dry_20260524_101020", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:13:41.153287+00:00", "execution_id": "sell_dry_20260524_101020", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 3, "total_invested": 0.0}}
+{"timestamp": "2026-05-24T01:15:03.215812+00:00", "execution_id": "sell_dry_20260524_101020", "step": 10, "status": "completed", "duration_ms": 82047, "data": {"decisions": 3}}
+{"timestamp": "2026-05-24T01:15:03.238742+00:00", "execution_id": "sell_dry_20260524_101020", "step": 11, "status": "completed", "duration_ms": 15}
+{"timestamp": "2026-05-24T01:16:02.513268+00:00", "execution_id": "sell_dry_20260524_101020", "step": 12, "status": "completed", "duration_ms": 59265, "data": {"reviewed": 2}}
+{"timestamp": "2026-05-24T01:16:02.515538+00:00", "execution_id": "sell_dry_20260524_101020", "step": 13, "status": "completed", "duration_ms": 0, "data": {"slack_ts": "mock_ts"}}
+{"timestamp": "2026-05-24T01:19:16.529715+00:00", "execution_id": "sell_dry_20260524_101901", "step": 0, "status": "completed", "duration_ms": 3170, "data": {"positions": 3, "summary_tickers": 3, "finviz_rows": 74, "earnings": 49, "finviz_detail": 108, "kavout": 41}}
+{"timestamp": "2026-05-24T01:19:16.543057+00:00", "execution_id": "sell_dry_20260524_101901", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:19:16.555336+00:00", "execution_id": "sell_dry_20260524_101901", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "reversed": []}}
+{"timestamp": "2026-05-24T01:19:16.647602+00:00", "execution_id": "sell_dry_20260524_101901", "step": 3, "status": "completed", "duration_ms": 77}
+{"timestamp": "2026-05-24T01:21:27.897323+00:00", "execution_id": "sell_dry_20260524_101901", "step": 4, "status": "completed", "duration_ms": 131234, "data": {"tickers": ["MU", "AMD", "TSLA"]}}
+{"timestamp": "2026-05-24T01:22:19.160606+00:00", "execution_id": "sell_dry_20260524_101901", "step": 5, "status": "completed", "duration_ms": 51250, "data": {"tickers": ["MU", "AMD", "TSLA"]}}
+{"timestamp": "2026-05-24T01:22:19.162381+00:00", "execution_id": "sell_dry_20260524_101901", "step": 6, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:22:19.165848+00:00", "execution_id": "sell_dry_20260524_101901", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:22:19.168250+00:00", "execution_id": "sell_dry_20260524_101901", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:22:19.168250+00:00", "execution_id": "sell_dry_20260524_101901", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 3, "total_invested": 0.0}}
+{"timestamp": "2026-05-24T01:23:34.712967+00:00", "execution_id": "sell_dry_20260524_101901", "step": 10, "status": "completed", "duration_ms": 75547, "data": {"decisions": 3}}
+{"timestamp": "2026-05-24T01:23:34.731609+00:00", "execution_id": "sell_dry_20260524_101901", "step": 11, "status": "completed", "duration_ms": 16}
+{"timestamp": "2026-05-24T01:24:17.615800+00:00", "execution_id": "sell_dry_20260524_101901", "step": 12, "status": "completed", "duration_ms": 42875, "data": {"reviewed": 3}}
+{"timestamp": "2026-05-24T01:24:17.619655+00:00", "execution_id": "sell_dry_20260524_101901", "step": 13, "status": "completed", "duration_ms": 0, "data": {"slack_ts": "mock_ts"}}
+{"timestamp": "2026-05-24T01:27:14.629798+00:00", "execution_id": "sell_dry_20260524_102656", "step": 0, "status": "completed", "duration_ms": 5922, "data": {"positions": 3, "summary_tickers": 3, "finviz_rows": 74, "earnings": 49, "finviz_detail": 108, "kavout": 41}}
+{"timestamp": "2026-05-24T01:27:14.638866+00:00", "execution_id": "sell_dry_20260524_102656", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:27:14.647970+00:00", "execution_id": "sell_dry_20260524_102656", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "reversed": []}}
+{"timestamp": "2026-05-24T01:27:43.292855+00:00", "execution_id": "sell_dry_20260524_102731", "step": 0, "status": "completed", "duration_ms": 2390, "data": {"positions": 3, "summary_tickers": 3, "finviz_rows": 74, "earnings": 49, "finviz_detail": 108, "kavout": 41}}
+{"timestamp": "2026-05-24T01:27:43.302470+00:00", "execution_id": "sell_dry_20260524_102731", "step": 1, "status": "completed", "duration_ms": 15}
+{"timestamp": "2026-05-24T01:27:43.310940+00:00", "execution_id": "sell_dry_20260524_102731", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "reversed": []}}
+{"timestamp": "2026-05-24T01:28:40.468906+00:00", "execution_id": "sell_dry_20260524_102828", "step": 0, "status": "completed", "duration_ms": 2500, "data": {"positions": 3, "summary_tickers": 3, "finviz_rows": 74, "earnings": 49, "finviz_detail": 108, "kavout": 41}}
+{"timestamp": "2026-05-24T01:28:40.479219+00:00", "execution_id": "sell_dry_20260524_102828", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:28:40.488289+00:00", "execution_id": "sell_dry_20260524_102828", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "reversed": []}}
+{"timestamp": "2026-05-24T01:29:23.494285+00:00", "execution_id": "sell_dry_20260524_102914", "step": 0, "status": "completed", "duration_ms": 2297, "data": {"positions": 3, "summary_tickers": 3, "finviz_rows": 74, "earnings": 49, "finviz_detail": 108, "kavout": 41}}
+{"timestamp": "2026-05-24T01:29:23.505979+00:00", "execution_id": "sell_dry_20260524_102914", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:29:23.511391+00:00", "execution_id": "sell_dry_20260524_102914", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "reversed": []}}
+{"timestamp": "2026-05-24T01:29:23.572977+00:00", "execution_id": "sell_dry_20260524_102914", "step": 3, "status": "completed", "duration_ms": 62}
+{"timestamp": "2026-05-24T01:31:21.522186+00:00", "execution_id": "sell_dry_20260524_102914", "step": 4, "status": "completed", "duration_ms": 117937, "data": {"tickers": ["MU", "AMD", "TSLA"]}}
+{"timestamp": "2026-05-24T01:32:13.539621+00:00", "execution_id": "sell_dry_20260524_102914", "step": 5, "status": "completed", "duration_ms": 52015, "data": {"tickers": ["MU", "AMD", "TSLA"]}}
+{"timestamp": "2026-05-24T01:32:13.542199+00:00", "execution_id": "sell_dry_20260524_102914", "step": 6, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:32:13.544463+00:00", "execution_id": "sell_dry_20260524_102914", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:32:13.546496+00:00", "execution_id": "sell_dry_20260524_102914", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:32:13.548632+00:00", "execution_id": "sell_dry_20260524_102914", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 3, "total_invested": 0.0}}
+{"timestamp": "2026-05-24T01:33:15.193307+00:00", "execution_id": "sell_dry_20260524_102914", "step": 10, "status": "completed", "duration_ms": 61640, "data": {"decisions": 3}}
+{"timestamp": "2026-05-24T01:33:15.199266+00:00", "execution_id": "sell_dry_20260524_102914", "step": 11, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T01:34:22.048772+00:00", "execution_id": "sell_dry_20260524_102914", "step": 12, "status": "completed", "duration_ms": 66844, "data": {"reviewed": 2}}
+{"timestamp": "2026-05-24T01:34:22.055961+00:00", "execution_id": "sell_dry_20260524_102914", "step": 13, "status": "completed", "duration_ms": 0, "data": {"slack_ts": "mock_ts"}}
+{"timestamp": "2026-05-24T14:04:05.546717+00:00", "execution_id": "sell_dry_20260524_230358", "step": 0, "status": "completed", "duration_ms": 2140, "data": {"positions": 3, "summary_tickers": 4, "finviz_rows": 74, "earnings": 49, "finviz_detail": 108, "kavout": 41}}
+{"timestamp": "2026-05-24T14:04:05.552130+00:00", "execution_id": "sell_dry_20260524_230358", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T14:04:05.555412+00:00", "execution_id": "sell_dry_20260524_230358", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "reversed": []}}
+{"timestamp": "2026-05-24T14:04:05.582666+00:00", "execution_id": "sell_dry_20260524_230358", "step": 3, "status": "completed", "duration_ms": 15}
+{"timestamp": "2026-05-24T14:10:20.796063+00:00", "execution_id": "sell_dry_20260524_230358", "step": 4, "status": "completed", "duration_ms": 375217, "data": {"tickers": ["MU", "AMD", "TSLA"]}}
+{"timestamp": "2026-05-24T14:11:26.008242+00:00", "execution_id": "sell_dry_20260524_230358", "step": 5, "status": "completed", "duration_ms": 65204, "data": {"tickers": ["MU", "AMD", "TSLA"]}}
+{"timestamp": "2026-05-24T14:11:26.011064+00:00", "execution_id": "sell_dry_20260524_230358", "step": 6, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T14:11:26.015148+00:00", "execution_id": "sell_dry_20260524_230358", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T14:11:26.016662+00:00", "execution_id": "sell_dry_20260524_230358", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T14:11:26.018720+00:00", "execution_id": "sell_dry_20260524_230358", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 3, "total_invested": 0.0}}
+{"timestamp": "2026-05-24T14:14:22.369938+00:00", "execution_id": "sell_dry_20260524_230358", "step": 10, "status": "completed", "duration_ms": 176297, "data": {"decisions": 3}}
+{"timestamp": "2026-05-24T14:14:22.380633+00:00", "execution_id": "sell_dry_20260524_230358", "step": 11, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-05-24T14:15:28.317464+00:00", "execution_id": "sell_dry_20260524_230358", "step": 12, "status": "completed", "duration_ms": 65937, "data": {"reviewed": 3}}
+{"timestamp": "2026-05-24T14:15:28.323065+00:00", "execution_id": "sell_dry_20260524_230358", "step": 13, "status": "completed", "duration_ms": 0, "data": {"slack_ts": "mock_ts"}}

@@ -1,0 +1,26 @@
+{
+  "execution_id": "sell_dry_20260524_101020",
+  "step": 5,
+  "completed_at": "2026-05-24T10:13:41.136290",
+  "duration_ms": 66968,
+  "data": {
+    "MU": {
+      "event_judgment": "중립",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0,
+      "recommendation": "IVR이 높지만近期에 실적이나 거시 이벤트가 없어 IV 크러시 리스크가 낮음. 변동성 평균 회귀를 고려해 프리미엄 매도 전략(예: 아이언 콘도어) 검토를 권장."
+    },
+    "AMD": {
+      "event_judgment": ":",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": ""
+    },
+    "TSLA": {
+      "event_judgment": ":보유_유리",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0,
+      "recommendation": "IVR이 낮고 예정된 이벤트가 없어 IV crush 위험이 미미합니다. 현재 포지션을 유지하는 것이 적절합니다."
+    }
+  }
+}

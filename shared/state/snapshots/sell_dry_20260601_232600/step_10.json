@@ -1,0 +1,16 @@
+{
+  "execution_id": "sell_dry_20260601_232600",
+  "step": 10,
+  "completed_at": "2026-06-01T23:34:59.055066",
+  "duration_ms": 86109,
+  "data": [
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "MRVL",
+      "action": "FULL_EXIT"
+    }
+  ]
+}

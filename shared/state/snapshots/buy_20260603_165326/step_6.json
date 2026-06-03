@@ -1,0 +1,29 @@
+{
+  "execution_id": "buy_20260603_165326",
+  "step": 6,
+  "completed_at": "2026-06-03T16:54:18.970798",
+  "duration_ms": 16,
+  "data": {
+    "surviving": [
+      "CTRA",
+      "MRVL",
+      "AMD",
+      "DGII",
+      "VICR",
+      "ALAB",
+      "CRDO",
+      "GOOGL"
+    ],
+    "warned": [
+      "CTRA",
+      "MRVL",
+      "AMD",
+      "DGII",
+      "VICR",
+      "ALAB",
+      "CRDO",
+      "GOOGL"
+    ],
+    "da_deductions": {}
+  }
+}

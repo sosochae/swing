@@ -1,0 +1,20 @@
+{
+  "execution_id": "sell_dry_20260601_224745",
+  "step": 5,
+  "completed_at": "2026-06-01T22:59:35.770360",
+  "duration_ms": 134032,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "event_judgment": ": ",
+      "iv_crush_risk": true,
+      "iv_crush_estimated_loss": 0.15,
+      "recommendation": "다수의 고영향 거시 이벤트가 집중되어 변동성 확대가 예상되지만, 현재 IVR이 매우 낮아 이벤트 후 IV 하락 위험도 존재합니다. 따라서 스트래들 또는 스트랭글 같은 장기 변동성 포지션은 신중히 검토하고, 단기 방향성 스프레드나 중립 전략을 고려하세요."
+    },
+    "MRVL_2026-06-19_200.0": {
+      "event_judgment": ":",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": ""
+    }
+  }
+}

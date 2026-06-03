@@ -1,0 +1,115 @@
+{
+  "execution_id": "buy_TSLA_20260529_174843",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "TSLA",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 41.00000000000001,
+      "conviction": {
+        "technical_signals": 5,
+        "timing_conditions": 2,
+        "total_signals": 7,
+        "rr_ratio": 0.4,
+        "ivr": 33.0,
+        "level": "low",
+        "trend_confidence": 0.714,
+        "news_confidence": 0.455,
+        "thesis_confidence": 0.133,
+        "execution_confidence": 0.7,
+        "total_conviction": 0.486
+      },
+      "capital_allocation": 1000.0,
+      "contracts": 1,
+      "strike": 442.5,
+      "expiry": "2026-07-03",
+      "rationale": "확신도 0.49 (low) | 신호수 5/7, 시나리오R/R 0.4, EV $456 | [ADX:10 RSI:25 MACD:15 RVOL:0] [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $49.9 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "TSLA",
+        "direction": "long_call",
+        "strike": 442.5,
+        "expiry": "2026-07-03",
+        "contracts": 1,
+        "total_investment": 1902.5000000000002,
+        "commission_total": 5.0,
+        "implied_move_pct": 8.595340420719294,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.275,
+          "stock_move_pct": 12.893010631078955,
+          "target_stock_price": 499.1000000000001,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 47.089000000000034,
+          "gross_profit": 2811.4000000000033,
+          "net_profit": 2806.4000000000033,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4,
+          "stock_move_pct": 4.297670210359647,
+          "target_stock_price": 461.1,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 26.588125000000005,
+          "gross_profit": 761.3125000000003,
+          "net_profit": 756.3125000000003,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.32499999999999996,
+          "stock_move_pct": -12.89301063107894,
+          "target_stock_price": 385.1,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -1897.5000000000002,
+          "net_profit": -1902.5000000000002,
+          "rationale": ""
+        },
+        "expected_value": 455.9725000000012,
+        "stop_loss_premium": 9.4875,
+        "target_premium_1st": 28.462500000000002,
+        "target_premium_2nd": 37.95,
+        "target_premium_3rd": 47.4375,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "해당 없음"
+      }
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "favorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 326.6,
+  "summary": {
+    "filtered_tickers": [
+      "TSLA"
+    ],
+    "regime": "favorable"
+  }
+}

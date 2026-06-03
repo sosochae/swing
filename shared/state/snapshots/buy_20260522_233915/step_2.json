@@ -1,0 +1,10 @@
+{
+  "execution_id": "buy_20260522_233915",
+  "step": 2,
+  "completed_at": "2026-05-22T23:40:55.178158",
+  "duration_ms": 0,
+  "data": {
+    "regime_status": "favorable",
+    "allowed_direction": "long_call"
+  }
+}

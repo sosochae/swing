@@ -1,0 +1,94 @@
+# SwingMCP — Cline/Roo Code 프로젝트 규칙
+
+## 프로젝트 개요
+미국 주식 옵션 스윙 트레이딩 자동화 시스템.
+매수(Buy)/매도(Sell) 파이프라인이 14스텝씩 구성되어 LLM 분석 후 진입/청산 결정을 내림.
+
+## 환경 설정
+
+```
+Python 실행:  C:\MCP\Swing\.venv\Scripts\python.exe
+PYTHONPATH:   C:\MCP\Swing
+설정 파일:    C:\MCP\Swing\.env
+```
+
+**환경 초기화 (최초 1회):**
+```
+C:\MCP\Swing\scripts\setup_env.bat
+```
+
+## 파이프라인 실행
+
+```powershell
+# 매수 파이프라인 (dry-run)
+$env:PYTHONPATH = "C:\MCP\Swing"
+& "C:\MCP\Swing\.venv\Scripts\python.exe" "C:\MCP\Swing\scripts\run_buy_pipeline.py" --dry-run
+
+# 매도 파이프라인 (dry-run)
+& "C:\MCP\Swing\.venv\Scripts\python.exe" "C:\MCP\Swing\scripts\run_sell_pipeline.py" --dry-run
+```
+
+dry-run 없이 실행하면 실제 Obsidian 저장 + Slack 알림 발송됨.
+
+## 핵심 파일 구조
+
+```
+shared/config.py          ← 모든 수치 파라미터 (델타, IVR, DTE 등)
+.env                      ← API 키, 파일 경로, 자본금, LLM 모델
+core/analysis.py          ← 필터링, 옵션 유효성, 기술 점수, 시나리오 계산
+core/parsers.py           ← 모든 데이터 파일 파싱
+core/llm.py               ← LLM 호출, DuckDuckGo 검색, Brave Search
+orchestrator/steps/buy_steps.py   ← 매수 파이프라인 14스텝
+orchestrator/steps/sell_steps.py  ← 매도 파이프라인 14스텝
+shared/prompts.py         ← LLM 프롬프트 템플릿
+```
+
+## 전략 수정 위치 → Q5 참조
+
+| 수정 목적 | 파일 | 섹션 |
+|-----------|------|------|
+| 자본금/리스크 수치 | `.env` | TOTAL_CAPITAL, MAX_PER_POSITION |
+| 옵션 필터 임계값 | `shared/config.py` | DELTA_MIN/MAX, IVR_MAX, DTE_MIN |
+| 기술 점수 가중치 | `core/analysis.py` | `calculate_technical_score()` |
+| 매도 행동 규칙 | `orchestrator/steps/sell_steps.py` | `step_7_action()` |
+| LLM 프롬프트 | `shared/prompts.py` | 각 스텝별 프롬프트 |
+
+## positions.md 형식 (옵션 데이터 포함)
+
+파이프라인이 Greeks를 계산하려면 포지션에 옵션 정보가 필요함:
+
+```markdown
+```yaml
+ticker: MU
+option_type: 롱콜
+strike: 130.0
+expiry: 2026-06-20
+entry_date: 2026-05-01
+entry_premium: 3.55
+entry_stock_price: 128.50
+original_contracts: 2
+remaining_contracts: 2
+trailing_stop: 0.0
+entry_rationale: AI 반도체 모멘텀
+thesis: 메모리 사이클 반등 + HBM 수요
+conviction_score: 0.75
+```​
+```
+
+YAML 블록 없이 티커만 있는 경우 → greeks_fallback 경고 발생 (기능은 정상 작동).
+
+## 코딩 컨벤션
+
+- `structlog` 사용: `log.info("event_name", key=value)` 형식
+- 모든 비동기 함수: `async def` + `await`
+- 설정값 직접 하드코딩 금지 → 반드시 `cfg.FIELD_NAME` 참조
+- LLM 호출: `call_llm()` 또는 `analyze_with_llm()` 사용 (직접 openai 호출 금지)
+- 에러는 `append_audit(ctx.execution_id, step_num, "degraded", error=...)` 로 기록
+
+## MCP 서버 (Roo Code/Cline 직접 연동)
+
+`.roo/mcp.json`에 설정됨. Roo Code에서 다음 명령어로 파이프라인 실행 가능:
+- `run_buy_pipeline` — 매수 파이프라인
+- `run_sell_pipeline` — 매도 파이프라인
+- `nl_query` — 자연어 질문
+- `health_check` — 시스템 상태 확인

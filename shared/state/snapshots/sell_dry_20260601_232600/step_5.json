@@ -1,0 +1,20 @@
+{
+  "execution_id": "sell_dry_20260601_232600",
+  "step": 5,
+  "completed_at": "2026-06-01T23:33:32.917525",
+  "duration_ms": 133032,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "event_judgment": "혼조",
+      "iv_crush_risk": true,
+      "iv_crush_estimated_loss": 0.2,
+      "recommendation": "다수의 고영향 거시 이벤트가 집중되어 변동성 확대 가능성이 있으나 현재 IVR이 매우 낮아 이벤트 후 IV 급락(IV crush) 위험이 존재합니다. 따라서 롱 옵션 포지션은 청산하거나, 숏 프리미엄 전략을 고려하는 것이 적절하며, 단기 방향성 베팅보다는 중립적 스프레드나 아이언 콘드로 변동성 포착을 권장합니다."
+    },
+    "MRVL_2026-06-19_200.0": {
+      "event_judgment": ":청산_유리",
+      "iv_crush_risk": true,
+      "iv_crush_estimated_loss": 0.12,
+      "recommendation": "다수의 고중요 거시 이벤트가 집중되어 변동성 확대가 예상되나, 이벤트 후 IV 급락(크러시) 위험이 높아 현재 롱 포지션은 청산하고, 단기 중립 또는 숏 전략을 고려하라."
+    }
+  }
+}

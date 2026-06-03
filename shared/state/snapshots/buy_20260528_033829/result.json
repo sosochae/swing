@@ -1,0 +1,195 @@
+{
+  "execution_id": "buy_20260528_033829",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "MU",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 63.60000000000001,
+      "conviction": {
+        "technical_signals": 7,
+        "timing_conditions": 3,
+        "total_signals": 10,
+        "rr_ratio": 0.35,
+        "ivr": 95.0,
+        "level": "medium",
+        "trend_confidence": 1.0,
+        "news_confidence": 0.638,
+        "thesis_confidence": 0.118,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.563
+      },
+      "capital_allocation": 1000.0,
+      "contracts": 1,
+      "strike": 900.0,
+      "expiry": "2026-07-03",
+      "rationale": "확신도 0.56 (medium) | 신호수 7/7, R/R 0.4, EV $2,571 | [ADX:10 RSI:25 MACD:15 RVOL:10] | K-Score 9/9 [포지션한도초과] [⚠️총자본초과-확인필요] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $350.8 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "MU",
+        "direction": "long_call",
+        "strike": 900.0,
+        "expiry": "2026-07-03",
+        "contracts": 1,
+        "total_investment": 8752.5,
+        "commission_total": 5.0,
+        "implied_move_pct": 16.600995669062822,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.325,
+          "stock_move_pct": 24.90149350359423,
+          "target_stock_price": 1118.9675,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 202.4570875,
+          "gross_profit": 11498.20875,
+          "net_profit": 11493.20875,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4000000000000001,
+          "stock_move_pct": 8.300497834531418,
+          "target_stock_price": 970.2425000000001,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 118.58498750000003,
+          "gross_profit": 3110.998750000003,
+          "net_profit": 3105.998750000003,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.27499999999999997,
+          "stock_move_pct": -24.90149350359423,
+          "target_stock_price": 672.7925,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -8747.5,
+          "net_profit": -8752.5,
+          "rationale": ""
+        },
+        "expected_value": 2570.7548437500013,
+        "stop_loss_premium": 43.7375,
+        "target_premium_1st": 131.21249999999998,
+        "target_premium_2nd": 174.95,
+        "target_premium_3rd": 218.6875,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(100%) — IV 붕괴 시 베가 손실 주의"
+      }
+    },
+    {
+      "rank": 2,
+      "ticker": "AMD",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 51.6,
+      "conviction": {
+        "technical_signals": 8,
+        "timing_conditions": 4,
+        "total_signals": 12,
+        "rr_ratio": 0.32,
+        "ivr": 74.0,
+        "level": "medium",
+        "trend_confidence": 1.0,
+        "news_confidence": 0.614,
+        "thesis_confidence": 0.106,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.555
+      },
+      "capital_allocation": 1000.0,
+      "contracts": 1,
+      "strike": 505.0,
+      "expiry": "2026-07-03",
+      "rationale": "확신도 0.56 (medium) | 신호수 8/7, R/R 0.3, EV $1,101 | [ADX:10 RSI:25 MACD:15 RVOL:0] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $350.8 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "AMD",
+        "direction": "long_call",
+        "strike": 505.0,
+        "expiry": "2026-07-03",
+        "contracts": 1,
+        "total_investment": 2667.5,
+        "commission_total": 5.0,
+        "implied_move_pct": 12.031395741133979,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.35,
+          "stock_move_pct": 18.04709361170099,
+          "target_stock_price": 594.8275000000001,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 67.45187500000006,
+          "gross_profit": 4082.687500000006,
+          "net_profit": 4077.687500000006,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4,
+          "stock_move_pct": 6.0156978705669895,
+          "target_stock_price": 534.2025,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 35.1875,
+          "gross_profit": 856.25,
+          "net_profit": 851.25,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.24999999999999997,
+          "stock_move_pct": -18.04709361170097,
+          "target_stock_price": 412.9525,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -2662.5,
+          "net_profit": -2667.5,
+          "rationale": ""
+        },
+        "expected_value": 1100.815625000002,
+        "stop_loss_premium": 13.3125,
+        "target_premium_1st": 39.9375,
+        "target_premium_2nd": 53.25,
+        "target_premium_3rd": 66.5625,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "세타 비용 과다 (-1.474/일) — 방향 없이 보유 시 빠른 가치 소멸; 고IV(82%) — IV 붕괴 시 베가 손실 주의"
+      }
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "favorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 94.4,
+  "summary": {
+    "filtered_tickers": [
+      "MU",
+      "AMD"
+    ],
+    "regime": "favorable"
+  }
+}

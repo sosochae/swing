@@ -1,0 +1,13 @@
+{
+  "execution_id": "sell_20260602_223158",
+  "step": 0,
+  "completed_at": "2026-06-02T22:32:11.111244",
+  "duration_ms": 5500,
+  "data": {
+    "positions": [
+      "MRVL",
+      "MRVL",
+      "MRVL"
+    ]
+  }
+}

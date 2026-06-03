@@ -1,0 +1,74 @@
+{
+  "execution_id": "sell_dry_20260524_102828",
+  "step": 1,
+  "completed_at": "2026-05-24T10:28:40.482169",
+  "duration_ms": 0,
+  "data": {
+    "MU": {
+      "delta_pnl": 37550.0,
+      "theta_pnl": -0.0,
+      "vega_pnl": 0.0,
+      "vega_exposure_per_pct": 10.0,
+      "iv_used": 0.8126,
+      "dte_urgency": "위급",
+      "flags": [
+        "근거_유효",
+        "청산_권고_신호"
+      ],
+      "current_price": 751.0,
+      "current_premium": null,
+      "greeks": {
+        "delta": 0.5,
+        "gamma": 0.02,
+        "theta": -0.05,
+        "vega": 0.1,
+        "rho": 0.01,
+        "ivr": 50.0
+      }
+    },
+    "AMD": {
+      "delta_pnl": 23375.5,
+      "theta_pnl": -0.0,
+      "vega_pnl": 0.0,
+      "vega_exposure_per_pct": 10.0,
+      "iv_used": 0.6597,
+      "dte_urgency": "위급",
+      "flags": [
+        "근거_유효",
+        "청산_권고_신호"
+      ],
+      "current_price": 467.51,
+      "current_premium": null,
+      "greeks": {
+        "delta": 0.5,
+        "gamma": 0.02,
+        "theta": -0.05,
+        "vega": 0.1,
+        "rho": 0.01,
+        "ivr": 50.0
+      }
+    },
+    "TSLA": {
+      "delta_pnl": 21300.5,
+      "theta_pnl": -0.0,
+      "vega_pnl": 0.0,
+      "vega_exposure_per_pct": 10.0,
+      "iv_used": 0.3931,
+      "dte_urgency": "위급",
+      "flags": [
+        "근거_유효",
+        "청산_권고_신호"
+      ],
+      "current_price": 426.01,
+      "current_premium": null,
+      "greeks": {
+        "delta": 0.5,
+        "gamma": 0.02,
+        "theta": -0.05,
+        "vega": 0.1,
+        "rho": 0.01,
+        "ivr": 50.0
+      }
+    }
+  }
+}

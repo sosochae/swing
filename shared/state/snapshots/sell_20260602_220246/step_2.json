@@ -1,0 +1,14 @@
+{
+  "execution_id": "sell_20260602_220246",
+  "step": 2,
+  "completed_at": "2026-06-02T22:05:15.390927",
+  "duration_ms": 131922,
+  "data": {
+    "regime": "favorable",
+    "regime_flags": {
+      "MRVL_2026-07-17_220.0": "REGIME_OK",
+      "MRVL_2026-06-19_200.0": "REGIME_OK",
+      "MRVL_2026-07-10_220.0": "REGIME_OK"
+    }
+  }
+}

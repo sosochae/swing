@@ -1,0 +1,272 @@
+{
+  "execution_id": "buy_20260523_075232",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "MU",
+      "direction": "long_call",
+      "action": "탈락",
+      "final_score": 44.0,
+      "conviction": {
+        "technical_signals": 4,
+        "timing_conditions": 2,
+        "total_signals": 6,
+        "rr_ratio": 0.0,
+        "ivr": 0.9,
+        "level": "low",
+        "trend_confidence": 0.571,
+        "news_confidence": 0.47,
+        "thesis_confidence": 0.0,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.323
+      },
+      "capital_allocation": 0.0,
+      "contracts": 0,
+      "strike": 765.0,
+      "expiry": "2026-07-03",
+      "rationale": "확신도 0.32 (low) | 신호수 4/7, R/R 0.0, EV $0",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비"
+      ],
+      "scenario": {
+        "ticker": "MU",
+        "direction": "long_call",
+        "strike": 765.0,
+        "expiry": "2026-07-03",
+        "contracts": 0,
+        "total_investment": 0.0,
+        "commission_total": 0.0,
+        "implied_move_pct": 10.907361238682588,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.25,
+          "stock_move_pct": 16.361041858023867,
+          "target_stock_price": 886.7874999999999,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 122.69781249999994,
+          "gross_profit": 0.0,
+          "net_profit": 0.0,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4,
+          "stock_move_pct": 5.453680619341279,
+          "target_stock_price": 803.6624999999999,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 76.58831249999994,
+          "gross_profit": 0.0,
+          "net_profit": 0.0,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.35,
+          "stock_move_pct": -16.36104185802388,
+          "target_stock_price": 637.4125,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -0.0,
+          "net_profit": -0.0,
+          "rationale": ""
+        },
+        "expected_value": 0.0,
+        "stop_loss_premium": 30.7625,
+        "target_premium_1st": 92.2875,
+        "target_premium_2nd": 123.05,
+        "target_premium_3rd": 153.8125,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(84%) — IV 붕괴 시 베가 손실 주의"
+      }
+    },
+    {
+      "rank": 2,
+      "ticker": "TSLA",
+      "direction": "long_call",
+      "action": "탈락",
+      "final_score": 44.0,
+      "conviction": {
+        "technical_signals": 2,
+        "timing_conditions": 1,
+        "total_signals": 3,
+        "rr_ratio": 0.67,
+        "ivr": 40.0,
+        "level": "low",
+        "trend_confidence": 0.286,
+        "news_confidence": 0.47,
+        "thesis_confidence": 0.224,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.275
+      },
+      "capital_allocation": 1000.0,
+      "contracts": 1,
+      "strike": 418.0,
+      "expiry": "2026-07-03",
+      "rationale": "확신도 0.28 (low) | 신호수 2/7, R/R 0.7, EV $780 [포지션한도초과]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비"
+      ],
+      "scenario": {
+        "ticker": "TSLA",
+        "direction": "long_call",
+        "strike": 418.0,
+        "expiry": "2026-07-03",
+        "contracts": 1,
+        "total_investment": 2806.0,
+        "commission_total": 5.0,
+        "implied_move_pct": 16.757742025947863,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.2,
+          "stock_move_pct": 25.13661303892181,
+          "target_stock_price": 522.8833375831348,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 85.52833567072413,
+          "gross_profit": 5751.833567072413,
+          "net_profit": 5746.833567072413,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4000000000000001,
+          "stock_move_pct": 8.37887101297392,
+          "target_stock_price": 452.86111252771155,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 46.876061890241346,
+          "gross_profit": 1886.6061890241344,
+          "net_profit": 1881.6061890241344,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.39999999999999997,
+          "stock_move_pct": -25.13661303892179,
+          "target_stock_price": 312.8166624168653,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -2801.0,
+          "net_profit": -2806.0,
+          "rationale": ""
+        },
+        "expected_value": 779.6091890241366,
+        "stop_loss_premium": 14.005,
+        "target_premium_1st": 42.015,
+        "target_premium_2nd": 56.02,
+        "target_premium_3rd": 70.025,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "해당 없음"
+      }
+    },
+    {
+      "rank": 3,
+      "ticker": "AMD",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 44.0,
+      "conviction": {
+        "technical_signals": 2,
+        "timing_conditions": 1,
+        "total_signals": 3,
+        "rr_ratio": 0.2,
+        "ivr": 0.54,
+        "level": "low",
+        "trend_confidence": 0.286,
+        "news_confidence": 0.47,
+        "thesis_confidence": 0.067,
+        "execution_confidence": 1.0,
+        "total_conviction": 0.329
+      },
+      "capital_allocation": 1000.0,
+      "contracts": 1,
+      "strike": 450.0,
+      "expiry": "2026-07-03",
+      "rationale": "확신도 0.33 (low) | 신호수 2/7, R/R 0.2, EV $-426 [포지션한도초과]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비"
+      ],
+      "scenario": {
+        "ticker": "AMD",
+        "direction": "long_call",
+        "strike": 450.0,
+        "expiry": "2026-07-03",
+        "contracts": 1,
+        "total_investment": 2927.5,
+        "commission_total": 5.0,
+        "implied_move_pct": 7.8349162570341875,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.2,
+          "stock_move_pct": 11.752374385551276,
+          "target_stock_price": 502.42749999999995,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 54.67778749999999,
+          "gross_profit": 2545.2787499999986,
+          "net_profit": 2540.2787499999986,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4000000000000001,
+          "stock_move_pct": 3.9174581285170964,
+          "target_stock_price": 467.2025,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 35.19313750000001,
+          "gross_profit": 596.8137500000012,
+          "net_profit": 591.8137500000012,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.39999999999999997,
+          "stock_move_pct": -11.752374385551276,
+          "target_stock_price": 396.7525,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -2922.5,
+          "net_profit": -2927.5,
+          "rationale": ""
+        },
+        "expected_value": -426.2187499999998,
+        "stop_loss_premium": 14.6125,
+        "target_premium_1st": 43.837500000000006,
+        "target_premium_2nd": 58.45,
+        "target_premium_3rd": 73.0625,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "해당 없음"
+      }
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "favorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 105.8,
+  "summary": {
+    "filtered_tickers": [
+      "MU",
+      "AMD",
+      "TSLA"
+    ],
+    "regime": "favorable"
+  }
+}

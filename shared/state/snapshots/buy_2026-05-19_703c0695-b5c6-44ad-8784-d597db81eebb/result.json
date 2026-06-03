@@ -1,0 +1,20 @@
+{
+  "execution_id": "buy_2026-05-19_703c0695-b5c6-44ad-8784-d597db81eebb",
+  "pipeline_type": "buy",
+  "status": "failed",
+  "completed_steps": [],
+  "failed_steps": {
+    "0": "FATAL Step 0: E101: Obsidian REST API 응답 없음 (localhost:27123)"
+  },
+  "final_rankings": [],
+  "sell_decisions": [],
+  "market_regime": "",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 3.5,
+  "summary": {
+    "filtered_tickers": [],
+    "regime": ""
+  }
+}

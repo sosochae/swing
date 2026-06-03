@@ -1,0 +1,35 @@
+{
+  "execution_id": "buy_TSLA_20260529_223834",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [],
+  "sell_decisions": [],
+  "market_regime": "favorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 148.3,
+  "summary": {
+    "filtered_tickers": [
+      "TSLA"
+    ],
+    "regime": "favorable"
+  }
+}

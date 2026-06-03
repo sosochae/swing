@@ -1,0 +1,10 @@
+{
+  "execution_id": "sell_dry_20260601_232600",
+  "step": 9,
+  "completed_at": "2026-06-01T23:33:32.937845",
+  "duration_ms": 0,
+  "data": {
+    "remaining": 2,
+    "invested": 3600.0
+  }
+}

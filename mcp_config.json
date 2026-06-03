@@ -1,0 +1,72 @@
+{
+  "mcpServers": {
+    "swing-mcp": {
+      "command": "C:\\MCP\\Swing\\.venv\\Scripts\\python.exe",
+      "args": ["servers/swing_mcp/server.py"],
+      "cwd": "C:\\MCP\\Swing",
+      "env": {
+        "PYTHONPATH": "C:\\MCP\\Swing",
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "OBSIDIAN_API_KEY": "${OBSIDIAN_API_KEY}",
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
+        "OBSIDIAN_BASE_URL": "http://localhost:27124",
+        "SUMMARY_DIR": "R:\\내 드라이브\\마켓 수치",
+        "FINVIZ_FILE": "Y:\\내 드라이브\\어닝\\finviz_all_rows.txt",
+        "EARNINGS_DIR": "Y:\\내 드라이브\\어닝",
+        "POSITIONS_FILE": "C:\\lian\\Swing\\positions.md",
+        "WATCHLIST_FILE": "C:\\lian\\Swing\\watchlist.md"
+      },
+      "disabled": false,
+      "alwaysAllow": [
+        "run_buy_pipeline",
+        "run_sell_pipeline",
+        "nl_query",
+        "requeue_add",
+        "requeue_list",
+        "partial_exit_apply",
+        "position_status",
+        "step_execute",
+        "health_check",
+        "cache_clear"
+      ]
+    },
+    "screener-mcp": {
+      "command": "C:\\MCP\\Swing\\.venv\\Scripts\\python.exe",
+      "args": ["servers/screener_mcp/server.py"],
+      "cwd": "C:\\MCP\\Swing",
+      "env": {
+        "PYTHONPATH": "C:\\MCP\\Swing",
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "OBSIDIAN_API_KEY": "${OBSIDIAN_API_KEY}",
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
+        "OBSIDIAN_BASE_URL": "http://localhost:27124",
+        "FINVIZ_FILE": "Y:\\내 드라이브\\어닝\\finviz_all_rows.txt",
+        "EARNINGS_DIR": "Y:\\내 드라이브\\어닝"
+      },
+      "disabled": false,
+      "alwaysAllow": [
+        "run_fundamental_screen",
+        "screener_health_check"
+      ]
+    },
+    "kavout-mcp": {
+      "command": "C:\\MCP\\Swing\\.venv\\Scripts\\python.exe",
+      "args": ["servers/kavout_mcp/server.py"],
+      "cwd": "C:\\MCP\\Swing",
+      "env": {
+        "PYTHONPATH": "C:\\MCP\\Swing",
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "OBSIDIAN_API_KEY": "${OBSIDIAN_API_KEY}",
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
+        "OBSIDIAN_BASE_URL": "http://localhost:27124",
+        "EARNINGS_DIR": "Y:\\내 드라이브\\어닝",
+        "DATA_DIR": "Y:\\내 드라이브\\Data"
+      },
+      "disabled": false,
+      "alwaysAllow": [
+        "run_kavout_screen",
+        "kavout_health_check"
+      ]
+    }
+  }
+}

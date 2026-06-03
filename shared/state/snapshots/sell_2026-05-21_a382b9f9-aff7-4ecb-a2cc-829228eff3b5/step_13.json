@@ -1,0 +1,10 @@
+{
+  "execution_id": "sell_2026-05-21_a382b9f9-aff7-4ecb-a2cc-829228eff3b5",
+  "step": 13,
+  "completed_at": "2026-05-21T04:36:41.483402",
+  "duration_ms": 0,
+  "data": {
+    "status": "degraded",
+    "error": "'PipelineContext' object has no attribute 'obsidian_note_path'"
+  }
+}

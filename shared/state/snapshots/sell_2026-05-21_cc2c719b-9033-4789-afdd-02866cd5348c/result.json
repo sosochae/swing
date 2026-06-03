@@ -1,0 +1,50 @@
+{
+  "execution_id": "sell_2026-05-21_cc2c719b-9033-4789-afdd-02866cd5348c",
+  "pipeline_type": "sell",
+  "status": "partial",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {
+    "1": "Invalid inputs: spot=0.0, strike=730.0, iv=0.5",
+    "11": "swing-procedure/notes/sell/2026-05-21.md"
+  },
+  "final_rankings": [],
+  "sell_decisions": [
+    {
+      "ticker": "MU",
+      "action": "HOLD",
+      "contracts_to_close": 0,
+      "target_premium": null,
+      "roll_strike": null,
+      "roll_expiry": null,
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 73000.0,
+      "rationale": "플래그: 근거_유효 | DTE: 8일 (안정)",
+      "risk_factors": [],
+      "urgency": "stable"
+    }
+  ],
+  "market_regime": "",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 1.5,
+  "summary": {
+    "filtered_tickers": [],
+    "regime": ""
+  }
+}

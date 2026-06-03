@@ -1,0 +1,23 @@
+{
+  "execution_id": "buy_20260523_040052",
+  "step": 10,
+  "completed_at": "2026-05-23T04:04:26.454639",
+  "duration_ms": 0,
+  "data": [
+    {
+      "rank": 1,
+      "ticker": "MU",
+      "action": "탈락"
+    },
+    {
+      "rank": 2,
+      "ticker": "TSLA",
+      "action": "탈락"
+    },
+    {
+      "rank": 3,
+      "ticker": "AMD",
+      "action": "보류"
+    }
+  ]
+}

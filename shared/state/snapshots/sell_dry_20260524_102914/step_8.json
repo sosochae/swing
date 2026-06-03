@@ -1,0 +1,9 @@
+{
+  "execution_id": "sell_dry_20260524_102914",
+  "step": 8,
+  "completed_at": "2026-05-24T10:32:13.546496",
+  "duration_ms": 0,
+  "data": {
+    "status": "partial_exits_processed"
+  }
+}

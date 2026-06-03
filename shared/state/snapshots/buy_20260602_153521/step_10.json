@@ -1,0 +1,25 @@
+{
+  "execution_id": "buy_20260602_153521",
+  "step": 10,
+  "completed_at": "2026-06-02T15:39:23.733129",
+  "duration_ms": 0,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "MRVL",
+        "action": "관찰"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "MRVL",
+        "action": "관찰"
+      }
+    ],
+    "high_downside": [
+      "MRVL"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{"timestamp": "2026-05-27T14:48:13.270122+00:00", "execution_id": "buy_2026-05-27_3db758bc-18bf-4ced-8b10-8d22cc6c9998", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:48:14.075800+00:00", "execution_id": "buy_20260527_234801", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:48:15.784315+00:00", "execution_id": "buy_2026-05-27_3db758bc-18bf-4ced-8b10-8d22cc6c9998", "step": 0, "status": "failed", "duration_ms": 0, "error": "E101: Obsidian REST API 응답 없음 (localhost:27123)"}
+{"timestamp": "2026-05-27T14:48:16.911734+00:00", "execution_id": "buy_20260527_234801", "step": 0, "status": "completed", "duration_ms": 2812, "data": {"warnings": []}}
+{"timestamp": "2026-05-27T14:48:16.923874+00:00", "execution_id": "buy_20260527_234801", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:48:33.233169+00:00", "execution_id": "buy_20260527_234801", "step": 1, "status": "completed", "duration_ms": 16312, "data": {"finviz_count": 74, "watchlist_count": 4}}
+{"timestamp": "2026-05-27T14:48:33.246173+00:00", "execution_id": "buy_20260527_234801", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:48:33.258781+00:00", "execution_id": "buy_20260527_234801", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 0}}
+{"timestamp": "2026-05-27T14:48:33.275653+00:00", "execution_id": "buy_20260527_234801", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:48:33.281162+00:00", "execution_id": "buy_20260527_234801", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 4, "filter_pass": 0, "filter_fail": 4, "hard_stopped": []}}
+{"timestamp": "2026-05-27T14:48:33.307417+00:00", "execution_id": "buy_20260527_234801", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:48:33.321125+00:00", "execution_id": "buy_20260527_234801", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 4, "trend_confirmed": 3, "continuing": 4}}
+{"timestamp": "2026-05-27T14:48:33.339881+00:00", "execution_id": "buy_20260527_234801", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:49:22.670516+00:00", "execution_id": "buy_20260527_234916", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:49:23.234631+00:00", "execution_id": "buy_20260527_234916", "step": 0, "status": "completed", "duration_ms": 562, "data": {"warnings": []}}
+{"timestamp": "2026-05-27T14:49:23.241759+00:00", "execution_id": "buy_20260527_234916", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:49:27.477856+00:00", "execution_id": "buy_20260527_234916", "step": 1, "status": "completed", "duration_ms": 4233, "data": {"finviz_count": 74, "watchlist_count": 4}}
+{"timestamp": "2026-05-27T14:49:27.484285+00:00", "execution_id": "buy_20260527_234916", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:49:27.488361+00:00", "execution_id": "buy_20260527_234916", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 0}}
+{"timestamp": "2026-05-27T14:49:27.494281+00:00", "execution_id": "buy_20260527_234916", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:49:27.496337+00:00", "execution_id": "buy_20260527_234916", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 4, "filter_pass": 0, "filter_fail": 4, "hard_stopped": []}}
+{"timestamp": "2026-05-27T14:49:27.504636+00:00", "execution_id": "buy_20260527_234916", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-27T14:49:27.509175+00:00", "execution_id": "buy_20260527_234916", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 4, "trend_confirmed": 3, "continuing": 4}}
+{"timestamp": "2026-05-27T14:49:27.515077+00:00", "execution_id": "buy_20260527_234916", "step": 5, "status": "started", "duration_ms": 0}

@@ -1,0 +1,10 @@
+{
+  "execution_id": "buy_TSLA_20260529_151348",
+  "step": 12,
+  "completed_at": "2026-05-29T15:16:33.476620",
+  "duration_ms": 125,
+  "data": {
+    "note_path": "swing-procedure/notes/buy/2026-05-29.md",
+    "positions_entered": 0
+  }
+}

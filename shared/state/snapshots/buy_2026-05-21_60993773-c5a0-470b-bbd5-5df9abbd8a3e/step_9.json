@@ -1,0 +1,10 @@
+{
+  "execution_id": "buy_2026-05-21_60993773-c5a0-470b-bbd5-5df9abbd8a3e",
+  "step": 9,
+  "completed_at": "2026-05-21T06:30:50.796086",
+  "duration_ms": 562,
+  "data": {
+    "status": "degraded",
+    "error": "The request to the Slack API failed. (url: https://slack.com/api/chat.postMessage, status: 200)\nThe server responded with: {'ok': False, 'error': 'invalid_auth'}"
+  }
+}

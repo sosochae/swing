@@ -1,0 +1,14 @@
+{
+  "execution_id": "sell_20260602_160218",
+  "step": 2,
+  "completed_at": "2026-06-02T16:02:42.748806",
+  "duration_ms": 0,
+  "data": {
+    "regime": "favorable",
+    "regime_flags": {
+      "MRVL_2026-07-17_220.0": "REGIME_UNKNOWN",
+      "MRVL_2026-06-19_200.0": "REGIME_UNKNOWN",
+      "MRVL_2026-07-10_220.0": "REGIME_UNKNOWN"
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "execution_id": "sell_20260602_225259",
+  "step": 4,
+  "completed_at": "2026-06-02T23:00:50.654459",
+  "duration_ms": 158780,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 9.94,
+        "theta_pnl": -4.61,
+        "vega_pnl": 3.08,
+        "total_estimated_pnl": 8.4,
+        "actual_pnl": 11.03
+      }
+    },
+    "MRVL_2026-06-19_200.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 9.94,
+        "theta_pnl": -4.61,
+        "vega_pnl": 3.08,
+        "total_estimated_pnl": 8.4,
+        "actual_pnl": 11.03
+      }
+    },
+    "MRVL_2026-07-10_220.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 9.94,
+        "theta_pnl": -4.61,
+        "vega_pnl": 3.08,
+        "total_estimated_pnl": 8.4,
+        "actual_pnl": 11.03
+      }
+    }
+  }
+}

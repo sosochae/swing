@@ -1,0 +1,20 @@
+{
+  "execution_id": "buy_2026-05-19_4f181a06-5314-42ac-aaa4-55b74403574a",
+  "pipeline_type": "buy",
+  "status": "failed",
+  "completed_steps": [],
+  "failed_steps": {
+    "0": "The request to the Slack API failed. (url: https://slack.com/api/chat.postMessage, status: 200)\nThe server responded with: {'ok': False, 'error': 'invalid_auth'}"
+  },
+  "final_rankings": [],
+  "sell_decisions": [],
+  "market_regime": "",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 3.4,
+  "summary": {
+    "filtered_tickers": [],
+    "regime": ""
+  }
+}

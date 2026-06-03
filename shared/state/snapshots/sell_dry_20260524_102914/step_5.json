@@ -1,0 +1,26 @@
+{
+  "execution_id": "sell_dry_20260524_102914",
+  "step": 5,
+  "completed_at": "2026-05-24T10:32:13.539621",
+  "duration_ms": 52015,
+  "data": {
+    "MU": {
+      "event_judgment": ":보유_유리",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": "현재 예정된 이벤트가 없어 IV 크러시 위험이 낮으며, 높은 IVR을 고려해 변동성 프리미엄 매도 전략을 유지하는 것이 유리함."
+    },
+    "AMD": {
+      "event_judgment": "중립",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0,
+      "recommendation": "현재 예정된 이벤트가 없어 IV 크러시 리스크가 낮으며, 포지션을 유지하는 것이 적절합니다."
+    },
+    "TSLA": {
+      "event_judgment": "중립",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": "현재 예정된 이벤트가 없고 IVR이 낮은 수준이므로 IV 크러시 리스크가 제한적입니다. 포지션을 유지하면서 가격/기술 지표 변화를 모니터링하세요."
+    }
+  }
+}

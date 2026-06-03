@@ -1,0 +1,20 @@
+{
+  "execution_id": "sell_dry_20260524_101020",
+  "step": 10,
+  "completed_at": "2026-05-24T10:15:03.219038",
+  "duration_ms": 82047,
+  "data": [
+    {
+      "ticker": "MU",
+      "action": "FULL_EXIT"
+    },
+    {
+      "ticker": "AMD",
+      "action": "ROLL"
+    },
+    {
+      "ticker": "TSLA",
+      "action": "FULL_EXIT"
+    }
+  ]
+}

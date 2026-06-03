@@ -1,0 +1,13 @@
+{
+  "execution_id": "sell_dry_20260524_230358",
+  "step": 0,
+  "completed_at": "2026-05-24T23:04:05.549475",
+  "duration_ms": 2140,
+  "data": {
+    "positions": [
+      "MU",
+      "AMD",
+      "TSLA"
+    ]
+  }
+}

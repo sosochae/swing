@@ -1,0 +1,14 @@
+{
+  "execution_id": "buy_TSLA_20260529_230003",
+  "step": 3,
+  "completed_at": "2026-05-29T23:00:07.419820",
+  "duration_ms": 0,
+  "data": {
+    "all_tickers": [
+      "TSLA"
+    ],
+    "filter_pass": [],
+    "filter_fail_count": 1,
+    "hard_stopped": []
+  }
+}

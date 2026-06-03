@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Users\\\\소소\\\\AppData\\\\Roaming\\\\Code\\\\User\\\\globalStorage\" /b)",
+      "Bash(findstr -i roo)"
+    ]
+  }
+}

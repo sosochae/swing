@@ -1,0 +1,15 @@
+{
+  "execution_id": "buy_20260522_232233",
+  "step": 6,
+  "completed_at": "2026-05-22T23:22:55.321872",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "MU",
+      "AMD",
+      "TSLA"
+    ],
+    "eliminated": [],
+    "da_deductions": {}
+  }
+}

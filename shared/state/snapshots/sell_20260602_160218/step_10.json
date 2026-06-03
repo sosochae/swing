@@ -1,0 +1,20 @@
+{
+  "execution_id": "sell_20260602_160218",
+  "step": 10,
+  "completed_at": "2026-06-02T16:14:02.605470",
+  "duration_ms": 91454,
+  "data": [
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "execution_id": "sell_dry_20260601_233553",
+  "step": 5,
+  "completed_at": "2026-06-01T23:44:21.731423",
+  "duration_ms": 106031,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "event_judgment": ": ",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": ""
+    },
+    "MRVL_2026-06-19_200.0": {
+      "event_judgment": "혼조",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0,
+      "recommendation": "IVR이 매우 낮아 IV 크러시 리스크는 제한적이며, 다수의 거시 이벤트가 방향성을 불확실하게 만들므로 포지션을 유지하되 변동성에 대비한 리스크 관리가 필요합니다."
+    }
+  }
+}

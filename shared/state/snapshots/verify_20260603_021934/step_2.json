@@ -1,0 +1,18 @@
+{
+  "execution_id": "verify_20260603_021934",
+  "step": 2,
+  "completed_at": "2026-06-03T02:19:38.323993",
+  "duration_ms": 15,
+  "data": {
+    "regime_status": "favorable",
+    "allowed_direction": "long_call",
+    "regime_confidence": 1.0,
+    "trend_confidence": 1.0,
+    "risk_factors": [
+      "Fear & Greed 23 (Extreme) — 극단적 공포"
+    ],
+    "trend_strength": "ADX 미입력, MA 구조로 대체: SPY·QQQ 모두 20MA 위",
+    "volatility": "VIX 16.05 ≤ 20.0 (Long Call 유리)",
+    "index_trend": "SPY·QQQ 모두 20MA 위 + 기울기 상향 → Long Call 유리"
+  }
+}

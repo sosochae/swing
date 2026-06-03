@@ -1,0 +1,16 @@
+{
+  "execution_id": "test_report_fix_001",
+  "step": 2,
+  "completed_at": "2026-06-03T15:49:29.286755",
+  "duration_ms": 17656,
+  "data": {
+    "regime_status": "favorable",
+    "allowed_direction": "long_call",
+    "regime_confidence": 1.0,
+    "trend_confidence": 1.0,
+    "risk_factors": [],
+    "trend_strength": "ADX 미입력, MA 구조로 대체: SPY·QQQ 모두 20MA 위",
+    "volatility": "VIX 15.77 ≤ 20.0 (Long Call 유리)",
+    "index_trend": "SPY·QQQ 모두 20MA 위 + 기울기 상향 → Long Call 유리"
+  }
+}

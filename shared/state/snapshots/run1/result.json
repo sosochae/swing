@@ -1,0 +1,20 @@
+{
+  "execution_id": "run1",
+  "pipeline_type": "buy",
+  "status": "failed",
+  "completed_steps": [],
+  "failed_steps": {
+    "0": "FATAL Step 0: E101: Obsidian REST API 응답 없음 (localhost:27123)"
+  },
+  "final_rankings": [],
+  "sell_decisions": [],
+  "market_regime": "",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 2.4,
+  "summary": {
+    "filtered_tickers": [],
+    "regime": ""
+  }
+}

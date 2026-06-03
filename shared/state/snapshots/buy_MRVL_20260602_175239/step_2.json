@@ -1,0 +1,18 @@
+{
+  "execution_id": "buy_MRVL_20260602_175239",
+  "step": 2,
+  "completed_at": "2026-06-02T17:53:27.325194",
+  "duration_ms": 0,
+  "data": {
+    "regime_status": "favorable",
+    "allowed_direction": "long_call",
+    "regime_confidence": 1.0,
+    "trend_confidence": 1.0,
+    "risk_factors": [
+      "Fear & Greed 23 (Extreme) — 극단적 공포"
+    ],
+    "trend_strength": "ADX 미입력, MA 구조로 대체: SPY·QQQ 모두 20MA 위",
+    "volatility": "VIX 16.05 ≤ 20.0 (Long Call 유리)",
+    "index_trend": "SPY·QQQ 모두 20MA 위 + 기울기 상향 → Long Call 유리"
+  }
+}

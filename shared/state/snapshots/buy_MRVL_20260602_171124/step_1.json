@@ -1,0 +1,12 @@
+{
+  "execution_id": "buy_MRVL_20260602_171124",
+  "step": 1,
+  "completed_at": "2026-06-02T17:11:29.153296",
+  "duration_ms": 2079,
+  "data": {
+    "watchlist": [
+      "MRVL"
+    ],
+    "finviz_count": 74
+  }
+}

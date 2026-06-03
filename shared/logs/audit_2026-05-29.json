@@ -1,0 +1,326 @@
+{"timestamp": "2026-05-29T05:36:31.390463+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:36:31.680386+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 0, "status": "completed", "duration_ms": 282, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T05:36:31.683625+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:36:34.605522+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 1, "status": "completed", "duration_ms": 2920, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T05:36:34.611785+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:36:34.613233+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T05:36:34.615766+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:36:34.617787+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T05:36:34.619700+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:36:34.619700+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T05:36:34.621611+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:38:58.948831+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 5, "status": "completed", "duration_ms": 144328}
+{"timestamp": "2026-05-29T05:38:58.953945+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:38:58.955991+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T05:38:58.959991+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:38:58.973849+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 7, "status": "completed", "duration_ms": 14, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T05:38:58.978963+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:38:58.982197+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T05:38:58.984210+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:38:59.868081+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 9, "status": "completed", "duration_ms": 875, "data": {"invested": 1902.5000000000002, "cash": 1097.4999999999998}}
+{"timestamp": "2026-05-29T05:38:59.876640+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:38:59.878732+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["TSLA"]}}
+{"timestamp": "2026-05-29T05:38:59.883275+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:38:59.900384+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 11, "status": "completed", "duration_ms": 15, "data": {"requeue_added": 1}}
+{"timestamp": "2026-05-29T05:38:59.900384+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:39:00.611241+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 12, "status": "completed", "duration_ms": 718, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T05:39:00.614788+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T05:39:01.005852+00:00", "execution_id": "buy_TSLA_20260529_143628", "step": 13, "status": "completed", "duration_ms": 391, "data": {"slack_ts": "1780033140.886249"}}
+{"timestamp": "2026-05-29T06:13:35.610730+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:36.254198+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 0, "status": "completed", "duration_ms": 641, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T06:13:36.261543+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:37.919345+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 1, "status": "completed", "duration_ms": 1656, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T06:13:37.922080+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:37.925334+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T06:13:37.932938+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:37.934980+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T06:13:37.935491+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:37.940468+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T06:13:37.944812+00:00", "execution_id": "buy_TSLA_20260529_151306", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:52.493470+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:52.903503+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 0, "status": "completed", "duration_ms": 406, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T06:13:52.911537+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:54.741509+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 1, "status": "completed", "duration_ms": 1827, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T06:13:54.748065+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:54.749078+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T06:13:54.755597+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:54.755597+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T06:13:54.761463+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:13:54.764082+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T06:13:54.767400+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:32.460038+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 5, "status": "completed", "duration_ms": 157688}
+{"timestamp": "2026-05-29T06:16:32.463978+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:32.463978+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T06:16:32.470442+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:32.475107+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 7, "status": "completed", "duration_ms": 0, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T06:16:32.479953+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:32.480467+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T06:16:32.485843+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:33.323887+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 9, "status": "completed", "duration_ms": 828, "data": {"invested": 1902.5000000000002, "cash": 1097.4999999999998}}
+{"timestamp": "2026-05-29T06:16:33.327924+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:33.328575+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["TSLA"]}}
+{"timestamp": "2026-05-29T06:16:33.334126+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:33.350756+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 11, "status": "completed", "duration_ms": 14, "data": {"requeue_added": 1}}
+{"timestamp": "2026-05-29T06:16:33.353899+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:33.474692+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 12, "status": "completed", "duration_ms": 125, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T06:16:33.481091+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T06:16:33.875578+00:00", "execution_id": "buy_TSLA_20260529_151348", "step": 13, "status": "completed", "duration_ms": 391, "data": {"slack_ts": "1780035393.785459"}}
+{"timestamp": "2026-05-29T07:57:37.020620+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T07:57:37.578316+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 0, "status": "completed", "duration_ms": 563, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T07:57:37.585913+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T07:57:40.579926+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 1, "status": "completed", "duration_ms": 3000, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T07:57:40.586992+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T07:57:40.588909+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T07:57:40.594610+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T07:57:40.595209+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T07:57:40.601027+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T07:57:40.602072+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T07:57:40.606314+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T07:58:58.809577+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 5, "status": "degraded", "duration_ms": 0, "ticker": "TSLA", "error": "E300: LLM 실패: Unterminated string starting at: line 99 column 22 (char 5450)"}
+{"timestamp": "2026-05-29T08:01:56.474356+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 5, "status": "completed", "duration_ms": 255858}
+{"timestamp": "2026-05-29T08:01:56.478639+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:01:56.478639+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T08:01:56.483627+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:01:56.486537+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 7, "status": "completed", "duration_ms": 0, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:01:56.491011+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:01:56.493022+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T08:01:56.497640+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:01:57.429325+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 9, "status": "completed", "duration_ms": 938, "data": {"invested": 1902.5000000000002, "cash": 1097.4999999999998}}
+{"timestamp": "2026-05-29T08:01:57.432977+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:01:57.433580+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["TSLA"]}}
+{"timestamp": "2026-05-29T08:01:57.437892+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:01:57.483039+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 11, "status": "completed", "duration_ms": 30, "data": {"requeue_added": 1}}
+{"timestamp": "2026-05-29T08:01:57.485887+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:01:57.989190+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 12, "status": "completed", "duration_ms": 500, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T08:01:57.994986+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:01:58.373443+00:00", "execution_id": "buy_TSLA_20260529_165709", "step": 13, "status": "completed", "duration_ms": 375, "data": {"slack_ts": "1780041718.380819"}}
+{"timestamp": "2026-05-29T08:13:10.188714+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:13:10.429822+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 0, "status": "completed", "duration_ms": 234, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T08:13:10.442372+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:13:13.087540+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 1, "status": "completed", "duration_ms": 2641, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T08:13:13.098229+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:13:13.100284+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T08:13:13.102048+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:13:13.109078+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T08:13:13.113466+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:13:13.116141+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:13:13.119848+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:14:32.824374+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 5, "status": "degraded", "duration_ms": 0, "ticker": "TSLA", "error": "E300: LLM 실패: Unterminated string starting at: line 100 column 21 (char 5300)"}
+{"timestamp": "2026-05-29T08:17:16.766032+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 5, "status": "completed", "duration_ms": 243656}
+{"timestamp": "2026-05-29T08:17:16.772838+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:17:16.774397+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T08:17:16.776922+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:17:16.783246+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 7, "status": "completed", "duration_ms": 0, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:17:16.784359+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:17:16.787481+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T08:17:16.790981+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:17:17.691586+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 9, "status": "completed", "duration_ms": 906, "data": {"invested": 1902.5000000000002, "cash": 1097.4999999999998}}
+{"timestamp": "2026-05-29T08:17:17.697107+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:17:17.697107+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["TSLA"]}}
+{"timestamp": "2026-05-29T08:17:17.704755+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:17:17.717877+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 11, "status": "completed", "duration_ms": 14, "data": {"requeue_added": 1}}
+{"timestamp": "2026-05-29T08:17:17.717877+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:17:18.005893+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 12, "status": "completed", "duration_ms": 282, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T08:17:18.011793+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:17:18.503888+00:00", "execution_id": "buy_TSLA_20260529_171308", "step": 13, "status": "completed", "duration_ms": 500, "data": {"slack_ts": "1780042638.422359"}}
+{"timestamp": "2026-05-29T08:23:58.579158+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:23:58.966135+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 0, "status": "completed", "duration_ms": 375, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T08:23:58.974631+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:24:01.014221+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 1, "status": "completed", "duration_ms": 2032, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T08:24:01.020101+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:24:01.022299+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T08:24:01.028602+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:24:01.031003+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T08:24:01.035549+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:24:01.035549+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:24:01.041798+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:52.261735+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 5, "status": "completed", "duration_ms": 291218}
+{"timestamp": "2026-05-29T08:28:52.263786+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:52.266802+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T08:28:52.272068+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:52.276991+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 7, "status": "completed", "duration_ms": 0, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:28:52.279526+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:52.282435+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 8, "status": "completed", "duration_ms": 16, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T08:28:52.285323+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:53.280500+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 9, "status": "completed", "duration_ms": 1000, "data": {"invested": 1902.5000000000002, "cash": 1097.4999999999998}}
+{"timestamp": "2026-05-29T08:28:53.285071+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:53.285071+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["TSLA"]}}
+{"timestamp": "2026-05-29T08:28:53.289245+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:53.303055+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 11, "status": "completed", "duration_ms": 16, "data": {"requeue_added": 1}}
+{"timestamp": "2026-05-29T08:28:53.305991+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:54.521995+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 12, "status": "completed", "duration_ms": 1217, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T08:28:54.526157+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:28:54.919753+00:00", "execution_id": "buy_TSLA_20260529_172356", "step": 13, "status": "completed", "duration_ms": 391, "data": {"slack_ts": "1780043334.937879"}}
+{"timestamp": "2026-05-29T08:29:14.692663+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:29:15.056634+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 0, "status": "completed", "duration_ms": 359, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T08:29:15.059789+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:29:16.374852+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 1, "status": "completed", "duration_ms": 1327, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T08:29:16.380909+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:29:16.383042+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T08:29:16.396261+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:29:16.398277+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T08:29:16.404273+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:29:16.404833+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:29:16.406711+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:53.244140+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 5, "status": "completed", "duration_ms": 336827}
+{"timestamp": "2026-05-29T08:34:53.246721+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:53.249297+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T08:34:53.254642+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:53.256362+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 7, "status": "completed", "duration_ms": 0, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:34:53.259937+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:53.259937+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T08:34:53.268334+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:54.139889+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 9, "status": "completed", "duration_ms": 875, "data": {"invested": 1902.5000000000002, "cash": 1097.4999999999998}}
+{"timestamp": "2026-05-29T08:34:54.143699+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:54.145305+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["TSLA"]}}
+{"timestamp": "2026-05-29T08:34:54.150430+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:54.161173+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 11, "status": "completed", "duration_ms": 16, "data": {"requeue_added": 1}}
+{"timestamp": "2026-05-29T08:34:54.164735+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:55.212579+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 12, "status": "completed", "duration_ms": 1047, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T08:34:55.217923+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:34:55.678006+00:00", "execution_id": "buy_TSLA_20260529_172912", "step": 13, "status": "completed", "duration_ms": 454, "data": {"slack_ts": "1780043695.639959"}}
+{"timestamp": "2026-05-29T08:48:45.312442+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:48:45.768657+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 0, "status": "completed", "duration_ms": 452, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T08:48:45.768657+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:48:47.244875+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 1, "status": "completed", "duration_ms": 1468, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T08:48:47.249121+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:48:47.249636+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T08:48:47.254868+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:48:47.257193+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T08:48:47.261828+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:48:47.263836+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:48:47.266005+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:08.992459+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 5, "status": "completed", "duration_ms": 321718}
+{"timestamp": "2026-05-29T08:54:08.998756+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:09.000517+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T08:54:09.004766+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:09.012091+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 7, "status": "completed", "duration_ms": 0, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T08:54:09.016123+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:09.019122+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T08:54:09.022774+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:09.991315+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 9, "status": "completed", "duration_ms": 968, "data": {"invested": 1902.5000000000002, "cash": 1097.4999999999998}}
+{"timestamp": "2026-05-29T08:54:09.997900+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:10.000297+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["TSLA"]}}
+{"timestamp": "2026-05-29T08:54:10.006728+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:10.020805+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 11, "status": "completed", "duration_ms": 15, "data": {"requeue_added": 1}}
+{"timestamp": "2026-05-29T08:54:10.026857+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:10.962030+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 12, "status": "completed", "duration_ms": 938, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T08:54:10.965157+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T08:54:11.459369+00:00", "execution_id": "buy_TSLA_20260529_174843", "step": 13, "status": "completed", "duration_ms": 500, "data": {"slack_ts": "1780044851.414139"}}
+{"timestamp": "2026-05-29T13:29:08.940633+00:00", "execution_id": "buy_20260529_222846", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:29:09.584643+00:00", "execution_id": "buy_20260529_222846", "step": 0, "status": "completed", "duration_ms": 625, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T13:29:09.593376+00:00", "execution_id": "buy_20260529_222846", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:29:13.374957+00:00", "execution_id": "buy_20260529_222846", "step": 1, "status": "completed", "duration_ms": 3781, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T13:29:13.380365+00:00", "execution_id": "buy_20260529_222846", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:29:13.383085+00:00", "execution_id": "buy_20260529_222846", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T13:29:13.387202+00:00", "execution_id": "buy_20260529_222846", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:29:13.389801+00:00", "execution_id": "buy_20260529_222846", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 1, "filter_fail": 0, "hard_stopped": []}}
+{"timestamp": "2026-05-29T13:29:13.395906+00:00", "execution_id": "buy_20260529_222846", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:29:13.397547+00:00", "execution_id": "buy_20260529_222846", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T13:29:13.404551+00:00", "execution_id": "buy_20260529_222846", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:57.855417+00:00", "execution_id": "buy_20260529_222846", "step": 5, "status": "completed", "duration_ms": 164422}
+{"timestamp": "2026-05-29T13:31:57.863851+00:00", "execution_id": "buy_20260529_222846", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:57.863851+00:00", "execution_id": "buy_20260529_222846", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 0}}
+{"timestamp": "2026-05-29T13:31:57.870477+00:00", "execution_id": "buy_20260529_222846", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:57.884020+00:00", "execution_id": "buy_20260529_222846", "step": 7, "status": "degraded", "duration_ms": 0, "ticker": "MRVL", "error": "E400: OI 0 < 500 최소 기준"}
+{"timestamp": "2026-05-29T13:31:57.888824+00:00", "execution_id": "buy_20260529_222846", "step": 7, "status": "completed", "duration_ms": 15, "data": {"valid": 0, "continuing": 1}}
+{"timestamp": "2026-05-29T13:31:57.892553+00:00", "execution_id": "buy_20260529_222846", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:57.894566+00:00", "execution_id": "buy_20260529_222846", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T13:31:57.898669+00:00", "execution_id": "buy_20260529_222846", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:59.084896+00:00", "execution_id": "buy_20260529_222846", "step": 9, "status": "completed", "duration_ms": 1187, "data": {"invested": 1274.0, "cash": 1726.0}}
+{"timestamp": "2026-05-29T13:31:59.094131+00:00", "execution_id": "buy_20260529_222846", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:59.096958+00:00", "execution_id": "buy_20260529_222846", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["MRVL"]}}
+{"timestamp": "2026-05-29T13:31:59.100775+00:00", "execution_id": "buy_20260529_222846", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:59.100775+00:00", "execution_id": "buy_20260529_222846", "step": 11, "status": "completed", "duration_ms": 0, "data": {"requeue_added": 0}}
+{"timestamp": "2026-05-29T13:31:59.105362+00:00", "execution_id": "buy_20260529_222846", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:59.249806+00:00", "execution_id": "buy_20260529_222846", "step": 12, "status": "completed", "duration_ms": 157, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T13:31:59.254960+00:00", "execution_id": "buy_20260529_222846", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:31:59.638085+00:00", "execution_id": "buy_20260529_222846", "step": 13, "status": "completed", "duration_ms": 390, "data": {"slack_ts": "1780061519.468649"}}
+{"timestamp": "2026-05-29T13:38:55.484947+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:38:55.765348+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 0, "status": "completed", "duration_ms": 281, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T13:38:55.767068+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:39:00.349084+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 1, "status": "completed", "duration_ms": 4577, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T13:39:00.354371+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:39:00.357488+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T13:39:00.366556+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:39:00.368642+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 1, "filter_fail": 0, "hard_stopped": []}}
+{"timestamp": "2026-05-29T13:39:00.374656+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:39:00.377283+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 0, "continuing": 1}}
+{"timestamp": "2026-05-29T13:39:00.383595+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:22.712185+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 5, "status": "completed", "duration_ms": 142312}
+{"timestamp": "2026-05-29T13:41:22.717979+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:22.717979+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 6, "status": "degraded", "duration_ms": 0, "ticker": "TSLA", "error": "DA경고: 최종점수 0.0 < 40.0 (계속 진행)"}
+{"timestamp": "2026-05-29T13:41:22.717979+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 1, "surviving": 1, "da_deductions": 0}}
+{"timestamp": "2026-05-29T13:41:22.723780+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:22.728246+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 7, "status": "degraded", "duration_ms": 0, "ticker": "TSLA", "error": "E400: OI 0 < 500 최소 기준"}
+{"timestamp": "2026-05-29T13:41:22.728837+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 7, "status": "completed", "duration_ms": 0, "data": {"valid": 0, "continuing": 1}}
+{"timestamp": "2026-05-29T13:41:22.728837+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:22.734298+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 0}}
+{"timestamp": "2026-05-29T13:41:22.738137+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:22.739195+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 9, "status": "completed", "duration_ms": 0, "data": {"invested": 0.0, "cash": 3000.0}}
+{"timestamp": "2026-05-29T13:41:22.739195+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:22.744880+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 0, "aggressive_rankings": 0, "high_downside": []}}
+{"timestamp": "2026-05-29T13:41:22.749118+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:22.749637+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 11, "status": "completed", "duration_ms": 0, "data": {"requeue_added": 0}}
+{"timestamp": "2026-05-29T13:41:22.750473+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:22.787426+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 12, "status": "completed", "duration_ms": 31, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T13:41:22.791548+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:41:23.353052+00:00", "execution_id": "buy_TSLA_20260529_223834", "step": 13, "status": "completed", "duration_ms": 563, "data": {"slack_ts": "1780062083.137149"}}
+{"timestamp": "2026-05-29T13:51:00.325757+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:51:03.824015+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 0, "status": "completed", "duration_ms": 3500, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T13:51:03.831275+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:51:17.060944+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 1, "status": "completed", "duration_ms": 13218, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T13:51:17.067147+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:51:17.072312+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T13:51:17.082148+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:51:17.083675+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T13:51:17.093692+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T13:51:17.098759+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T13:51:17.105478+00:00", "execution_id": "buy_TSLA_20260529_225042", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:00:05.249389+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:00:05.752492+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 0, "status": "completed", "duration_ms": 500, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T14:00:05.756166+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:00:07.402516+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 1, "status": "completed", "duration_ms": 1641, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T14:00:07.409336+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:00:07.409336+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T14:00:07.414747+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:00:07.418292+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T14:00:07.423498+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:00:07.425890+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 4, "status": "completed", "duration_ms": 15, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T14:00:07.429024+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:05:23.838435+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 5, "status": "completed", "duration_ms": 316391}
+{"timestamp": "2026-05-29T14:05:23.849088+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:05:23.853824+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 6, "status": "completed", "duration_ms": 14, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T14:05:23.863133+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:05:23.878505+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 7, "status": "completed", "duration_ms": 16, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T14:05:23.889166+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:05:23.894825+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T14:05:23.905344+00:00", "execution_id": "buy_TSLA_20260529_230003", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:06:10.836287+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:06:11.337788+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 0, "status": "completed", "duration_ms": 500, "data": {"warnings": []}}
+{"timestamp": "2026-05-29T14:06:11.339384+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:06:12.837196+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 1, "status": "completed", "duration_ms": 1483, "data": {"finviz_count": 74, "watchlist_count": 1}}
+{"timestamp": "2026-05-29T14:06:12.842834+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:06:12.846398+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 2, "status": "completed", "duration_ms": 0, "data": {"regime": "favorable", "direction": "long_call", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 1}}
+{"timestamp": "2026-05-29T14:06:12.852275+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:06:12.852275+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 3, "status": "completed", "duration_ms": 0, "data": {"total": 1, "filter_pass": 0, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-05-29T14:06:12.860711+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:06:12.862752+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 4, "status": "completed", "duration_ms": 0, "data": {"scored": 1, "trend_confirmed": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T14:06:12.869402+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:35.597397+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 5, "status": "completed", "duration_ms": 262703}
+{"timestamp": "2026-05-29T14:10:35.602419+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:35.604661+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 6, "status": "completed", "duration_ms": 16, "data": {"before": 1, "warned": 0, "surviving": 1, "da_deductions": 1}}
+{"timestamp": "2026-05-29T14:10:35.606676+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:35.612831+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 7, "status": "completed", "duration_ms": 0, "data": {"valid": 1, "continuing": 1}}
+{"timestamp": "2026-05-29T14:10:35.613279+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:35.619135+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 1}}
+{"timestamp": "2026-05-29T14:10:35.621152+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:36.787326+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 9, "status": "completed", "duration_ms": 1157, "data": {"invested": 1902.5000000000002, "cash": 1097.4999999999998}}
+{"timestamp": "2026-05-29T14:10:36.788860+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:36.795966+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 1, "high_downside": ["TSLA"]}}
+{"timestamp": "2026-05-29T14:10:36.799548+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:36.810289+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 11, "status": "completed", "duration_ms": 16, "data": {"requeue_added": 1}}
+{"timestamp": "2026-05-29T14:10:36.815197+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:37.261729+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 12, "status": "completed", "duration_ms": 452, "data": {"note_path": "swing-procedure/notes/buy/2026-05-29.md", "positions_entered": 0}}
+{"timestamp": "2026-05-29T14:10:37.266094+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-05-29T14:10:37.807230+00:00", "execution_id": "buy_TSLA_20260529_230607", "step": 13, "status": "completed", "duration_ms": 547, "data": {"slack_ts": "1780063837.467539"}}

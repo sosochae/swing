@@ -1,0 +1,13 @@
+{
+  "execution_id": "sell_dry_20260601_224745",
+  "step": 2,
+  "completed_at": "2026-06-01T22:48:27.313711",
+  "duration_ms": 61,
+  "data": {
+    "regime": "favorable",
+    "regime_flags": {
+      "MRVL_2026-07-17_220.0": "REGIME_UNKNOWN",
+      "MRVL_2026-06-19_200.0": "REGIME_UNKNOWN"
+    }
+  }
+}

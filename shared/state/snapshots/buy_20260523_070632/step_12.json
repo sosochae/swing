@@ -1,0 +1,9 @@
+{
+  "execution_id": "buy_20260523_070632",
+  "step": 12,
+  "completed_at": "2026-05-23T07:09:45.785273",
+  "duration_ms": 172,
+  "data": {
+    "note_path": "mock/notes/buy/test.md"
+  }
+}

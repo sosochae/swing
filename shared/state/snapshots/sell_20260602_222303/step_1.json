@@ -1,0 +1,74 @@
+{
+  "execution_id": "sell_20260602_222303",
+  "step": 1,
+  "completed_at": "2026-06-02T22:23:13.371615",
+  "duration_ms": 15,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "delta_pnl": 972.44,
+      "theta_pnl": -135.36,
+      "vega_pnl": 265.92,
+      "vega_exposure_per_pct": 30.25,
+      "iv_used": 0.973,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 219.43,
+      "current_premium": 30.03,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5710161658722878,
+        "gamma": 0.005237050352678315,
+        "theta": -0.33840580160284756,
+        "vega": 0.30249015562251336,
+        "iv": 0.973,
+        "ivr": 0.0
+      }
+    },
+    "MRVL_2026-06-19_200.0": {
+      "delta_pnl": 1079.72,
+      "theta_pnl": -178.5,
+      "vega_pnl": 225.78,
+      "vega_exposure_per_pct": 15.99,
+      "iv_used": 0.9163,
+      "dte_urgency": "보통",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 219.43,
+      "current_premium": 28.27,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.7183745341387396,
+        "gamma": 0.0077798589714743625,
+        "theta": -0.44624592185989387,
+        "vega": 0.1598577791712778,
+        "iv": 0.91625,
+        "ivr": 0.0
+      }
+    },
+    "MRVL_2026-07-10_220.0": {
+      "delta_pnl": 0.0,
+      "theta_pnl": -0.0,
+      "vega_pnl": 1306.0,
+      "vega_exposure_per_pct": 27.87,
+      "iv_used": 0.973,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 219.43,
+      "current_premium": 27.56,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5648073782716393,
+        "gamma": 0.005714450694769029,
+        "theta": -0.3683490897518563,
+        "vega": 0.2787212419839693,
+        "iv": 0.973,
+        "ivr": 0.0
+      }
+    }
+  }
+}

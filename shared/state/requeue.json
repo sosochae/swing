@@ -1,0 +1,1481 @@
+[
+  {
+    "ticker": "MU",
+    "registered_at": "2026-05-30T00:15:29.281116",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "MSTR",
+    "registered_at": "2026-05-21T06:43:05.589499",
+    "failed_filters": [
+      "F1_RVOL_LOW",
+      "F2_OI_LOW"
+    ],
+    "failure_reasons": [],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 2.0,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "NVDA",
+    "registered_at": "2026-05-28T03:40:04.748241",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "GOOGL",
+    "registered_at": "2026-06-03T17:13:58.272927",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "GOOG",
+    "registered_at": "2026-05-21T04:36:36.554595",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "MSFT",
+    "registered_at": "2026-05-21T04:36:36.578556",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "TSLA",
+    "registered_at": "2026-05-30T00:15:29.322511",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "AMD",
+    "registered_at": "2026-06-03T17:13:58.104807",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ASML",
+    "registered_at": "2026-05-21T04:36:36.668907",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "PLTR",
+    "registered_at": "2026-05-21T04:36:36.701507",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ANET",
+    "registered_at": "2026-05-21T04:36:36.728384",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ISRG",
+    "registered_at": "2026-05-21T04:36:36.756621",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "BLK",
+    "registered_at": "2026-05-21T04:36:36.787627",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "MRVL",
+    "registered_at": "2026-06-03T17:13:58.069260",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "NEM",
+    "registered_at": "2026-05-21T04:36:36.850057",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "SPOT",
+    "registered_at": "2026-05-21T04:36:36.874447",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "DASH",
+    "registered_at": "2026-05-30T00:15:29.221391",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "COHR",
+    "registered_at": "2026-05-21T04:36:36.928300",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "KEYS",
+    "registered_at": "2026-05-21T04:36:36.949187",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "NOK",
+    "registered_at": "2026-05-21T04:58:30.474371",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "SE",
+    "registered_at": "2026-05-21T04:36:37.006413",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "EME",
+    "registered_at": "2026-05-21T04:36:37.031451",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ALAB",
+    "registered_at": "2026-06-03T17:13:58.212179",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "CRDO",
+    "registered_at": "2026-06-03T17:13:58.235769",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "STLD",
+    "registered_at": "2026-05-21T04:36:37.114820",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "RJF",
+    "registered_at": "2026-05-21T04:36:37.146878",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "RDDT",
+    "registered_at": "2026-05-21T04:36:37.178077",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "MTSI",
+    "registered_at": "2026-05-21T04:36:37.206555",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "CDE",
+    "registered_at": "2026-05-21T04:58:30.504894",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "AMKR",
+    "registered_at": "2026-05-21T04:36:37.260975",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "TOST",
+    "registered_at": "2026-05-21T04:36:37.293716",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ROKU",
+    "registered_at": "2026-05-21T04:36:37.320515",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "SN",
+    "registered_at": "2026-05-21T04:36:37.353458",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "GRAB",
+    "registered_at": "2026-05-21T04:58:30.547332",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "JLL",
+    "registered_at": "2026-05-21T04:36:37.417859",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ZTO",
+    "registered_at": "2026-05-21T04:36:37.455452",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "RGA",
+    "registered_at": "2026-05-21T04:36:37.490558",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "OKTA",
+    "registered_at": "2026-05-21T04:36:37.521704",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "VICR",
+    "registered_at": "2026-06-03T17:13:58.177296",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "FORM",
+    "registered_at": "2026-05-21T04:36:37.585111",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "HMY",
+    "registered_at": "2026-05-21T04:58:30.597333",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "HBM",
+    "registered_at": "2026-05-21T04:58:30.642584",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "AGX",
+    "registered_at": "2026-05-21T04:58:30.681527",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "AAON",
+    "registered_at": "2026-05-21T04:58:30.719367",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "BTG",
+    "registered_at": "2026-05-21T04:58:30.768226",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "DSGX",
+    "registered_at": "2026-05-21T04:58:30.805465",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "APPF",
+    "registered_at": "2026-05-21T04:58:30.842188",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "RSI",
+    "registered_at": "2026-05-21T04:58:30.883108",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "BZ",
+    "registered_at": "2026-05-21T04:58:30.930721",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "AX",
+    "registered_at": "2026-05-21T04:58:30.967461",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "GLBE",
+    "registered_at": "2026-05-21T04:58:31.014887",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "IPGP",
+    "registered_at": "2026-05-21T04:58:31.055128",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ATAT",
+    "registered_at": "2026-05-21T04:58:31.104688",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "DLO",
+    "registered_at": "2026-05-21T04:58:31.137266",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "MCHB",
+    "registered_at": "2026-05-21T04:58:31.187128",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "PAY",
+    "registered_at": "2026-05-21T04:58:31.228349",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "HG",
+    "registered_at": "2026-05-21T04:58:31.261329",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "BKV",
+    "registered_at": "2026-05-21T04:58:31.301583",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "PRVA",
+    "registered_at": "2026-05-21T04:58:31.335493",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "LFST",
+    "registered_at": "2026-05-21T04:58:31.389471",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "FRSH",
+    "registered_at": "2026-05-21T04:58:31.426649",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "DGII",
+    "registered_at": "2026-06-03T17:13:58.135935",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "AVPT",
+    "registered_at": "2026-05-21T04:58:31.493311",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "AUPH",
+    "registered_at": "2026-05-21T04:58:31.528184",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "LC",
+    "registered_at": "2026-05-21T04:58:31.558946",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "INVA",
+    "registered_at": "2026-05-21T04:58:31.592153",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "INSP",
+    "registered_at": "2026-05-21T04:58:31.625340",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ARLO",
+    "registered_at": "2026-05-21T04:58:31.663669",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "MUX",
+    "registered_at": "2026-05-21T04:58:31.691381",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "NPKI",
+    "registered_at": "2026-05-21T04:58:31.732604",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "DAKT",
+    "registered_at": "2026-05-21T04:58:31.778098",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "TALK",
+    "registered_at": "2026-05-21T04:58:31.818047",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "RERE",
+    "registered_at": "2026-05-21T04:58:31.856811",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "TCMD",
+    "registered_at": "2026-05-21T04:58:31.893533",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "EVER",
+    "registered_at": "2026-05-21T04:58:31.930152",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ELVA",
+    "registered_at": "2026-05-21T04:58:31.966792",
+    "failed_filters": [
+      "F3_LIQUIDITY_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F3_LIQUIDITY_LOW"
+    ],
+    "threshold": {
+      "ivr_max": 50.0,
+      "price_drop_pct": null,
+      "rvol_min": null,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "TEST_TICKER",
+    "registered_at": "2026-05-25T09:02:40.486252",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "CTRA",
+    "registered_at": "2026-06-03T17:16:04.148955",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  }
+]

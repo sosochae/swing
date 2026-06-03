@@ -1,0 +1,11 @@
+{
+  "execution_id": "sell_dry_20260524_230358",
+  "step": 3,
+  "completed_at": "2026-05-24T23:04:05.583180",
+  "duration_ms": 15,
+  "data": {
+    "MU": 44.0,
+    "AMD": 41.6,
+    "TSLA": 0.0
+  }
+}

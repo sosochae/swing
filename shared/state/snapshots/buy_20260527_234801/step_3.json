@@ -1,0 +1,17 @@
+{
+  "execution_id": "buy_20260527_234801",
+  "step": 3,
+  "completed_at": "2026-05-27T23:48:33.294294",
+  "duration_ms": 0,
+  "data": {
+    "all_tickers": [
+      "DASH",
+      "MU",
+      "NVDA",
+      "AMD"
+    ],
+    "filter_pass": [],
+    "filter_fail_count": 4,
+    "hard_stopped": []
+  }
+}

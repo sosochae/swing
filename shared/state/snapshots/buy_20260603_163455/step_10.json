@@ -1,0 +1,11 @@
+{
+  "execution_id": "buy_20260603_163455",
+  "step": 10,
+  "completed_at": "2026-06-03T16:51:18.444351",
+  "duration_ms": 0,
+  "data": {
+    "balanced": [],
+    "aggressive": [],
+    "high_downside": []
+  }
+}

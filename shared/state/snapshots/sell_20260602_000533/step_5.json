@@ -1,0 +1,20 @@
+{
+  "execution_id": "sell_20260602_000533",
+  "step": 5,
+  "completed_at": "2026-06-02T00:09:40.323892",
+  "duration_ms": 110452,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "event_judgment": "혼조",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0,
+      "recommendation": "IVR이 매우 낮아 IV 붕괴로 인한 손실 가능성이 제한적이며, 다수의 고영향 거시 이벤트가 존재하지만 방향성이 불확실하여 포지션을 유지하되 변동성 스팍에 대비한 리스크 관리가 필요합니다."
+    },
+    "MRVL_2026-06-19_200.0": {
+      "event_judgment": ":",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": ""
+    }
+  }
+}

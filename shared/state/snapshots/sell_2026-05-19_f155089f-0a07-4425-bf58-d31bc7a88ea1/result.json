@@ -1,0 +1,20 @@
+{
+  "execution_id": "sell_2026-05-19_f155089f-0a07-4425-bf58-d31bc7a88ea1",
+  "pipeline_type": "sell",
+  "status": "failed",
+  "completed_steps": [],
+  "failed_steps": {
+    "0": "FATAL Step 0: Obsidian 연결 실패"
+  },
+  "final_rankings": [],
+  "sell_decisions": [],
+  "market_regime": "",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 3.5,
+  "summary": {
+    "filtered_tickers": [],
+    "regime": ""
+  }
+}

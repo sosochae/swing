@@ -1,0 +1,14 @@
+{
+  "execution_id": "sell_20260601_212350",
+  "step": 7,
+  "completed_at": "2026-06-01T21:29:34.875048",
+  "duration_ms": 0,
+  "data": [
+    {
+      "MRVL": "PARTIAL_EXIT"
+    },
+    {
+      "MRVL": "PARTIAL_EXIT"
+    }
+  ]
+}

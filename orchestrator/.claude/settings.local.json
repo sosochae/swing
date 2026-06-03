@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(\\(Get-Content \"C:\\\\MCP\\\\Swing\\\\.env\" -Encoding UTF8\\) -replace 'LLM_PRIMARY_MODEL=anthropic/claude-sonnet-4-5', 'LLM_PRIMARY_MODEL=google/gemini-2.0-flash-exp:free' -replace 'LLM_FALLBACK_MODEL=anthropic/claude-haiku-4-5', 'LLM_FALLBACK_MODEL=deepseek/deepseek-r1:free' | Set-Content \"C:\\\\MCP\\\\Swing\\\\.env\" -Encoding UTF8)",
+      "Bash(cd /d C:\\\\MCP\\\\Swing)",
+      "Bash(python -m py_compile core/obsidian.py)",
+      "Bash(python -m py_compile shared/schemas.py)",
+      "PowerShell(cd C:\\\\MCP\\\\Swing; .\\\\.venv\\\\Scripts\\\\python.exe -m py_compile core\\\\obsidian.py 2>&1; Write-Host \"obsidian Exit: $LASTEXITCODE\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('shared/prompts.py'\\).read\\(\\)\\); print\\('prompts.py OK'\\)\")",
+      "Bash(python \"C:\\\\MCP\\\\Swing\\\\shared\\\\prompts.py\")",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('C:/MCP/Swing/shared/prompts.py'\\).read\\(\\)\\); print\\('OK'\\)\" 2>&1)",
+      "Bash(python -c \"import ast, sys; files=['shared/prompts.py','orchestrator/steps/buy_steps.py','orchestrator/steps/sell_steps.py','core/obsidian.py']; [print\\(f'OK: {f}'\\) if ast.parse\\(open\\(f,encoding='utf-8'\\).read\\(\\)\\) else None for f in files]\")",
+      "Bash(python -m py_compile shared/prompts.py)",
+      "Bash(python -m py_compile orchestrator/steps/buy_steps.py)",
+      "Bash(python -m py_compile orchestrator/steps/sell_steps.py)",
+      "Bash(cmd /c \"dir /s /b C:\\\\MCP\\\\Swing 2>&1\")",
+      "Bash(Select-String -NotMatch \"__pycache__|\\\\\\\\logs\\\\\\\\|\\\\\\\\state\\\\\\\\\")",
+      "Bash(Select-Object -First 60)",
+      "Bash(.venv\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0,'C:/MCP/Swing'\\); from shared.schemas import PipelineContext; print\\('OK'\\)\")",
+      "PowerShell(Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip = [System.IO.Compression.ZipFile]::OpenRead\\(\"C:\\\\MCP\\\\투자 AI 답변.docx\"\\); $doc = $zip.Entries | Where-Object { $_.FullName -eq 'word/document.xml' }; $stream = $doc.Open\\(\\); $reader = [System.IO.StreamReader]::new\\($stream\\); $content = $reader.ReadToEnd\\(\\); $reader.Close\\(\\); $zip.Dispose\\(\\); [System.Text.RegularExpressions.Regex]::Replace\\($content, '<[^>]+>', ' '\\) -replace '\\\\s+', ' ' | Select-Object -First 1)",
+      "Bash(python scripts/run_buy_pipeline.py)",
+      "Bash(dir \"C:\\\\MCP\\\\Topic-Trend\" /B)",
+      "PowerShell(@\\(Get-Content \"C:\\\\MCP\\\\Swing\\\\orchestrator\\\\steps\\\\sell_steps.py\"\\).Count)",
+      "PowerShell(Select-String -Path \"C:\\\\MCP\\\\Swing\\\\orchestrator\\\\engine.py\" -Pattern \"analyze_with_llm\" | ForEach-Object { [PSCustomObject]@{ LineNumber=$_.LineNumber; Line=$_.Line } })",
+      "Bash(set PYTHONUTF8=1)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(.venv\\\\Scripts\\\\python.exe scripts/test_mcp_integration.py)",
+      "Bash(.venv\\\\Scripts\\\\python.exe scripts/run_buy_pipeline.py)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\MCP\\\\Swing\\\\servers\" -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object -ExpandProperty FullName)",
+      "Bash(ls \"C:\\\\MCP\\\\Deep-research\" 2>&1 | head -30)",
+      "PowerShell(Get-ChildItem \"C:\\\\MCP\\\\Deep-research\" -Recurse -File | Select-Object FullName | Where-Object { $_.FullName -notmatch '\\\\.venv' })",
+      "PowerShell(Get-ChildItem \"C:\\\\MCP\" | Select-Object Name; Write-Host \"---\"; Get-Content \"$env:APPDATA\\\\Claude\\\\claude_desktop_config.json\" -ErrorAction SilentlyContinue | Select-Object -First 60)",
+      "Bash(python -c ' *)",
+      "PowerShell(& \"C:\\\\MCP\\\\Swing\\\\.venv\\\\Scripts\\\\python.exe\" \"C:\\\\MCP\\\\Swing\\\\scripts\\\\test_ddg.py\" 2>&1)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from orchestrator.steps.sell_steps import SellSteps\")",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, r'C:\\\\MCP\\\\Swing'\\); from orchestrator.steps.sell_steps import SellSteps\")",
+      "Bash(C:\\\\MCP\\\\Swing\\\\.venv\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0, r'C:\\\\MCP\\\\Swing'\\); from orchestrator.steps.sell_steps import SellSteps\")",
+      "PowerShell(Set-Location \"C:\\\\MCP\\\\Swing\"; python -m py_compile orchestrator/steps/buy_steps.py; Write-Output \"buy_steps syntax: $LASTEXITCODE\"; python -m py_compile orchestrator/steps/sell_steps.py; Write-Output \"sell_steps syntax: $LASTEXITCODE\"; python -m py_compile orchestrator/pipelines.py; Write-Output \"pipelines syntax: $LASTEXITCODE\"; python -m py_compile orchestrator/engine.py; Write-Output \"engine syntax: $LASTEXITCODE\")",
+      "Bash(dir \"Y:\\\\내 드라이브\\\\Data\" /b)",
+      "Bash(findstr -i kavout)"
+    ]
+  }
+}

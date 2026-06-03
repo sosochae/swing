@@ -1,0 +1,26 @@
+{
+  "execution_id": "sell_20260602_160218",
+  "step": 5,
+  "completed_at": "2026-06-02T16:12:31.140999",
+  "duration_ms": 80734,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "event_judgment": ":",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": ""
+    },
+    "MRVL_2026-06-19_200.0": {
+      "event_judgment": ": 혼조",
+      "iv_crush_risk": true,
+      "iv_crush_estimated_loss": 0.35,
+      "recommendation": "다수의 거시 이벤트가 집중되어 변동성이 단기간 상승 후 급락할 가능성이 높으며, 현재 IVR이 매우 낮아 IV 증가 후 크러시 위험이 존재합니다. 포지션 규모를 축소하거나 변동성 중립 전략을 고려하세요."
+    },
+    "MRVL_2026-07-10_220.0": {
+      "event_judgment": ":",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": ""
+    }
+  }
+}

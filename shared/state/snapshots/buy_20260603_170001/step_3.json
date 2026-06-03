@@ -1,0 +1,21 @@
+{
+  "execution_id": "buy_20260603_170001",
+  "step": 3,
+  "completed_at": "2026-06-03T17:00:25.168047",
+  "duration_ms": 0,
+  "data": {
+    "all_tickers": [
+      "CTRA",
+      "MRVL",
+      "AMD",
+      "DGII",
+      "VICR",
+      "ALAB",
+      "CRDO",
+      "GOOGL"
+    ],
+    "filter_pass": [],
+    "filter_fail_count": 8,
+    "hard_stopped": []
+  }
+}

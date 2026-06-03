@@ -1,0 +1,36 @@
+{
+  "execution_id": "sell_dry_20260601_235008",
+  "step": 4,
+  "completed_at": "2026-06-01T23:55:33.491760",
+  "duration_ms": 73827,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 399,
+        "theta_pnl": 0,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 399,
+        "actual_pnl": 399
+      }
+    },
+    "MRVL_2026-06-19_200.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "보통",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 500,
+        "theta_pnl": -7,
+        "vega_pnl": 2,
+        "total_estimated_pnl": 495,
+        "actual_pnl": 495
+      }
+    }
+  }
+}

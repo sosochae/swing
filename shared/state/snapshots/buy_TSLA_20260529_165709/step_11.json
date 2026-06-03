@@ -1,0 +1,9 @@
+{
+  "execution_id": "buy_TSLA_20260529_165709",
+  "step": 11,
+  "completed_at": "2026-05-29T17:01:57.484047",
+  "duration_ms": 30,
+  "data": {
+    "requeue_count": 1
+  }
+}

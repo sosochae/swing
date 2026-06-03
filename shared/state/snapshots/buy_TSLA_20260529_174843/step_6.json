@@ -1,0 +1,18 @@
+{
+  "execution_id": "buy_TSLA_20260529_174843",
+  "step": 6,
+  "completed_at": "2026-05-29T17:54:09.004766",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "TSLA"
+    ],
+    "warned": [],
+    "da_deductions": {
+      "TSLA": [
+        "내부자 순매도 $45.5M (최근 거래 집계)",
+        "최근 EPS 미스 -8.5% (분기: Q2)"
+      ]
+    }
+  }
+}

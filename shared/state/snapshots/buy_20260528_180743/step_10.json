@@ -1,0 +1,58 @@
+{
+  "execution_id": "buy_20260528_180743",
+  "step": 10,
+  "completed_at": "2026-05-28T18:14:15.786855",
+  "duration_ms": 0,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "AMD",
+        "action": "보류"
+      },
+      {
+        "rank": 2,
+        "ticker": "MU",
+        "action": "보류"
+      },
+      {
+        "rank": 3,
+        "ticker": "TSLA",
+        "action": "보류"
+      },
+      {
+        "rank": 4,
+        "ticker": "DASH",
+        "action": "탈락"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "MU",
+        "action": "보류"
+      },
+      {
+        "rank": 2,
+        "ticker": "DASH",
+        "action": "탈락"
+      },
+      {
+        "rank": 3,
+        "ticker": "AMD",
+        "action": "보류"
+      },
+      {
+        "rank": 4,
+        "ticker": "TSLA",
+        "action": "보류"
+      }
+    ],
+    "high_downside": [
+      "DASH",
+      "MU",
+      "TSLA",
+      "AMD"
+    ]
+  }
+}

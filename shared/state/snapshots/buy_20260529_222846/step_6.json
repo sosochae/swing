@@ -1,0 +1,13 @@
+{
+  "execution_id": "buy_20260529_222846",
+  "step": 6,
+  "completed_at": "2026-05-29T22:31:57.866859",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "MRVL"
+    ],
+    "warned": [],
+    "da_deductions": {}
+  }
+}

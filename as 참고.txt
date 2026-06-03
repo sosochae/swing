@@ -1,0 +1,1581 @@
+// =============================================
+// CONFIG
+// =============================================
+const TICKER = "NVDA";
+const FINNHUB_KEY = " ";
+const FRED_KEY = " ";
+const ALPHA_KEY = " "
+
+const TOTAL_CAPITAL = 3000;
+const COMMISSION_PER_CONTRACT = 5;
+const MAX_PER_POSITION = 1000;
+const TARGET_HOLD_DAYS = "3~5일";
+
+// =============================================
+// 티커 목록 읽기 (TICKERS 탭 A열)
+// =============================================
+function getTickerList() {
+  // 다른 스프레드시트 접근
+  const ss = SpreadsheetApp.openById("1PIhnvgTh7ZmjiQa4RJ958Iejj2gjcO7TN745fmZYw4U");
+  let sheet = ss.getSheetByName("종목");
+  
+  if (!sheet) {
+    throw new Error("'종목' 탭을 찾을 수 없습니다. 스프레드시트에 '종목' 탭이 있는지 확인하세요.");
+  }
+  
+  const values = sheet.getRange("A1:A" + sheet.getLastRow()).getValues();
+  const tickers = values
+    .map(r => String(r[0]).trim().toUpperCase())
+    .filter(v => v && v !== "티커" && v !== "종목" && v !== "" && !v.startsWith("//"));
+  
+  if (tickers.length === 0) {
+    throw new Error("종목 탭 A열에 티커를 입력하세요.");
+  }
+  
+  return tickers;
+}
+
+// =============================================
+// Yahoo Crumb
+// =============================================
+function getYahooCrumb() {
+  const cookieRes = UrlFetchApp.fetch("https://fc.yahoo.com", {
+    muteHttpExceptions: true,
+    followRedirects: true,
+    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" }
+  });
+  const cookies = cookieRes.getAllHeaders()["Set-Cookie"] || [];
+  const cookieStr = Array.isArray(cookies) ? cookies.join("; ") : cookies;
+  Utilities.sleep(500);
+
+  const crumbRes = UrlFetchApp.fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+    muteHttpExceptions: true,
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Cookie": cookieStr
+    }
+  });
+  const crumb = crumbRes.getContentText().trim();
+  if (!crumb || crumb.startsWith("{")) throw new Error("Crumb 획득 실패: " + crumb);
+  return { crumb, cookie: cookieStr };
+}
+
+function yahooFetch(url, crumbObj) {
+  const sep = url.includes("?") ? "&" : "?";
+  return UrlFetchApp.fetch(url + sep + "crumb=" + encodeURIComponent(crumbObj.crumb), {
+    muteHttpExceptions: true,
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "application/json",
+      "Cookie": crumbObj.cookie
+    }
+  });
+}
+
+// =============================================
+// 기술지표 계산 유틸
+// =============================================
+function calcMA(closes, period) {
+  if (closes.length < period) return null;
+  return closes.slice(-period).reduce((a, b) => a + b, 0) / period;
+}
+
+function calcEMAArray(closes, period) {
+  if (closes.length < period) return [];
+  const k = 2 / (period + 1);
+  let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const arr = new Array(period - 1).fill(null);
+  arr.push(ema);
+  for (let i = period; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+    arr.push(ema);
+  }
+  return arr;
+}
+
+function calcMACD(closes) {
+  if (closes.length < 35) return null;
+  const ema12Arr = calcEMAArray(closes, 12);
+  const ema26Arr = calcEMAArray(closes, 26);
+  const macdArr = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (ema12Arr[i] == null || ema26Arr[i] == null) { macdArr.push(null); continue; }
+    macdArr.push(ema12Arr[i] - ema26Arr[i]);
+  }
+  const validMacd = macdArr.filter(v => v != null);
+  if (validMacd.length < 9) return null;
+  const k = 2 / (9 + 1);
+  let signal = validMacd.slice(0, 9).reduce((a, b) => a + b, 0) / 9;
+  const signalArr = [];
+  let filled = 0;
+  for (let i = 0; i < macdArr.length; i++) {
+    if (macdArr[i] == null) { signalArr.push(null); continue; }
+    filled++;
+    if (filled < 9) { signalArr.push(null); continue; }
+    if (filled === 9) { signalArr.push(signal); continue; }
+    signal = macdArr[i] * k + signal * (1 - k);
+    signalArr.push(signal);
+  }
+  const lastMacd = validMacd[validMacd.length - 1];
+  const validSig = signalArr.filter(v => v != null);
+  const lastSignal = validSig[validSig.length - 1];
+  const histogram = lastMacd - lastSignal;
+  const prevValidSig = validSig.length >= 2 ? validSig[validSig.length - 2] : null;
+  const prevMacd = validMacd.length >= 2 ? validMacd[validMacd.length - 2] : null;
+  const prevHist = (prevMacd != null && prevValidSig != null) ? prevMacd - prevValidSig : null;
+  const histDirection = prevHist == null ? "N/A"
+    : histogram > prevHist ? "📈 확장"
+    : histogram < prevHist ? "📉 수축"
+    : "➡️ 보합";
+  const crossSignal = lastMacd > lastSignal ? "🟢 골든크로스" : "🔴 데드크로스";
+  return { macdLine: lastMacd, signalLine: lastSignal, histogram, histDirection, crossSignal };
+}
+
+function calcRSI(closes, period) {
+  period = period || 14;
+  if (closes.length < period + 1) return null;
+  let gains = 0, losses = 0;
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+  return 100 - (100 / (1 + avgGain / avgLoss));
+}
+
+function calcBB(closes, period) {
+  period = period || 20;
+  if (closes.length < period) return null;
+  const slice = closes.slice(-period);
+  const mid = slice.reduce((a, b) => a + b, 0) / period;
+  const std = Math.sqrt(slice.reduce((s, v) => s + Math.pow(v - mid, 2), 0) / period);
+  return { upper: mid + 2 * std, mid, lower: mid - 2 * std };
+}
+
+function calcADX(highs, lows, closes, period) {
+  period = period || 14;
+  const n = Math.min(highs.length, lows.length, closes.length);
+  if (n < period + 1) return null;
+  const trs = [], plusDMs = [], minusDMs = [];
+  for (let i = 1; i < n; i++) {
+    const hDiff = highs[i] - highs[i - 1];
+    const lDiff = lows[i - 1] - lows[i];
+    trs.push(Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    ));
+    plusDMs.push(hDiff > lDiff && hDiff > 0 ? hDiff : 0);
+    minusDMs.push(lDiff > hDiff && lDiff > 0 ? lDiff : 0);
+  }
+  const avgTR    = trs.slice(-period).reduce((a, b) => a + b, 0) / period;
+  const avgPlus  = plusDMs.slice(-period).reduce((a, b) => a + b, 0) / period;
+  const avgMinus = minusDMs.slice(-period).reduce((a, b) => a + b, 0) / period;
+  if (avgTR === 0) return null;
+  const diPlus  = (avgPlus  / avgTR) * 100;
+  const diMinus = (avgMinus / avgTR) * 100;
+  const denom   = diPlus + diMinus;
+  if (denom === 0) return null;
+  return Math.abs(diPlus - diMinus) / denom * 100;
+}
+
+function calcOBV(closes, volumes) {
+  if (closes.length < 2 || volumes.length < 2) return null;
+  const n = Math.min(closes.length, volumes.length);
+  let obv = 0;
+  const obvArr = [0];
+  for (let i = 1; i < n; i++) {
+    if (closes[i] > closes[i - 1])      obv += volumes[i];
+    else if (closes[i] < closes[i - 1]) obv -= volumes[i];
+    obvArr.push(obv);
+  }
+  const recent = obvArr.slice(-5);
+  const slope  = recent[recent.length - 1] - recent[0];
+  return { value: obv, direction: slope > 0 ? "📈 상승" : slope < 0 ? "📉 하락" : "➡️ 보합" };
+}
+
+function calcSupportResistance(highs, lows, closes, lookback) {
+  lookback = lookback || 60;
+  if (closes.length < lookback) return null;
+  const recentHighs = highs.slice(-lookback);
+  const recentLows  = lows.slice(-lookback);
+  const pivotHighs = [], pivotLows = [];
+  for (let i = 5; i < recentHighs.length - 5; i++) {
+    const win = 5;
+    const isHigh = recentHighs.slice(i - win, i).every(v => v <= recentHighs[i]) &&
+                   recentHighs.slice(i + 1, i + win + 1).every(v => v <= recentHighs[i]);
+    const isLow  = recentLows.slice(i - win, i).every(v => v >= recentLows[i]) &&
+                   recentLows.slice(i + 1, i + win + 1).every(v => v >= recentLows[i]);
+    if (isHigh) pivotHighs.push(recentHighs[i]);
+    if (isLow)  pivotLows.push(recentLows[i]);
+  }
+  const curr = closes[closes.length - 1];
+  const resistances = [...pivotHighs].filter(v => v > curr).sort((a, b) => a - b);
+  const supports    = [...pivotLows].filter(v => v < curr).sort((a, b) => b - a);
+  return {
+    resistance1: resistances[0] ?? null,
+    resistance2: resistances[1] ?? null,
+    support1:    supports[0]    ?? null,
+    support2:    supports[1]    ?? null,
+  };
+}
+
+function calcGreeks(S, K, T, r, sigma, isCall) {
+  if (T <= 0 || sigma <= 0) return { delta: null, theta: null, vega: null, gamma: null };
+  function normCDF(x) {
+    const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+    const sign = x < 0 ? -1 : 1;
+    const t = 1 / (1 + p * Math.abs(x));
+    const y = 1 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1) * t * Math.exp(-x * x / 2);
+    return 0.5 * (1 + sign * y);
+  }
+  function normPDF(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
+  const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+  const d2 = d1 - sigma * Math.sqrt(T);
+  const gamma = normPDF(d1) / (S * sigma * Math.sqrt(T));
+  const vega  = S * normPDF(d1) * Math.sqrt(T) / 100;
+  let delta, theta;
+  if (isCall) {
+    delta = normCDF(d1);
+    theta = (-S * normPDF(d1) * sigma / (2 * Math.sqrt(T)) - r * K * Math.exp(-r * T) * normCDF(d2)) / 365;
+  } else {
+    delta = normCDF(d1) - 1;
+    theta = (-S * normPDF(d1) * sigma / (2 * Math.sqrt(T)) + r * K * Math.exp(-r * T) * normCDF(-d2)) / 365;
+  }
+  return { delta, theta, vega, gamma };
+}
+
+// =============================================
+// MAIN
+// =============================================
+function runAll() {
+  const tickers = getTickerList();
+  if (tickers.length === 0) {
+    SpreadsheetApp.getUi().alert("TICKERS 탭 A열에 티커를 입력하세요.");
+    return;
+  }
+
+  let crumbObj = null;
+  try {
+    crumbObj = getYahooCrumb();
+    Logger.log("Crumb 획득 성공: " + crumbObj.crumb);
+  } catch(e) {
+    Logger.log("Crumb 획득 실패: " + e);
+  }
+
+  fetchMacro(crumbObj);
+  fetchEvents(tickers);
+
+  for (const ticker of tickers) {
+    Logger.log("▶ 처리 중: " + ticker);
+    fetchStock(ticker, crumbObj);
+    fetchAnalyst(ticker);
+    fetchOptions(ticker, crumbObj);
+    fetchNews(ticker);
+    fetchInsider(ticker);
+    fetchEarnings(ticker);
+    fetchFinviz(ticker);
+    fetchPositions(ticker);
+    Utilities.sleep(500);
+  }
+
+  buildSummary(tickers);
+  exportSummaryRows(tickers);
+
+  return "✅ 완료! SUMMARY 탭 확인 (종목: " + tickers.join(", ") + ")";
+}
+
+// 웹훅용
+function doPost(e) {
+  try {
+    const result = runAll();
+    return ContentService.createTextOutput(result);
+  } catch (err) {
+    return ContentService.createTextOutput("ERROR: " + err.message);
+  }
+}
+
+// (선택) 브라우저 테스트용
+function doGet(e) {
+  return doPost(e);
+}
+
+// =============================================
+// 탭 이름 헬퍼
+// =============================================
+function sheetName(base, ticker) {
+  return ticker ? base + "_" + ticker : base;
+}
+
+// =============================================
+// 1. MACRO
+// =============================================
+function fetchMacro(crumbObj) {
+  if (!crumbObj) crumbObj = getYahooCrumb();
+
+  const symbols = {
+    "S&P500":   "%5EGSPC",
+    "NASDAQ":   "%5EIXIC",
+    "SPY":      "SPY",
+    "QQQ":      "QQQ",
+    "VIX":      "%5EVIX",
+    "DXY":      "DX-Y.NYB",
+    "10Y 금리":  "%5ETNX",
+    "GOLD":     "GC%3DF",
+    "OIL(WTI)": "CL%3DF",
+    "SOXX":     "SOXX",
+  };
+
+  const sheet = getOrCreateSheet("MACRO");
+  sheet.clearContents();
+  sheet.appendRow(["항목", "현재가", "전일대비(%)", "20MA", "MA위치", "추세", "업데이트"]);
+
+  let marketSession = "N/A";
+  try {
+    const sessionRes = JSON.parse(yahooFetch(
+      "https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1d&range=5d",
+      crumbObj
+    ).getContentText());
+    const state = sessionRes.chart?.result?.[0]?.meta?.marketState ?? "N/A";
+    marketSession = state === "PRE"     ? "🌅 프리마켓"
+                  : state === "REGULAR" ? "🟢 정규장"
+                  : state === "POST"    ? "🌙 애프터마켓"
+                  : state === "CLOSED"  ? "🔴 마감"
+                  : state;
+  } catch(e) { Logger.log("세션 확인 ERR: " + e); }
+
+  sheet.appendRow(["현재 세션", marketSession, "", "", "", "", new Date()]);
+
+  for (const [name, sym] of Object.entries(symbols)) {
+    try {
+      const url = "https://query1.finance.yahoo.com/v8/finance/chart/" + sym + "?interval=1d&range=1y";
+      const res = JSON.parse(yahooFetch(url, crumbObj).getContentText());
+      if (!res.chart?.result?.[0]) { sheet.appendRow([name, "ERR", "응답없음", "", "", "", ""]); Utilities.sleep(300); continue; }
+      const rawCloses = (res.chart.result[0].indicators.quote[0].close || []).filter(v => v != null);
+      const prev = rawCloses[rawCloses.length - 2];
+      const curr = rawCloses[rawCloses.length - 1];
+      const chg  = ((curr - prev) / prev * 100).toFixed(2);
+      const ma20    = calcMA(rawCloses, 20);
+      const ma20Str = ma20 != null ? ma20.toFixed(2) : "N/A";
+      const maPos   = ma20 != null ? (curr > ma20 ? "🟢 위" : "🔴 아래") : "N/A";
+      let trend = "N/A";
+      if (rawCloses.length >= 30) {
+        const ma20_prev = calcMA(rawCloses.slice(0, -10), 20);
+        if (ma20 != null && ma20_prev != null)
+          trend = ma20 > ma20_prev ? "📈 상승" : ma20 < ma20_prev ? "📉 하락" : "➡️ 횡보";
+      }
+      let extra = "";
+      if (name === "10Y 금리" && rawCloses.length >= 6) {
+        const prev5 = rawCloses[rawCloses.length - 6];
+        extra = curr > prev5 ? " (5일전比 ▲)" : curr < prev5 ? " (5일전比 ▼)" : " (5일전比 →)";
+      }
+      sheet.appendRow([name, curr.toFixed(2) + extra, chg + "%", ma20Str, maPos, trend, new Date()]);
+      Utilities.sleep(300);
+    } catch(e) {
+      sheet.appendRow([name, "ERR", "ERR", "", "", "", e.toString()]);
+    }
+  }
+
+  try {
+    const altRes = JSON.parse(UrlFetchApp.fetch("https://api.alternative.me/fng/?limit=1&format=json", {
+      headers: { "User-Agent": "Mozilla/5.0" }, muteHttpExceptions: true
+    }).getContentText());
+    const d = altRes.data[0];
+    sheet.appendRow(["Fear & Greed", d.value, d.value_classification, "", "", "", new Date()]);
+  } catch(e) {
+    sheet.appendRow(["Fear & Greed", "N/A", "API 불가", "", "", "", ""]);
+  }
+
+  const fredSeries = {
+    "Fed Funds Rate": "FEDFUNDS",
+    "CPI YoY":        "CPIAUCSL",
+    "실업률":          "UNRATE",
+    "PCE":            "PCEPI",
+  };
+  for (const [name, series] of Object.entries(fredSeries)) {
+    try {
+      const url = "https://api.stlouisfed.org/fred/series/observations?series_id=" + series + "&api_key=" + FRED_KEY + "&file_type=json&sort_order=desc&limit=2";
+      const res = JSON.parse(UrlFetchApp.fetch(url, { muteHttpExceptions: true }).getContentText());
+      const obs  = res.observations[0];
+      const obs1 = res.observations[1];
+      let dir = "";
+      if (obs && obs1 && obs.value !== "." && obs1.value !== ".")
+        dir = Number(obs.value) > Number(obs1.value) ? " ▲" : Number(obs.value) < Number(obs1.value) ? " ▼" : " →";
+      sheet.appendRow([name, obs.value + dir, "(" + obs.date + ")", "", "", "", new Date()]);
+      Utilities.sleep(200);
+    } catch(e) {
+      sheet.appendRow([name, "ERR", "", "", "", "", e.toString()]);
+    }
+  }
+}
+
+// =============================================
+// 2. STOCK
+// =============================================
+function fetchStock(ticker, crumbObj) {
+  if (!crumbObj) crumbObj = getYahooCrumb();
+
+  const sheet = getOrCreateSheet(sheetName("STOCK", ticker));
+  sheet.clearContents();
+  sheet.appendRow(["항목", "값"]);
+
+  let closes, highs, lows, opens, volumes, timestamps, meta;
+  try {
+    const url = "https://query1.finance.yahoo.com/v8/finance/chart/" + ticker + "?interval=1d&range=1y&includePrePost=false";
+    const res = JSON.parse(yahooFetch(url, crumbObj).getContentText());
+    if (!res.chart?.result?.[0]) throw new Error("응답 없음");
+    meta = res.chart.result[0].meta;
+    const q = res.chart.result[0].indicators.quote[0];
+    const rawTs = res.chart.result[0].timestamp || [];
+    const raw = rawTs.map((t, i) => ({
+      t, o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i], v: q.volume[i]
+    })).filter(d => d.c != null && d.v != null);
+    opens      = raw.map(d => d.o);
+    highs      = raw.map(d => d.h);
+    lows       = raw.map(d => d.l);
+    closes     = raw.map(d => d.c);
+    volumes    = raw.map(d => d.v);
+    timestamps = raw.map(d => d.t);
+  } catch(e) {
+    sheet.appendRow(["ERR", "Yahoo chart 1y: " + e.toString()]);
+    return;
+  }
+
+  const curr = closes[closes.length - 1];
+  const prev = closes[closes.length - 2];
+  const chg  = ((curr - prev) / prev * 100).toFixed(2);
+
+  const ma5   = calcMA(closes, 5);
+  const ma20  = calcMA(closes, 20);
+  const ma50  = calcMA(closes, 50);
+  const ma60  = calcMA(closes, 60);
+  const ma200 = calcMA(closes, 200);
+
+  let maAlignSignal = "N/A";
+  if (ma5 && ma20 && ma60) {
+    if (ma5 > ma20 && ma20 > ma60)       maAlignSignal = "🟢 완전 정배열 (5>20>60)";
+    else if (ma5 < ma20 && ma20 < ma60)  maAlignSignal = "🔴 완전 역배열 (5<20<60)";
+    else if (curr > ma20 && ma20 > ma60) maAlignSignal = "🟡 부분 정배열";
+    else if (curr < ma20 && ma20 < ma60) maAlignSignal = "🟡 부분 역배열";
+    else                                  maAlignSignal = "⚪ 혼조";
+  }
+
+  const maGDX = ma50 && ma200
+    ? (ma50 > ma200 ? "🟢 골든크로스 (50>200)" : "🔴 데드크로스 (50<200)")
+    : "N/A";
+
+  const ma20Pos = ma20 ? (curr > ma20 ? "🟢 20MA 위" : "🔴 20MA 아래") : "N/A";
+  const ma60Pos = ma60 ? (curr > ma60 ? "🟢 60MA 위" : "🔴 60MA 아래") : "N/A";
+
+  const w52High = meta?.fiftyTwoWeekHigh ?? null;
+  const w52Low  = meta?.fiftyTwoWeekLow  ?? null;
+  let w52Pos = "N/A";
+  if (w52High && w52Low && w52High !== w52Low)
+    w52Pos = ((curr - w52Low) / (w52High - w52Low) * 100).toFixed(1) + "% (52주 범위 내 위치)";
+
+  const rsi  = calcRSI(closes, 14);
+  const bb   = calcBB(closes, 20);
+  const adx  = calcADX(highs, lows, closes, 14);
+  const obv  = calcOBV(closes, volumes);
+  const macd = calcMACD(closes);
+  const sr   = calcSupportResistance(highs, lows, closes, 60);
+
+  const avgVol20 = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+  const todayVol = volumes[volumes.length - 1];
+  const volRatio = avgVol20 > 0 ? ((todayVol / avgVol20) * 100).toFixed(0) + "%" : "N/A";
+
+  let marketSession = "N/A";
+  try {
+    const state = meta?.marketState ?? "N/A";
+    marketSession = state === "PRE"     ? "🌅 프리마켓"
+                  : state === "REGULAR" ? "🟢 정규장"
+                  : state === "POST"    ? "🌙 애프터마켓"
+                  : state === "CLOSED"  ? "🔴 마감"
+                  : state;
+  } catch(e) {}
+
+  let marketCap = null;
+  let w52HighF = w52High, w52LowF = w52Low;
+  try {
+    Utilities.sleep(400);
+    const m = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/stock/metric?symbol=" + ticker + "&metric=all&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText()).metric;
+    marketCap = m?.marketCapitalization ?? null;
+    w52HighF  = m?.["52WeekHigh"] ?? w52HighF;
+    w52LowF   = m?.["52WeekLow"]  ?? w52LowF;
+  } catch(e) { Logger.log("Finnhub metric ERR: " + e); }
+
+  const mcapStr = marketCap ? "$" + (marketCap / 1000).toFixed(2) + "T" : "N/A";
+
+  const rsiSignal = rsi == null ? "N/A" : rsi >= 70 ? "⚠️ 과매수" : rsi <= 30 ? "⚠️ 과매도" : "중립";
+  const adxSignal = adx == null ? "N/A" : adx >= 25 ? "추세 강함" : "추세 약함";
+  let bbSignal = "N/A";
+  if (bb) {
+    if (curr >= bb.upper)      bbSignal = "⚠️ 상단 돌파";
+    else if (curr <= bb.lower) bbSignal = "⚠️ 하단 이탈";
+    else                       bbSignal = "밴드 내";
+  }
+
+  const rows = [
+    ["Ticker",           ticker],
+    ["현재 세션",          marketSession],
+    ["현재가",            "$" + curr.toFixed(2)],
+    ["전일대비",           chg + "%"],
+    ["거래량",            todayVol?.toLocaleString() ?? "N/A"],
+    ["평균거래량 대비",     volRatio],
+    ["52주 고가",          w52HighF != null ? w52HighF.toFixed(2) : "N/A"],
+    ["52주 저가",          w52LowF  != null ? w52LowF.toFixed(2)  : "N/A"],
+    ["52주 범위 위치",     w52Pos],
+    ["5일 MA",            ma5   != null ? ma5.toFixed(2)   : "N/A"],
+    ["20일 MA",           ma20  != null ? ma20.toFixed(2)  : "N/A"],
+    ["50일 MA",           ma50  != null ? ma50.toFixed(2)  : "N/A"],
+    ["60일 MA",           ma60  != null ? ma60.toFixed(2)  : "N/A"],
+    ["200일 MA",          ma200 != null ? ma200.toFixed(2) : "N/A"],
+    ["MA 정렬 (5/20/60)", maAlignSignal],
+    ["MA 신호 (50/200)",  maGDX],
+    ["20MA 위치",          ma20Pos],
+    ["60MA 위치",          ma60Pos],
+    ["시가총액",           mcapStr],
+    ["통화",              meta?.currency     ?? "N/A"],
+    ["거래소",             meta?.exchangeName ?? "N/A"],
+    ["--- 기술지표 ---",   ""],
+    ["RSI(14)",           rsi  != null ? rsi.toFixed(1) + "  " + rsiSignal : "N/A"],
+    ["BB Upper",          bb   != null ? bb.upper.toFixed(2) : "N/A"],
+    ["BB Mid(SMA20)",     bb   != null ? bb.mid.toFixed(2)   : "N/A"],
+    ["BB Lower",          bb   != null ? bb.lower.toFixed(2) : "N/A"],
+    ["BB 위치",            bbSignal],
+    ["ADX(14)",           adx  != null ? adx.toFixed(1) + "  " + adxSignal : "N/A"],
+    ["OBV 방향",           obv  != null ? obv.direction : "N/A"],
+    ["MACD Line",         macd != null ? macd.macdLine.toFixed(3)   : "N/A"],
+    ["MACD Signal",       macd != null ? macd.signalLine.toFixed(3) : "N/A"],
+    ["MACD Histogram",    macd != null ? macd.histogram.toFixed(3) + "  " + macd.histDirection : "N/A"],
+    ["MACD 크로스",        macd != null ? macd.crossSignal : "N/A"],
+    ["--- 지지/저항 ---",  ""],
+    ["저항1",              sr?.resistance1 != null ? "$" + sr.resistance1.toFixed(2) : "N/A"],
+    ["저항2",              sr?.resistance2 != null ? "$" + sr.resistance2.toFixed(2) : "N/A"],
+    ["지지1",              sr?.support1    != null ? "$" + sr.support1.toFixed(2)    : "N/A"],
+    ["지지2",              sr?.support2    != null ? "$" + sr.support2.toFixed(2)    : "N/A"],
+  ];
+
+  rows.push(["--- 최근 3일 OHLC ---", ""]);
+  timestamps.slice(-3).forEach((ts, i) => {
+    const idx     = closes.length - 3 + i;
+    const dateStr = new Date(ts * 1000).toISOString().split("T")[0];
+    const sliceVols = volumes.slice(Math.max(0, idx - 20), idx);
+    const avgV    = sliceVols.length > 0 ? sliceVols.reduce((a, b) => a + b, 0) / sliceVols.length : null;
+    const rvol    = avgV && avgV > 0 ? ((volumes[idx] / avgV) * 100).toFixed(0) + "%" : "N/A";
+    rows.push([
+      "OHLC " + dateStr,
+      "O:" + opens[idx]?.toFixed(2) + "  H:" + highs[idx]?.toFixed(2) + "  L:" + lows[idx]?.toFixed(2) + "  C:" + closes[idx]?.toFixed(2) + "  V:" + volumes[idx]?.toLocaleString() + "  RVOL:" + rvol
+    ]);
+  });
+
+  rows.forEach(r => sheet.appendRow(r));
+}
+
+// =============================================
+// 3. ANALYST
+// =============================================
+function fetchAnalyst(ticker) {
+  const sheet = getOrCreateSheet(sheetName("STOCK", ticker));
+  try {
+    Utilities.sleep(500);
+    const recRes = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/stock/recommendation?symbol=" + ticker + "&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText());
+    const latest = Array.isArray(recRes) && recRes.length > 0 ? recRes[0] : null;
+
+    Utilities.sleep(500);
+    const m = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/stock/metric?symbol=" + ticker + "&metric=all&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText()).metric;
+
+    sheet.appendRow(["--- 애널리스트 ---", ""]);
+    sheet.appendRow(["목표가 (평균)",  "→ FINVIZ 탭 참조"]);
+    sheet.appendRow(["Forward P/E",   m?.forwardPE               != null ? m.forwardPE.toFixed(2)               : "N/A"]);
+    sheet.appendRow(["P/E (TTM)",     m?.peBasicExclExtraTTM     != null ? m.peBasicExclExtraTTM.toFixed(2)     : "N/A"]);
+    sheet.appendRow(["EPS (TTM)",     m?.epsTTM                  != null ? m.epsTTM.toFixed(2)                  : "N/A"]);
+    sheet.appendRow(["강매수",         latest?.strongBuy  ?? "N/A"]);
+    sheet.appendRow(["매수",           latest?.buy        ?? "N/A"]);
+    sheet.appendRow(["중립",           latest?.hold       ?? "N/A"]);
+    sheet.appendRow(["매도",           latest?.sell       ?? "N/A"]);
+    sheet.appendRow(["강매도",         latest?.strongSell ?? "N/A"]);
+    sheet.appendRow(["기준월",         latest?.period     ?? "N/A"]);
+  } catch(e) {
+    sheet.appendRow(["애널리스트 ERR", e.toString()]);
+  }
+}
+
+// =============================================
+// 4. OPTIONS
+// =============================================
+function fetchOptions(ticker, crumbObj) {
+  if (!crumbObj) crumbObj = getYahooCrumb();
+
+  let spot = null;
+  let hvArr = [];
+  try {
+    const chartRes = JSON.parse(yahooFetch(
+      "https://query1.finance.yahoo.com/v8/finance/chart/" + ticker + "?interval=1d&range=1y&includePrePost=false",
+      crumbObj
+    ).getContentText());
+    const result = chartRes.chart?.result?.[0];
+    spot = result?.meta?.regularMarketPrice ?? null;
+    const rawCloses = (result?.indicators?.quote?.[0]?.close || []).filter(v => v != null);
+    if (rawCloses.length >= 21) {
+      for (let i = 20; i < rawCloses.length; i++) {
+        const slice   = rawCloses.slice(i - 20, i + 1);
+        const logRets = [];
+        for (let j = 1; j < slice.length; j++) logRets.push(Math.log(slice[j] / slice[j - 1]));
+        const mean     = logRets.reduce((a, b) => a + b, 0) / logRets.length;
+        const variance = logRets.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (logRets.length - 1);
+        hvArr.push(Math.sqrt(variance * 252));
+      }
+    }
+  } catch(e) { Logger.log("spot/HV ERR: " + e); }
+
+  const hvMin = hvArr.length ? Math.min(...hvArr) : null;
+  const hvMax = hvArr.length ? Math.max(...hvArr) : null;
+
+  function getIVRank(currentIV) {
+    if (!hvArr.length || hvMin == null || hvMax == null || hvMax === hvMin) return null;
+    return ((currentIV - hvMin) / (hvMax - hvMin) * 100).toFixed(0) + "%";
+  }
+  function getIVPct(currentIV) {
+    if (!hvArr.length) return null;
+    return (hvArr.filter(v => v < currentIV).length / hvArr.length * 100).toFixed(0) + "%";
+  }
+
+  const sheet = getOrCreateSheet(sheetName("OPTIONS", ticker));
+  sheet.clearContents();
+  sheet.appendRow([
+    "만기일","타입","Strike","Last","Bid","Ask","Mid","Spread","Spread%",
+    "IV","IV Rank","IV Pct",
+    "OI","Volume","Vol/OI","이상플로우",
+    "Delta","Theta","Vega","Gamma","OI 변화"
+  ]);
+
+  const props = PropertiesService.getScriptProperties();
+  const prevOIKey = "OPTIONS_PREV_OI_" + ticker;
+  let prevOIMap = {};
+  try {
+    const raw = props.getProperty(prevOIKey);
+    if (raw) prevOIMap = JSON.parse(raw);
+  } catch(e) { Logger.log("prevOI load ERR: " + e); }
+
+  let allExpiries = [];
+  try {
+    const parsed = JSON.parse(yahooFetch(
+      "https://query1.finance.yahoo.com/v7/finance/options/" + ticker,
+      crumbObj
+    ).getContentText());
+    allExpiries = parsed.optionChain?.result?.[0]?.expirationDates || [];
+  } catch(e) {
+    Logger.log("Options index ERR: " + e);
+    sheet.appendRow(["ERR", "OPTIONS API 응답 없음"]);
+    return;
+  }
+
+  const nowSec = Date.now() / 1000;
+  const expWithDTE = allExpiries.map(exp => ({
+    exp, dte: Math.round((exp - nowSec) / 86400)
+  }));
+
+  // ── 만기 선택: DTE 4일 이하 제외, 20~40일 우선 ──
+  const validExp = expWithDTE.filter(e => e.dte >= 4);
+
+  const mainCandidates  = validExp.filter(e => e.dte >= 20 && e.dte <= 40).sort((a, b) => a.dte - b.dte);
+  const midCandidates   = validExp.filter(e => e.dte >= 14 && e.dte < 20).sort((a, b) => a.dte - b.dte);
+  const shortCandidates = validExp.filter(e => e.dte >= 4  && e.dte < 14).sort((a, b) => a.dte - b.dte);
+
+  let selectedExpiries = [];
+  if (mainCandidates.length > 0) {
+    selectedExpiries.push(mainCandidates[0]);
+    if (shortCandidates.length > 0)     selectedExpiries.push(shortCandidates[0]);
+    else if (midCandidates.length > 0)  selectedExpiries.push(midCandidates[0]);
+  } else if (midCandidates.length > 0) {
+    selectedExpiries.push(midCandidates[0]);
+    if (shortCandidates.length > 0) selectedExpiries.push(shortCandidates[0]);
+  } else {
+    selectedExpiries = validExp.sort((a, b) => a.dte - b.dte).slice(0, 2);
+  }
+
+  const r         = 0.045;
+  const lower     = spot ? spot * 0.95 : 0;   // ±5% 이내
+  const upper     = spot ? spot * 1.05 : Infinity;
+  const ATM_COUNT = 5;                          // ATM 근접 순 상위 5개
+  const newOIMap  = {};
+  const allRows   = [];
+
+  const impliedMoveByExp = {};
+  const maxPainByExp     = {};
+
+  for (const { exp, dte } of selectedExpiries) {
+    Utilities.sleep(600);
+    let chainRes = null;
+    try {
+      chainRes = JSON.parse(yahooFetch(
+        "https://query1.finance.yahoo.com/v7/finance/options/" + ticker + "?date=" + exp,
+        crumbObj
+      ).getContentText());
+    } catch(e2) { continue; }
+
+    if (!chainRes?.optionChain?.result?.[0]?.options?.[0]) continue;
+
+    const chain   = chainRes.optionChain.result[0].options[0];
+    const expDate = new Date(exp * 1000).toISOString().split("T")[0];
+    const T       = (exp - nowSec) / (365 * 24 * 60 * 60);
+
+    // Implied Move (ATM 스트래들)
+    if (spot && chain.calls && chain.puts) {
+      const allStrikes = [...new Set([
+        ...(chain.calls || []).map(o => o.strike),
+        ...(chain.puts  || []).map(o => o.strike)
+      ])];
+      const atmStrike = allStrikes.reduce((best, s) =>
+        Math.abs(s - spot) < Math.abs(best - spot) ? s : best, Infinity);
+      const atmCall = (chain.calls || []).find(o => o.strike === atmStrike);
+      const atmPut  = (chain.puts  || []).find(o => o.strike === atmStrike);
+      if (atmCall && atmPut) {
+        const callMid  = atmCall.bid > 0 && atmCall.ask > 0 ? (atmCall.bid + atmCall.ask) / 2 : atmCall.lastPrice ?? 0;
+        const putMid   = atmPut.bid  > 0 && atmPut.ask  > 0 ? (atmPut.bid  + atmPut.ask)  / 2 : atmPut.lastPrice  ?? 0;
+        const straddle = callMid + putMid;
+        if (spot > 0)
+          impliedMoveByExp[expDate] = "±$" + straddle.toFixed(2) + "  (±" + (straddle / spot * 100).toFixed(2) + "%)  [ATM Strike: " + atmStrike + "]";
+      }
+    }
+
+    // Max Pain
+    const allStrikesSorted = [...new Set([
+      ...(chain.calls || []).map(o => o.strike),
+      ...(chain.puts  || []).map(o => o.strike)
+    ])].sort((a, b) => a - b);
+
+    if (allStrikesSorted.length > 0) {
+      let minPain = Infinity, maxPainStrike = null;
+      for (const testPrice of allStrikesSorted) {
+        let totalPain = 0;
+        for (const o of (chain.calls || [])) {
+          if (testPrice > o.strike) totalPain += (testPrice - o.strike) * (o.openInterest || 0);
+        }
+        for (const o of (chain.puts || [])) {
+          if (testPrice < o.strike) totalPain += (o.strike - testPrice) * (o.openInterest || 0);
+        }
+        if (totalPain < minPain) { minPain = totalPain; maxPainStrike = testPrice; }
+      }
+      maxPainByExp[expDate] = maxPainStrike;
+    }
+
+    // dedup
+    const dedup = (arr) => {
+      const map = {};
+      arr.forEach(o => {
+        const k = String(o.strike);
+        if (!map[k] || (o.volume || 0) > (map[k].volume || 0)) map[k] = o;
+      });
+      return Object.values(map);
+    };
+
+    const allVols  = [...(chain.calls || []), ...(chain.puts || [])].map(o => o.volume || 0);
+    const avgVolOI = allVols.length > 0 ? allVols.reduce((a, b) => a + b, 0) / allVols.length : 1;
+
+    // ── processChain: ±5% 필터 + ATM 근접 순 상위 ATM_COUNT개 ──
+    const processChain = (arr, isCall) => {
+      if (!arr) return [];
+      return dedup(arr.filter(o => o.strike >= lower && o.strike <= upper))
+        .map(o => {
+          const iv     = o.impliedVolatility ?? 0;
+          const greeks = spot && T > 0 && iv > 0
+            ? calcGreeks(spot, o.strike, T, r, iv, isCall)
+            : { delta: null, theta: null, vega: null, gamma: null };
+          return { o, iv, greeks };
+        })
+        .sort((a, b) => Math.abs(a.o.strike - spot) - Math.abs(b.o.strike - spot))
+        .slice(0, ATM_COUNT);
+    };
+
+    const callItems = processChain(chain.calls, true);
+    const putItems  = processChain(chain.puts,  false);
+
+    [...callItems.map(x => ({ ...x, type: "CALL" })), ...putItems.map(x => ({ ...x, type: "PUT" }))]
+      .forEach(({ o, iv, greeks, type }) => {
+        const bid       = o.bid       ?? 0;
+        const ask       = o.ask       ?? 0;
+        const last      = o.lastPrice ?? 0;
+        const mid       = bid > 0 && ask > 0 ? (bid + ask) / 2 : null;
+        const spread    = bid > 0 && ask > 0 ? ask - bid        : null;
+        const spreadPct = mid && mid > 0 ? (spread / mid * 100).toFixed(1) + "%" : "N/A";
+        const oi        = o.openInterest ?? 0;
+        const vol       = o.volume       ?? 0;
+        const volOI     = oi > 0 ? (vol / oi).toFixed(3) : "N/A";
+
+        const voiNum    = oi > 0 ? vol / oi : 0;
+        const unusualFlag = voiNum >= 5 && vol >= avgVolOI * 3 ? "⚠️ 급등" : "";
+
+        const ivRank = iv > 0 ? getIVRank(iv) : null;
+        const ivPct  = iv > 0 ? getIVPct(iv)  : null;
+        const key    = expDate + "_" + type + "_" + o.strike;
+        newOIMap[key] = oi;
+        const prevOI  = prevOIMap[key] ?? null;
+        const oiChg   = prevOI != null
+          ? (oi - prevOI >= 0 ? "+" : "") + (oi - prevOI).toLocaleString()
+          : "N/A";
+
+        allRows.push({
+          vol,
+          row: [
+            expDate, type, o.strike,
+            last   > 0    ? last.toFixed(3)   : "N/A",
+            bid    > 0    ? bid.toFixed(3)     : "N/A",
+            ask    > 0    ? ask.toFixed(3)     : "N/A",
+            mid   != null ? mid.toFixed(3)     : "N/A",
+            spread != null ? spread.toFixed(3) : "N/A",
+            spreadPct,
+            iv     > 0    ? (iv * 100).toFixed(1) + "%" : "N/A",
+            ivRank != null ? ivRank : "N/A",
+            ivPct  != null ? ivPct  : "N/A",
+            oi, vol, volOI, unusualFlag,
+            greeks.delta  != null ? greeks.delta.toFixed(3)  : "N/A",
+            greeks.theta  != null ? greeks.theta.toFixed(3)  : "N/A",
+            greeks.vega   != null ? greeks.vega.toFixed(3)   : "N/A",
+            greeks.gamma  != null ? greeks.gamma.toFixed(4)  : "N/A",
+            oiChg
+          ]
+        });
+      });
+  }
+
+  allRows.sort((a, b) => b.vol - a.vol);
+  allRows.forEach(({ row }) => sheet.appendRow(row));
+
+  // OPTIONS_META 탭
+  const optMeta = getOrCreateSheet(sheetName("OPTIONS_META", ticker));
+  optMeta.clearContents();
+  optMeta.appendRow(["만기일", "DTE", "Implied Move (ATM 스트래들)", "Max Pain Strike"]);
+  const allExpDates = [...new Set(allRows.map(r => r.row[0]))];
+  allExpDates.forEach(ed => {
+    const expTs  = allExpiries.find(e => new Date(e * 1000).toISOString().split("T")[0] === ed);
+    const dte    = expTs ? Math.round((expTs - nowSec) / 86400) : "N/A";
+    optMeta.appendRow([
+      ed, dte,
+      impliedMoveByExp[ed] ?? "N/A",
+      maxPainByExp[ed] != null ? "$" + maxPainByExp[ed].toFixed(2) : "N/A"
+    ]);
+  });
+
+  PropertiesService.getScriptProperties().setProperty("IMPLIED_MOVE_" + ticker, JSON.stringify(impliedMoveByExp));
+  PropertiesService.getScriptProperties().setProperty("MAX_PAIN_" + ticker,     JSON.stringify(maxPainByExp));
+
+  try {
+    props.setProperty(prevOIKey, JSON.stringify(newOIMap));
+  } catch(e) { Logger.log("prevOI save ERR: " + e); }
+}
+
+// =============================================
+// 5. NEWS
+// =============================================
+function fetchNews(ticker) {
+  const sheet = getOrCreateSheet(sheetName("NEWS", ticker));
+  sheet.clearContents();
+  sheet.appendRow(["날짜", "소스", "헤드라인", "URL", "분류"]);
+
+  const structuralKeywords = ["guidance", "contract", "acquisition", "merger", "partnership",
+    "launch", "regulation", "antitrust", "buyback", "repurchase", "dividend"];
+
+  try {
+    const today = new Date();
+    const from  = new Date(today - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const to    = today.toISOString().split("T")[0];
+    const news  = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/company-news?symbol=" + ticker + "&from=" + from + "&to=" + to + "&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText()).slice(0, 20);
+
+    news.forEach(n => {
+      const hl    = (n.headline || "").toLowerCase();
+      const label = structuralKeywords.some(k => hl.includes(k)) ? "⭐ 구조적" : "일반";
+      sheet.appendRow([
+        new Date(n.datetime * 1000).toLocaleDateString(),
+        n.source, n.headline, n.url, label
+      ]);
+    });
+  } catch(e) {
+    sheet.appendRow(["ERR", "", e.toString(), "", ""]);
+  }
+}
+
+// =============================================
+// 6. INSIDER
+// =============================================
+function fetchInsider(ticker) {
+  const sheet = getOrCreateSheet(sheetName("INSIDER", ticker));
+  sheet.clearContents();
+  sheet.appendRow(["날짜", "이름", "직책", "거래타입", "주식수", "가격", "총금액"]);
+  try {
+    const res = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/stock/insider-transactions?symbol=" + ticker + "&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText());
+    (res.data || []).slice(0, 15).forEach(t => {
+      const total = (t.share || 0) * (t.transactionPrice || 0);
+      sheet.appendRow([
+        t.transactionDate,
+        t.name,
+        t.officerTitle || "N/A",
+        t.transactionCode === "P" ? "🟢 매수" : t.transactionCode === "S" ? "🔴 매도" : t.transactionCode,
+        t.share?.toLocaleString(),
+        "$" + (t.transactionPrice || 0).toFixed(2),
+        "$" + total.toLocaleString()
+      ]);
+    });
+  } catch(e) {
+    sheet.appendRow(["ERR", "", "", e.toString()]);
+  }
+}
+
+// =============================================
+// 7. EARNINGS
+// =============================================
+function fetchEarnings(ticker) {
+  const sheet = getOrCreateSheet(sheetName("EARNINGS", ticker));
+  sheet.clearContents();
+  sheet.appendRow(["날짜", "분기", "EPS 예상", "EPS 실제", "서프라이즈%", "매출 실제", "매출 YoY%", "D-일수"]);
+
+  const revenueByQuarter = {};
+  try {
+    const avRes = JSON.parse(UrlFetchApp.fetch(
+      "https://www.alphavantage.co/query?function=INCOME_STATEMENT&symbol=" + ticker + "&apikey=" + ALPHA_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText());
+    (avRes.quarterlyReports || []).slice(0, 8).forEach(q => {
+      const d    = new Date(q.fiscalDateEnding);
+      const yr   = d.getFullYear();
+      const mo   = d.getMonth() + 1;
+      const qNum = mo <= 1 ? 4 : mo <= 4 ? 1 : mo <= 7 ? 2 : 3;
+      const rev  = q.totalRevenue !== "None" ? Number(q.totalRevenue) : null;
+      revenueByQuarter[yr + "_Q" + qNum] = rev;
+    });
+  } catch(e) { Logger.log("Alpha Vantage ERR: " + e); }
+
+  const today = new Date();
+
+  try {
+    const hist = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/stock/earnings?symbol=" + ticker + "&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText()).slice(0, 4);
+
+    hist.forEach(e => {
+      const surprisePct = e.surprisePercent != null ? e.surprisePercent.toFixed(2) + "%" : "N/A";
+      const key  = e.year + "_Q" + e.quarter;
+      const rev  = revenueByQuarter[key] ?? null;
+      let revYoY = "N/A";
+      if (rev != null) {
+        const prevRev = revenueByQuarter[(e.year - 1) + "_Q" + e.quarter] ?? null;
+        if (prevRev != null && prevRev > 0)
+          revYoY = ((rev - prevRev) / prevRev * 100).toFixed(1) + "%";
+      }
+      sheet.appendRow([
+        e.period, e.quarter,
+        e.estimate != null ? e.estimate.toFixed(4) : "N/A",
+        e.actual   != null ? e.actual.toFixed(4)   : "N/A",
+        surprisePct,
+        rev != null ? "$" + (rev / 1e9).toFixed(2) + "B" : "N/A",
+        revYoY, "-"
+      ]);
+    });
+
+    Utilities.sleep(500);
+    const cal = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/calendar/earnings?symbol=" + ticker + "&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText());
+    const upcoming = (cal.earningsCalendar || []).filter(e => new Date(e.date) >= today).slice(0, 2);
+    if (upcoming.length > 0) {
+      sheet.appendRow(["[다음 어닝 예정]", "", "", "", "", "", "", ""]);
+      upcoming.forEach(e => {
+        const timing = e.hour === "amc" ? "🌙 AMC" : e.hour === "bmo" ? "🌅 BMO" : "시간 미정";
+        const daysTo = Math.round((new Date(e.date) - today) / (1000 * 60 * 60 * 24));
+        const ivNote = daysTo <= 5 ? "  ⚠️ IV Crush 주의" : "";
+        sheet.appendRow([
+          e.date, timing,
+          e.epsEstimate     != null ? e.epsEstimate : "N/A",
+          "-", "-",
+          e.revenueEstimate != null ? "$" + (e.revenueEstimate / 1e9).toFixed(2) + "B" : "N/A",
+          "-", "D-" + daysTo + ivNote
+        ]);
+      });
+    }
+  } catch(e) {
+    sheet.appendRow(["ERR", "", "", "", "", "", "", e.toString()]);
+  }
+}
+
+// =============================================
+// 8. FINVIZ
+// =============================================
+function fetchFinviz(ticker) {
+  const sheet = getOrCreateSheet(sheetName("FINVIZ", ticker));
+  sheet.clearContents();
+  sheet.appendRow(["항목", "값"]);
+
+  let sector = "N/A", companyName = "N/A";
+  try {
+    const prof = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/stock/profile2?symbol=" + ticker + "&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText());
+    sector      = prof.finnhubIndustry ?? "N/A";
+    companyName = prof.name            ?? "N/A";
+  } catch(e) { Logger.log("profile2 ERR: " + e); }
+
+  let peersStr = "N/A";
+  try {
+    Utilities.sleep(300);
+    const peersRes = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/stock/peers?symbol=" + ticker + "&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText());
+    if (Array.isArray(peersRes) && peersRes.length > 0)
+      peersStr = peersRes.filter(p => p !== ticker).slice(0, 6).join(", ");
+  } catch(e) { Logger.log("peers ERR: " + e); }
+
+  Utilities.sleep(400);
+
+  let m = {};
+  try {
+    m = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/stock/metric?symbol=" + ticker + "&metric=all&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText()).metric || {};
+  } catch(e) {
+    sheet.appendRow(["ERR", "Finnhub metric 실패: " + e.toString()]);
+    return;
+  }
+
+  const fmt = (v, dec, suffix) => {
+    dec = dec ?? 2; suffix = suffix ?? "";
+    return v != null && v !== "" ? Number(v).toFixed(dec) + suffix : "N/A";
+  };
+
+  [
+    ["섹터",           sector],
+    ["회사명",          companyName],
+    ["주요 경쟁사",     peersStr],
+    ["P/E (TTM)",     fmt(m.peBasicExclExtraTTM)],
+    ["Forward P/E",   fmt(m.forwardPE)],
+    ["PEG (TTM)",     fmt(m.pegTTM)],
+    ["P/B",           fmt(m.pb)],
+    ["P/S (TTM)",     fmt(m.psTTM)],
+    ["EPS (TTM)",     fmt(m.epsTTM)],
+    ["EPS 성장 YoY",  fmt(m.epsGrowthQuarterlyYoy, 1, "%")],
+    ["매출 성장 YoY",  fmt(m.revenueGrowthQuarterlyYoy, 1, "%")],
+    ["ROE (TTM)",     fmt(m.roeTTM, 1, "%")],
+    ["ROA (TTM)",     fmt(m.roaTTM, 1, "%")],
+    ["순이익률 TTM",    fmt(m.netProfitMarginTTM, 1, "%")],
+    ["영업이익률 TTM",  fmt(m.operatingMarginTTM, 1, "%")],
+    ["부채비율 (연간)",  fmt(m["totalDebt/totalEquityAnnual"])],
+    ["베타",            fmt(m.beta)],
+    ["52W 고가",        fmt(m["52WeekHigh"])],
+    ["52W 저가",        fmt(m["52WeekLow"])],
+    ["시가총액(M$)",    fmt(m.marketCapitalization, 0)],
+    ["데이터 출처",     "Finnhub metric"],
+  ].forEach(r => sheet.appendRow(r));
+}
+
+// =============================================
+// 9. EVENTS — 향후 14일
+// =============================================
+function fetchEvents(tickers) {
+  if (!tickers) tickers = [TICKER];
+
+  const sheet = getOrCreateSheet("EVENTS");
+  sheet.clearContents();
+  sheet.appendRow(["날짜", "종류", "내용", "중요도", "국가/비고", "D-일수"]);
+
+  const today = new Date();
+  const from  = today.toISOString().split("T")[0];
+  const to    = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];  // 14일
+
+  function daysTo(dateStr) {
+    return Math.round((new Date(dateStr) - today) / (1000 * 60 * 60 * 24));
+  }
+
+  // 경제지표
+  try {
+    const econRes = JSON.parse(UrlFetchApp.fetch(
+      "https://finnhub.io/api/v1/calendar/economic?from=" + from + "&to=" + to + "&token=" + FINNHUB_KEY,
+      { muteHttpExceptions: true }
+    ).getContentText());
+
+    const usKeywords = ["fed", "fomc", "cpi", "pce", "nfp", "non-farm", "gdp", "ppi",
+      "unemployment", "retail sales", "interest rate"];
+
+    (econRes.economicCalendar || [])
+      .filter(e => e.country === "US" || usKeywords.some(k => (e.event || "").toLowerCase().includes(k)))
+      .filter(e => e.impact === "high" || e.impact === "medium")
+      .forEach(e => {
+        const dateStr = e.time ? e.time.split(" ")[0] : "N/A";
+        const d = dateStr !== "N/A" ? "D-" + daysTo(dateStr) : "";
+        sheet.appendRow([dateStr, "📊 경제지표", e.event, e.impact === "high" ? "🔴 HIGH" : "🟡 MED", e.country, d]);
+      });
+  } catch(e) {
+    sheet.appendRow(["ERR", "경제캘린더", e.toString(), "", "", ""]);
+  }
+
+  // OPEX — 2개월
+  for (let m = 0; m < 2; m++) {
+    const opex = getMonthlyOPEX(today.getFullYear(), today.getMonth() + m);
+    if (opex >= today) {
+      const opexStr = opex.toISOString().split("T")[0];
+      sheet.appendRow([opexStr, "📅 OPEX", "월간 옵션 만기일", "🔴 HIGH", "시장 구조 이벤트", "D-" + daysTo(opexStr)]);
+    }
+  }
+
+  // 모든 티커 어닝
+  for (const ticker of tickers) {
+    try {
+      Utilities.sleep(300);
+      const earRes = JSON.parse(UrlFetchApp.fetch(
+        "https://finnhub.io/api/v1/calendar/earnings?symbol=" + ticker + "&token=" + FINNHUB_KEY,
+        { muteHttpExceptions: true }
+      ).getContentText());
+      (earRes.earningsCalendar || [])
+        .filter(e => new Date(e.date) >= today)
+        .slice(0, 3)
+        .forEach(e => {
+          const timing = e.hour === "amc" ? "🌙 AMC" : e.hour === "bmo" ? "🌅 BMO" : "시간 미정";
+          const d      = daysTo(e.date);
+          const ivNote = d <= 5 ? "  ⚠️ IV Crush 주의" : "";
+          sheet.appendRow([
+            e.date, "💰 실적",
+            ticker + " 실적 발표 (" + timing + ")" + ivNote,
+            "🔴 HIGH", "EPS 예상: " + (e.epsEstimate ?? "N/A"),
+            "D-" + d
+          ]);
+        });
+    } catch(e) {
+      sheet.appendRow(["ERR", "실적캘린더", ticker + ": " + e.toString(), "", "", ""]);
+    }
+  }
+
+  // 날짜 순 정렬
+  const data   = sheet.getDataRange().getValues();
+  const header = data[0];
+  const rows   = data.slice(1).filter(r => r[0] && !r[0].toString().startsWith("ERR"));
+  rows.sort((a, b) => new Date(a[0]) - new Date(b[0]));
+  sheet.clearContents();
+  sheet.appendRow(header);
+  rows.forEach(r => sheet.appendRow(r));
+}
+
+function getMonthlyOPEX(year, month) {
+  const d = new Date(year, month, 1);
+  let fridays = 0;
+  while (fridays < 3) {
+    if (d.getDay() === 5) fridays++;
+    if (fridays < 3) d.setDate(d.getDate() + 1);
+  }
+  return d;
+}
+
+// =============================================
+// 10. POSITIONS
+// =============================================
+function fetchPositions(ticker) {
+  if (!ticker) ticker = TICKER;
+
+  const sheet = getOrCreateSheet(sheetName("POSITIONS", ticker));
+  const lastRow = sheet.getLastRow();
+  if (lastRow === 0) {
+    sheet.appendRow([
+      "티커", "타입", "Strike", "만기일",
+      "진입가($)", "계약수", "진입일",
+      "현재가($)", "손익($)", "손익(%)",
+      "손절기준($)", "목표청산($)", "비고"
+    ]);
+    sheet.appendRow(["-- 아래에 포지션을 직접 입력하세요 (현재가는 자동 갱신됩니다) --"]);
+    return;
+  }
+
+  try {
+    const opts   = getOrCreateSheet(sheetName("OPTIONS", ticker)).getDataRange().getValues();
+    const optMap = {};
+    opts.slice(1).forEach(r => {
+      if (r[1] === "CALL" || r[1] === "PUT")
+        optMap[r[0] + "_" + r[1] + "_" + r[2]] = r[6];
+    });
+
+    const data = sheet.getDataRange().getValues();
+    for (let i = 2; i < data.length; i++) {
+      const row = data[i];
+      if (!row[0] || row[0].toString().startsWith("--")) continue;
+      const posType    = String(row[1]).toUpperCase();
+      const entryPrice = Number(row[4]);
+      const contracts  = Number(row[5]);
+      const key        = row[3] + "_" + posType + "_" + row[2];
+      const currPrice  = optMap[key] != null ? Number(optMap[key]) : null;
+      if (currPrice != null && entryPrice > 0 && contracts > 0) {
+        const pnlDollar = (currPrice - entryPrice) * contracts * 100 - (COMMISSION_PER_CONTRACT * contracts);
+        const pnlPct    = ((currPrice - entryPrice) / entryPrice * 100).toFixed(1) + "%";
+        sheet.getRange(i + 1, 8).setValue(currPrice.toFixed(3));
+        sheet.getRange(i + 1, 9).setValue(pnlDollar.toFixed(2));
+        sheet.getRange(i + 1, 10).setValue(pnlPct);
+      }
+    }
+  } catch(e) { Logger.log("POSITIONS 갱신 ERR: " + e); }
+}
+
+// =============================================
+// 11. SUMMARY — A열: 공통, B열~: 티커별
+//     1행: 기본정보 (STOCK/TECH/EARNINGS/NEWS/INSIDER/POSITIONS)
+//     2행: 옵션정보 (OPTIONS) — 같은 열
+// =============================================
+function buildSummary(tickers) {
+  if (typeof tickers === "string") tickers = [tickers];
+  if (!tickers || tickers.length === 0) tickers = [TICKER];
+
+  const sum = getOrCreateSheet("SUMMARY");
+  sum.clearContents();
+
+  const macro  = getOrCreateSheet("MACRO").getDataRange().getValues().slice(1);
+  const events = getOrCreateSheet("EVENTS").getDataRange().getValues().slice(1);
+  const now    = Utilities.formatDate(new Date(), "Asia/Seoul", "yyyy-MM-dd HH:mm");
+
+  // ── A1: MACRO + EVENTS + RISK ──
+  const commonLines = [];
+  commonLines.push("MARKET SNAPSHOT [" + now + " KST]");
+  commonLines.push("처리 종목: " + tickers.join(", "));
+  commonLines.push("------------------------------------------------------------");
+  commonLines.push("");
+
+  commonLines.push("[ MACRO ]");
+  macro.forEach(r => {
+    if (r[0] && r[1] && r[1] !== "ERR") {
+      const ma    = r[3] ? "  20MA:" + r[3] : "";
+      const maPos = r[4] ? "  " + r[4] : "";
+      const trend = r[5] ? "  추세:" + r[5] : "";
+      commonLines.push("  " + String(r[0]).padEnd(20) + ": " + r[1] + "  " + (r[2] || "") + ma + maPos + trend);
+    }
+  });
+  commonLines.push("");
+
+  commonLines.push("[ EVENTS (향후 14일) ]");
+  events.slice(0, 20).forEach(r => {
+    if (r[0] && r[2]) {
+      const dStr = r[5] ? "  " + r[5] : "";
+      commonLines.push("  " + String(r[0]).padEnd(12) + " " + r[1] + "  " + r[2] + "  " + (r[3] || "") + dStr);
+    }
+  });
+  commonLines.push("");
+
+  commonLines.push("[ RISK PARAMETERS ]");
+  commonLines.push("  총 자본                : $" + TOTAL_CAPITAL.toLocaleString());
+  commonLines.push("  포지션당 최대 한도      : $" + MAX_PER_POSITION.toLocaleString());
+  commonLines.push("  계약당 수수료           : $" + COMMISSION_PER_CONTRACT);
+  commonLines.push("  목표 보유 기간          : " + TARGET_HOLD_DAYS);
+
+  let totalUsed = 0;
+  for (const ticker of tickers) {
+    try {
+      const positions = getOrCreateSheet(sheetName("POSITIONS", ticker)).getDataRange().getValues().slice(2);
+      totalUsed += positions
+        .filter(r => r[0] && !r[0].toString().startsWith("--"))
+        .reduce((sum, r) => sum + ((Number(r[4]) || 0) * (Number(r[5]) || 0) * 100), 0);
+    } catch(e) {}
+  }
+  commonLines.push("  사용 중 자본 (전체)     : $" + totalUsed.toLocaleString());
+  commonLines.push("  잔여 현금 (추정)        : $" + (TOTAL_CAPITAL - totalUsed).toFixed(0));
+
+  sum.getRange(1, 1).setValue(commonLines.join("\n"));
+  // A2: 옵션 헤더 레이블
+  sum.getRange(2, 1).setValue("[ OPTIONS ]");
+
+  // ── B열~: 티커별 ──
+  tickers.forEach((ticker, idx) => {
+    const col = idx + 2;
+
+    const stock     = (() => { try { return getOrCreateSheet(sheetName("STOCK",        ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const opts      = (() => { try { return getOrCreateSheet(sheetName("OPTIONS",      ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const optMeta   = (() => { try { return getOrCreateSheet(sheetName("OPTIONS_META", ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const news      = (() => { try { return getOrCreateSheet(sheetName("NEWS",         ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const insider   = (() => { try { return getOrCreateSheet(sheetName("INSIDER",      ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const earnings  = (() => { try { return getOrCreateSheet(sheetName("EARNINGS",     ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const finviz    = (() => { try { return getOrCreateSheet(sheetName("FINVIZ",       ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const positions = (() => { try { return getOrCreateSheet(sheetName("POSITIONS",   ticker)).getDataRange().getValues().slice(2); } catch(e) { return []; } })();
+
+    // ─────────────────────────────────────────
+    // 1행: 기본정보 (OPTIONS 제외)
+    // ─────────────────────────────────────────
+    const mainLines = [];
+    mainLines.push("[ " + ticker + " ]");
+    mainLines.push("------------------------------------------------------------");
+    mainLines.push("");
+
+    // STOCK 섹션 경계 계산
+    const techStart = stock.findIndex(r => r[0]?.toString().startsWith("--- 기술"));
+    const analStart = stock.findIndex(r => r[0]?.toString().startsWith("--- 애널"));
+    const srStart   = stock.findIndex(r => r[0]?.toString().startsWith("--- 지지"));
+    const ohlcStart = stock.findIndex(r => r[0]?.toString().startsWith("--- 최근"));
+
+    mainLines.push("[ STOCK ]");
+    const stockBase = techStart > -1 ? stock.slice(0, techStart) : stock;
+    stockBase.forEach(r => {
+      if (r[0] && r[1] && r[1] !== "ERR") mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+    });
+    mainLines.push("");
+
+    mainLines.push("[ TECHNICAL ]");
+    if (techStart > -1) {
+      const techEnd = analStart > -1 ? analStart : (srStart > -1 ? srStart : (ohlcStart > -1 ? ohlcStart : stock.length));
+      stock.slice(techStart + 1, techEnd).forEach(r => {
+        if (r[0] && r[1]) mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+      });
+    }
+    mainLines.push("");
+
+    if (srStart > -1) {
+      mainLines.push("[ 지지/저항 ]");
+      const srEnd = ohlcStart > -1 ? ohlcStart : (analStart > -1 ? analStart : stock.length);
+      stock.slice(srStart + 1, srEnd).forEach(r => {
+        if (r[0] && r[1]) mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+      });
+      mainLines.push("");
+    }
+
+    if (ohlcStart > -1) {
+      mainLines.push("[ 최근 3일 OHLC ]");
+      stock.slice(ohlcStart + 1).forEach(r => {
+        if (r[0]?.toString().startsWith("OHLC")) mainLines.push("  " + r[0] + ": " + r[1]);
+      });
+      mainLines.push("");
+    }
+
+    mainLines.push("[ ANALYST ]");
+    if (analStart > -1) {
+      const analEnd = srStart > -1 ? srStart : (ohlcStart > -1 ? ohlcStart : stock.length);
+      stock.slice(analStart + 1, analEnd).forEach(r => {
+        if (r[0] && r[1]) mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+      });
+    }
+    mainLines.push("");
+
+    mainLines.push("[ VALUATION ]");
+    finviz.forEach(r => {
+      if (r[0] && r[1] && r[1] !== "N/A" && r[1] !== "ERR")
+        mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+    });
+    mainLines.push("");
+
+    mainLines.push("[ EARNINGS ]");
+    earnings.forEach(r => {
+      if (r[0]?.toString().startsWith("[다음")) {
+        mainLines.push("  [다음 어닝 예정]");
+      } else if (r[0] && !r[0].toString().startsWith("ERR")) {
+        mainLines.push("  " + r[0] + "  Q" + r[1] + "  EPS예상 " + r[2] + "  EPS실제 " + r[3] + "  서프라이즈 " + r[4] + "  매출 " + r[5] + "  YoY " + r[6] + "  " + (r[7] || ""));
+      }
+    });
+    mainLines.push("");
+
+    mainLines.push("[ INSIDER ]");
+    insider.slice(0, 8).forEach(r => {
+      if (r[0] && r[3]) mainLines.push("  " + r[0] + "  " + r[1] + "(" + r[2] + ")  " + r[3] + "  " + r[4] + "주  @" + r[5] + "  총 " + r[6]);
+    });
+    mainLines.push("");
+
+    mainLines.push("[ NEWS ]");
+    const structNews = news.filter(r => r[4] === "⭐ 구조적");
+    const normalNews = news.filter(r => r[4] !== "⭐ 구조적");
+    [...structNews, ...normalNews].slice(0, 8).forEach((r, i) => {
+      if (r[2]) mainLines.push("  " + (i + 1) + ". [" + r[1] + "] " + (r[4] || "") + "  " + r[2]);
+    });
+    mainLines.push("");
+
+    mainLines.push("[ POSITIONS ]");
+    const activePosLines = positions.filter(r => r[0] && !r[0].toString().startsWith("--"));
+    if (activePosLines.length === 0) {
+      mainLines.push("  (포지션 없음 — POSITIONS_" + ticker + " 탭에 직접 입력)");
+    } else {
+      activePosLines.forEach(r =>
+        mainLines.push("  " + r[0] + " " + r[1] + " Strike:" + r[2] + "  만기:" + r[3] + "  진입:$" + r[4] + "  계약:" + r[5] + "  현재:$" + r[7] + "  PnL:$" + r[8] + "(" + r[9] + ")  손절:$" + r[10] + "  목표:$" + r[11])
+      );
+    }
+    mainLines.push("");
+    mainLines.push("END");
+
+    // ─────────────────────────────────────────
+    // 2행: OPTIONS 정보만
+    // ─────────────────────────────────────────
+    const optLines = [];
+    optLines.push("[ " + ticker + " — OPTIONS ]");
+    optLines.push("------------------------------------------------------------");
+    optLines.push("");
+
+    const validOpts = opts.filter(r => r[1] === "CALL" || r[1] === "PUT");
+    const callOI = validOpts.filter(r => r[1] === "CALL").reduce((s, r) => s + (Number(r[12]) || 0), 0);
+    const putOI  = validOpts.filter(r => r[1] === "PUT").reduce((s, r)  => s + (Number(r[12]) || 0), 0);
+    optLines.push("  P/C Ratio (OI 기준)          : " + (callOI > 0 ? (putOI / callOI).toFixed(3) : "N/A"));
+    optLines.push("  Total Call OI                : " + callOI.toLocaleString());
+    optLines.push("  Total Put OI                 : " + putOI.toLocaleString());
+
+    if (optMeta.length > 0) {
+      optLines.push("  ---- Implied Move / Max Pain ----");
+      optMeta.forEach(r => {
+        if (r[0]) optLines.push("  [" + r[0] + " DTE:" + r[1] + "]  Implied Move: " + r[2] + "  Max Pain: " + r[3]);
+      });
+    }
+
+    const unusualFlows = validOpts.filter(r => r[15] === "⚠️ 급등");
+    if (unusualFlows.length > 0) {
+      optLines.push("  ---- 이상 옵션 플로우 ----");
+      unusualFlows.slice(0, 5).forEach(r =>
+        optLines.push("    " + r[1] + " Strike " + r[2] + " (" + r[0] + ")  Vol " + r[13] + "  OI " + Number(r[12]).toLocaleString() + "  V/OI " + r[14] + "  IV " + r[9])
+      );
+    }
+
+    const oiChangers = validOpts
+      .filter(r => r[20] && r[20] !== "N/A" && r[20] !== "")
+      .map(r => {
+        const val = parseInt(String(r[20]).replace("+", ""));
+        return isNaN(val) ? null : { exp: r[0], type: r[1], strike: r[2], oiChg: val };
+      })
+      .filter(Boolean)
+      .sort((a, b) => Math.abs(b.oiChg) - Math.abs(a.oiChg))
+      .slice(0, 3);
+    if (oiChangers.length > 0) {
+      optLines.push("  ---- OI 변화 상위 ----");
+      oiChangers.forEach(o =>
+        optLines.push("    " + o.type + " Strike " + o.strike + " (" + o.exp + ")  OI변화 " + (o.oiChg > 0 ? "+" : "") + o.oiChg.toLocaleString())
+      );
+    }
+
+    optLines.push("");
+    [...new Set(validOpts.map(r => r[0]))].forEach(exp => {
+      optLines.push("  [만기 " + exp + "]");
+      validOpts.filter(r => r[0] === exp && r[1] === "CALL").forEach(r =>
+        optLines.push("    CALL  Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + r[9] + "  IVR " + r[10] + "  Mid " + r[6] + "  Sprd% " + r[8] + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15])
+      );
+      validOpts.filter(r => r[0] === exp && r[1] === "PUT").forEach(r =>
+        optLines.push("    PUT   Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + r[9] + "  IVR " + r[10] + "  Mid " + r[6] + "  Sprd% " + r[8] + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15])
+      );
+    });
+    optLines.push("");
+    optLines.push("END");
+
+    // 셀에 기록
+    sum.getRange(1, col).setValue(mainLines.join("\n"));
+    sum.getRange(2, col).setValue(optLines.join("\n"));
+  });
+
+  // ── 열 너비 및 서식 ──
+  sum.setColumnWidth(1, 600);
+  tickers.forEach((_, idx) => sum.setColumnWidth(idx + 2, 750));
+
+  const totalCols = tickers.length + 1;
+
+  // 1행 서식
+  sum.getRange(1, 1, 1, totalCols)
+    .setWrap(true)
+    .setFontFamily("Courier New")
+    .setFontSize(10)
+    .setVerticalAlignment("top");
+
+  // 2행 서식 (A2는 레이블이므로 포함)
+  sum.getRange(2, 1, 1, totalCols)
+    .setWrap(true)
+    .setFontFamily("Courier New")
+    .setFontSize(10)
+    .setVerticalAlignment("top");
+}
+
+function exportSummaryRows() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("SUMMARY");
+
+  if (!sheet) {
+    throw new Error("SUMMARY 탭을 찾을 수 없습니다.");
+  }
+
+  // 1~2행 전체 데이터 가져오기
+  const lastCol = sheet.getLastColumn();
+  const rawValues = sheet.getRange(1, 1, 2, lastCol).getValues();
+
+  const row1 = rawValues[0];
+  const row2 = rawValues[1];
+
+  // 줄 1: A1 단독
+  const col1Row1 = row1[0];
+
+  // 줄 2: B1~끝, 빈 셀 제거
+  const row1rest = row1.slice(1).filter(cell => cell !== "");
+
+  // 줄 3: B2~끝, 빈 셀 제거
+  const row2rest = row2.slice(1).filter(cell => cell !== "");
+
+  const output = [
+    JSON.stringify(col1Row1),
+    JSON.stringify(row1rest),
+    JSON.stringify(row2rest),
+  ].join("\n");
+
+  // '마켓 수치' 폴더 접근
+  const folderIter = DriveApp.getFoldersByName("마켓 수치");
+  if (!folderIter.hasNext()) {
+    throw new Error("'마켓 수치' 폴더를 찾을 수 없습니다.");
+  }
+  const folder = folderIter.next();
+
+  // 실행 시각 기반 파일명 생성 (예: summary_20250506_143022.json)
+  const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
+  const fileName = `summary_${timestamp}.json`;
+
+  // 항상 신규 파일 생성 (타임스탬프로 고유성 보장)
+  folder.createFile(fileName, output, MimeType.PLAIN_TEXT);
+  Logger.log("새 파일 생성 완료: " + fileName);
+}
+
+// =============================================
+// 유틸 & 메뉴
+// =============================================
+function getOrCreateSheet(name) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("📊 Market Snapshot")
+    .addItem("▶ 전체 실행 (전체 종목)", "runAll")
+    .addSeparator()
+    .addItem("MACRO (공통)",           "fetchMacro_menu")
+    .addItem("EVENTS (공통)",          "fetchEvents_menu")
+    .addItem("STOCK (전체 종목)",       "fetchStock_menu")
+    .addItem("OPTIONS (전체 종목)",     "fetchOptions_menu")
+    .addItem("NEWS (전체 종목)",        "fetchNews_menu")
+    .addItem("INSIDER (전체 종목)",     "fetchInsider_menu")
+    .addItem("EARNINGS (전체 종목)",    "fetchEarnings_menu")
+    .addItem("FINVIZ (전체 종목)",      "fetchFinviz_menu")
+    .addItem("POSITIONS 갱신 (전체)",   "fetchPositions_menu")
+    .addSeparator()
+    .addItem("SUMMARY 생성",           "buildSummary_menu")
+    .addSeparator()
+    .addItem("SUMMARY 내보내기 (JSON)", "exportSummaryRows")  // ← 추가
+    .addToUi();
+}
+function fetchMacro_menu()     { fetchMacro(getYahooCrumb()); }
+function fetchEvents_menu()    { fetchEvents(getTickerList()); }
+function fetchStock_menu()     { const c = getYahooCrumb(); getTickerList().forEach(t => { fetchStock(t, c); fetchAnalyst(t); Utilities.sleep(500); }); }
+function fetchOptions_menu()   { const c = getYahooCrumb(); getTickerList().forEach(t => { fetchOptions(t, c); Utilities.sleep(500); }); }
+function fetchNews_menu()      { getTickerList().forEach(t => { fetchNews(t);     Utilities.sleep(300); }); }
+function fetchInsider_menu()   { getTickerList().forEach(t => { fetchInsider(t);  Utilities.sleep(300); }); }
+function fetchEarnings_menu()  { getTickerList().forEach(t => { fetchEarnings(t); Utilities.sleep(300); }); }
+function fetchFinviz_menu()    { getTickerList().forEach(t => { fetchFinviz(t);   Utilities.sleep(300); }); }
+function fetchPositions_menu() { getTickerList().forEach(t => fetchPositions(t)); }
+function buildSummary_menu()   { buildSummary(getTickerList()); }

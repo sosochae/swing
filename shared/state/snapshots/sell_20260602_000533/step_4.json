@@ -1,0 +1,36 @@
+{
+  "execution_id": "sell_20260602_000533",
+  "step": 4,
+  "completed_at": "2026-06-02T00:07:49.850516",
+  "duration_ms": 99937,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 0.0,
+        "theta_pnl": -50.0,
+        "vega_pnl": 417.0,
+        "total_estimated_pnl": 367.0,
+        "actual_pnl": 367.0
+      }
+    },
+    "MRVL_2026-06-19_200.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "보통",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 440,
+        "theta_pnl": 0,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 440,
+        "actual_pnl": 440
+      }
+    }
+  }
+}

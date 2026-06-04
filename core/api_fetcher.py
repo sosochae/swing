@@ -267,11 +267,19 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         # 애널리스트 목표주가 — 합리적 범위 체크 포함
         # apt["current"]는 post-earnings 급등 직후 현재가와 같아지는 버그 있음
         # → current/mean/median 모두 시도 후 현재가 ±1% 이내면 None 처리
+        target_price_high: Optional[float] = None
         try:
             apt = t.analyst_price_targets or {}
+            # ── 최고 목표주가 (Street-High) ─────────────────────
+            _high_raw = apt.get("high") or info.get("targetHighPrice")
+            _high = _f(_high_raw)
+            if _high and _high > 0 and (not price or (price * 0.5 < _high < price * 5.0)):
+                target_price_high = _high
+
+            # ── 컨센서스 목표주가 (median > mean 우선) ───────────
             _tp_candidates = [
-                apt.get("current"),
-                apt.get("median"),
+                apt.get("median"),    # 이상치에 강한 중간값 우선
+                info.get("targetMedianPrice"),
                 apt.get("mean"),
                 info.get("targetMeanPrice"),
             ]
@@ -280,7 +288,7 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
                 _tp = _f(_tp_raw)
                 if _tp is None or _tp <= 0:
                     continue
-                # 현재가와 거의 같으면 무효 (yfinance 버그: 현재가를 target으로 반환)
+                # 현재가와 거의 같으면 무효 (yfinance 버그)
                 if price and abs(_tp - price) / price < 0.01:
                     continue
                 # 현재가 대비 50%~300% 벗어난 값은 stale 데이터로 제외
@@ -393,6 +401,7 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         peg=peg,
         beta=beta,
         target_price=target_price,
+        target_price_high=target_price_high,
         recom=recom,
         short_float_pct=short_float_pct,
         gross_margin_pct=gross_margin_pct,
@@ -626,13 +635,21 @@ def fetch_option_chain_fresh(
                 mid = (bid + ask) / 2 if bid > 0 and ask > 0 else last
                 spread_pct = ((ask - bid) / mid * 100) if mid > 0 and bid > 0 else 0.0
                 iv_raw = _f(row.get("impliedVolatility")) or 0.0
+                # IV 유효 범위: 5%~150% (0.05~1.50).
+                # 장외에는 iv=0 또는 0.7% 같은 garbage가 반환됨 → HV proxy로 대체.
+                # HV 없으면 40% 기본값. 이 값으로 BS delta를 계산해 정확도 확보.
+                _hv_proxy = (hv / 100.0) if (hv and hv > 0) else 0.40
+                if iv_raw < 0.05 or iv_raw > 1.50:
+                    iv_raw = _hv_proxy
                 iv_pct = round(iv_raw * 100, 2)   # decimal → %
                 oi = int(row.get("openInterest") or 0)
                 volume = int(row.get("volume") or 0)
                 delta_raw = _f(row.get("delta"))
 
-                # ── yfinance가 delta를 안 주면 Black-Scholes로 계산 ──────
-                if delta_raw is None and spot and strike and iv_raw > 0 and chosen_dte > 0:
+                # ── Black-Scholes delta 항상 계산 ─────────────────────────
+                # yfinance의 greeks는 장외·데이터 오류 시 부정확 (delta=1.0 등).
+                # IV가 유효하면 BS delta를 우선 사용하고, yfinance delta는 IV 없을 때만 폴백.
+                if spot and strike and iv_raw > 0 and chosen_dte > 0:
                     try:
                         import math as _math
                         T = chosen_dte / 365.0
@@ -651,7 +668,10 @@ def fetch_option_chain_fresh(
                         bs_delta = _ncdf(d1) if opt_type == "call" else _ncdf(d1) - 1.0
                         delta_raw = round(bs_delta, 4)
                     except Exception:
-                        delta_raw = 0.55 if opt_type == "call" else -0.45
+                        if delta_raw is None:
+                            delta_raw = 0.55 if opt_type == "call" else -0.45
+                elif delta_raw is None:
+                    delta_raw = 0.55 if opt_type == "call" else -0.45
 
                 # ── IVR 계산 (HV 대비) ────────────────────────────────────
                 ivr = 0.0
@@ -755,32 +775,202 @@ async def fetch_option_chains_multi(
     return results
 
 
-# ─── Finnhub 목표주가 ────────────────────────────────────────────────────────
+# ─── FMP(Financial Modeling Prep) 폴백 헬퍼 ────────────────────────────────
+# Finnhub 유료 엔드포인트(목표주가 등) 실패 시 자동으로 FMP를 시도.
+# FMP 무료 플랜: 250 req/일  https://financialmodelingprep.com
+# FMP_API_KEY 없으면 모든 함수가 None/[] 반환 (graceful degradation).
 
-def fetch_finnhub_price_target(ticker: str) -> Optional[float]:
-    """Finnhub /stock/price-target 에서 애널리스트 목표주가(평균) 반환.
-
-    환경변수 FINNHUB_API_KEY 가 없으면 None 반환 (graceful degradation).
-    """
-    import os
-    import json
-    import urllib.request
-
-    api_key = os.getenv("FINNHUB_API_KEY", "").strip()
-    if not api_key:
-        return None
+def _fmp_price_target(ticker: str, api_key: str) -> Optional[float]:
+    """FMP /analyst-price-target → 컨센서스 목표주가"""
+    import json, urllib.request
     url = (
-        f"https://finnhub.io/api/v1/stock/price-target"
-        f"?symbol={ticker}&token={api_key}"
+        f"https://financialmodelingprep.com/api/v3/analyst-price-target"
+        f"?symbol={ticker}&apikey={api_key}"
     )
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=6) as r:
             data = json.loads(r.read().decode())
-        return _f(data.get("targetMean"))
+        if isinstance(data, list) and data:
+            # FMP v3: [{"targetConsensus": 280.0, ...}]
+            val = _f(data[0].get("targetConsensus") or data[0].get("priceTarget"))
+            if val and val > 0:
+                return val
     except Exception as exc:
-        log.warning("finnhub price_target 실패 %s: %s", ticker, exc)
-        return None
+        log.debug("FMP price_target 실패 %s: %s", ticker, exc)
+    return None
+
+
+def _fmp_insider(ticker: str, api_key: str, lookback_months: int = 3) -> Optional[float]:
+    """FMP /insider-trading → insider_trans_pct (양수=순매수, 음수=순매도, 단위 %)"""
+    import json, urllib.request
+    from datetime import date as _date, timedelta as _td
+
+    url = (
+        f"https://financialmodelingprep.com/api/v4/insider-trading"
+        f"?symbol={ticker}&limit=50&apikey={api_key}"
+    )
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            data = json.loads(r.read().decode())
+        if not isinstance(data, list) or not data:
+            return None
+        cutoff = _date.today() - _td(days=lookback_months * 30)
+        net_shares, total_shares = 0.0, 0.0
+        for tx in data:
+            d_str = (tx.get("transactionDate") or tx.get("fillingDate") or "")[:10]
+            try:
+                if _date.fromisoformat(d_str) < cutoff:
+                    continue
+            except Exception:
+                continue
+            shares = float(tx.get("securitiesTransacted") or 0)
+            if shares <= 0:
+                continue
+            total_shares += shares
+            t = (tx.get("transactionType") or "").upper()
+            if "P-PURCHASE" in t or t == "P":
+                net_shares += shares
+            elif "S-SALE" in t or t == "S":
+                net_shares -= shares
+        if total_shares == 0:
+            return None
+        return round(net_shares / total_shares * 100, 2)
+    except Exception as exc:
+        log.debug("FMP insider 실패 %s: %s", ticker, exc)
+    return None
+
+
+def _fmp_earnings(ticker: str, api_key: str, days_ahead: int = 14) -> list:
+    """FMP /earning_calendar → SummaryEvent 리스트"""
+    import json, urllib.request
+    from datetime import date as _date, datetime as _dt, timedelta as _td
+    from shared.schemas import SummaryEvent as _SE
+
+    today = _date.today()
+    to_date = today + _td(days=days_ahead)
+    url = (
+        f"https://financialmodelingprep.com/api/v3/earning_calendar"
+        f"?from={today}&to={to_date}&apikey={api_key}"
+    )
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            data = json.loads(r.read().decode())
+        events: list = []
+        for e in (data or []):
+            if e.get("symbol", "").upper() != ticker.upper():
+                continue
+            d_str = (e.get("date") or "")[:10]
+            try:
+                d_obj = _date.fromisoformat(d_str)
+            except Exception:
+                continue
+            days_until = (d_obj - today).days
+            if days_until < 0:
+                continue
+            events.append(_SE(
+                date=_dt.fromisoformat(d_str),
+                type="실적",
+                name=f"{ticker} 실적 발표",
+                importance="HIGH",
+                days_until=days_until,
+            ))
+        return events
+    except Exception as exc:
+        log.debug("FMP earnings 실패 %s: %s", ticker, exc)
+    return []
+
+
+def _yfinance_earnings(ticker: str, days_ahead: int = 14) -> list:
+    """yfinance .calendar → SummaryEvent 리스트 (최후 폴백)"""
+    import yfinance as yf
+    from datetime import date as _date, datetime as _dt, timedelta as _td
+    from shared.schemas import SummaryEvent as _SE
+
+    today = _date.today()
+    try:
+        cal = yf.Ticker(ticker).calendar
+        # yfinance 버전에 따라 dict 또는 DataFrame 반환
+        earnings_date = None
+        if isinstance(cal, dict):
+            earnings_date = cal.get("Earnings Date")
+        elif hasattr(cal, "T") and not cal.empty:
+            row = cal.T
+            earnings_date = row.get("Earnings Date", [None])[0] if "Earnings Date" in row else None
+
+        if earnings_date is None:
+            return []
+        # 리스트(날짜 범위) 처리
+        if isinstance(earnings_date, (list, tuple)):
+            earnings_date = earnings_date[0]
+
+        # pandas Timestamp → date
+        d_obj = earnings_date.date() if hasattr(earnings_date, "date") else earnings_date
+        if not isinstance(d_obj, _date):
+            return []
+        days_until = (d_obj - today).days
+        if days_until < 0 or days_until > days_ahead:
+            return []
+        return [_SE(
+            date=_dt.combine(d_obj, _dt.min.time()),
+            type="실적",
+            name=f"{ticker} 실적 발표",
+            importance="HIGH",
+            days_until=days_until,
+        )]
+    except Exception as exc:
+        log.debug("yfinance earnings 실패 %s: %s", ticker, exc)
+    return []
+
+
+# ─── Finnhub 목표주가 ────────────────────────────────────────────────────────
+
+def fetch_finnhub_price_target(ticker: str) -> Optional[float]:
+    """목표주가 폴백 체인: Finnhub → FMP → yfinance
+
+    - Finnhub /stock/price-target : 유료 플랜 전용 (403 시 다음 소스로)
+    - FMP /analyst-price-target   : 무료 250 req/일 (FMP_API_KEY 필요)
+    - yfinance targetMeanPrice    : 항상 가능, 단 구식 데이터 가능성 있음
+    """
+    import os, json, urllib.request
+
+    # ── 1순위: Finnhub ────────────────────────────────────────────
+    finnhub_key = os.getenv("FINNHUB_API_KEY", "").strip()
+    if finnhub_key:
+        url = (f"https://finnhub.io/api/v1/stock/price-target"
+               f"?symbol={ticker}&token={finnhub_key}")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode())
+            val = _f(data.get("targetMean"))
+            if val and val > 0:
+                return val
+        except Exception as exc:
+            log.debug("Finnhub price_target 실패 %s: %s — 폴백", ticker, exc)
+
+    # ── 2순위: FMP ───────────────────────────────────────────────
+    fmp_key = os.getenv("FMP_API_KEY", "").strip()
+    if fmp_key:
+        val = _fmp_price_target(ticker, fmp_key)
+        if val and val > 0:
+            log.info("price_target FMP 폴백 사용 %s: %.2f", ticker, val)
+            return val
+
+    # ── 3순위: yfinance ──────────────────────────────────────────
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker).info or {}
+        val = _f(info.get("targetMeanPrice"))
+        if val and val > 0:
+            log.debug("price_target yfinance 폴백 사용 %s: %.2f", ticker, val)
+            return val
+    except Exception as exc:
+        log.debug("yfinance price_target 실패 %s: %s", ticker, exc)
+
+    return None
 
 
 async def fetch_finnhub_price_targets_bulk(
@@ -804,58 +994,51 @@ async def fetch_finnhub_price_targets_bulk(
 # ─── Finnhub 내부자 거래 ──────────────────────────────────────────────────────
 
 def fetch_finnhub_insider_sentiment(ticker: str, lookback_months: int = 3) -> Optional[float]:
-    """Finnhub /stock/insider-sentiment 에서 내부자 순매수/매도 비율 반환.
+    """내부자 거래 폴백 체인: Finnhub → FMP
 
     반환값: insider_trans_pct (양수=순매수, 음수=순매도, 단위 %)
-    FINNHUB_API_KEY 없으면 None 반환 (graceful degradation).
     """
-    import os
-    import json
-    import urllib.request
+    import os, json, urllib.request
     from datetime import date as _date, timedelta as _td
 
+    # ── 1순위: Finnhub ────────────────────────────────────────────
     api_key = os.getenv("FINNHUB_API_KEY", "").strip()
-    if not api_key:
-        return None
+    if api_key:
+        today = _date.today()
+        from_date = today - _td(days=lookback_months * 30)
+        url = (f"https://finnhub.io/api/v1/stock/insider-transactions"
+               f"?symbol={ticker}&from={from_date}&to={today}&token={api_key}")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode())
+            transactions = data.get("data", [])
+            if transactions:
+                net_shares, total_shares = 0.0, 0.0
+                for tx in transactions:
+                    tx_type = (tx.get("transactionType") or tx.get("type") or "").upper()
+                    shares = float(tx.get("share") or tx.get("shares") or 0)
+                    if shares <= 0:
+                        continue
+                    total_shares += shares
+                    if "P" in tx_type and "PURCHASE" in tx_type or tx_type == "P":
+                        net_shares += shares
+                    elif "S" in tx_type and "SALE" in tx_type or tx_type == "S":
+                        net_shares -= shares
+                if total_shares > 0:
+                    return round(net_shares / total_shares * 100, 2)
+        except Exception as exc:
+            log.debug("Finnhub insider 실패 %s: %s — 폴백", ticker, exc)
 
-    # 조회 기간: 최근 lookback_months 개월
-    today = _date.today()
-    from_date = today - _td(days=lookback_months * 30)
-    url = (
-        f"https://finnhub.io/api/v1/stock/insider-transactions"
-        f"?symbol={ticker}&from={from_date}&to={today}&token={api_key}"
-    )
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=5) as r:
-            data = json.loads(r.read().decode())
-        transactions = data.get("data", [])
-        if not transactions:
-            return None
+    # ── 2순위: FMP ───────────────────────────────────────────────
+    fmp_key = os.getenv("FMP_API_KEY", "").strip()
+    if fmp_key:
+        val = _fmp_insider(ticker, fmp_key, lookback_months)
+        if val is not None:
+            log.info("insider FMP 폴백 사용 %s: %.2f%%", ticker, val)
+            return val
 
-        # 순매수/순매도 주식 수 집계
-        net_shares: float = 0.0
-        total_shares: float = 0.0
-        for tx in transactions:
-            # transactionType: "P - Purchase", "S - Sale", "A - Award", etc.
-            tx_type = (tx.get("transactionType") or tx.get("type") or "").upper()
-            shares = float(tx.get("share") or tx.get("shares") or 0)
-            if shares <= 0:
-                continue
-            total_shares += shares
-            if "P" in tx_type and "PURCHASE" in tx_type or tx_type == "P":
-                net_shares += shares
-            elif "S" in tx_type and "SALE" in tx_type or tx_type == "S":
-                net_shares -= shares
-
-        if total_shares == 0:
-            return None
-        # 순매수 비율 (%) — 양수=순매수, 음수=순매도
-        return round(net_shares / total_shares * 100, 2)
-
-    except Exception as exc:
-        log.warning("finnhub insider_sentiment 실패 %s: %s", ticker, exc)
-        return None
+    return None
 
 
 async def fetch_finnhub_insider_bulk(
@@ -949,9 +1132,7 @@ def fetch_macro_realtime() -> dict:
 # ─── 어닝 캘린더 실시간 수집 (Step 3용) ─────────────────────────────────────
 
 def fetch_earnings_calendar(ticker: str, days_ahead: int = 14) -> list:
-    """Finnhub /calendar/earnings → SummaryEvent 리스트.
-
-    FINNHUB_API_KEY 환경변수가 없으면 빈 리스트 반환 (graceful degradation).
+    """어닝 캘린더 폴백 체인: Finnhub → FMP → yfinance
 
     Args:
         ticker: 종목 심볼
@@ -960,54 +1141,62 @@ def fetch_earnings_calendar(ticker: str, days_ahead: int = 14) -> list:
     Returns:
         list[SummaryEvent] — 빈 리스트 가능
     """
-    import json as _json
-    import os as _os
-    import urllib.request as _url
+    import json, os, urllib.request
     from datetime import date as _date, datetime as _dt, timedelta as _td
-
     from shared.schemas import SummaryEvent as _SE
 
-    api_key = _os.getenv("FINNHUB_API_KEY", "").strip()
-    if not api_key:
-        log.debug("fetch_earnings_calendar: FINNHUB_API_KEY 없음, 스킵 (%s)", ticker)
-        return []
-
     today = _date.today()
-    to_date = today + _td(days=days_ahead)
-    url = (
-        f"https://finnhub.io/api/v1/calendar/earnings"
-        f"?symbol={ticker}&from={today}&to={to_date}&token={api_key}"
-    )
-    try:
-        req = _url.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with _url.urlopen(req, timeout=5) as r:
-            data = _json.loads(r.read().decode())
-        events: list = []
-        for e in data.get("earningsCalendar") or []:
-            d_str = e.get("date", "")
-            if not d_str:
-                continue
-            try:
-                d_obj = _date.fromisoformat(d_str)
-            except ValueError:
-                continue
-            days_until = (d_obj - today).days
-            if days_until < 0:
-                continue
-            timing = e.get("hour", "")
-            timing_str = " (AMC)" if timing == "amc" else " (BMO)" if timing == "bmo" else ""
-            events.append(_SE(
-                date=_dt.fromisoformat(d_str),
-                type="실적",
-                name=f"{ticker} 실적 발표{timing_str}",
-                importance="HIGH",
-                days_until=days_until,
-            ))
-        log.debug("fetch_earnings_calendar: %s → %d events", ticker, len(events))
-        return events
-    except Exception as exc:
-        log.warning("fetch_earnings_calendar 실패 %s: %s", ticker, exc)
-        return []
+
+    # ── 1순위: Finnhub ────────────────────────────────────────────
+    api_key = os.getenv("FINNHUB_API_KEY", "").strip()
+    if api_key:
+        to_date = today + _td(days=days_ahead)
+        url = (f"https://finnhub.io/api/v1/calendar/earnings"
+               f"?symbol={ticker}&from={today}&to={to_date}&token={api_key}")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode())
+            events: list = []
+            for e in data.get("earningsCalendar") or []:
+                d_str = e.get("date", "")
+                if not d_str:
+                    continue
+                try:
+                    d_obj = _date.fromisoformat(d_str)
+                except ValueError:
+                    continue
+                days_until = (d_obj - today).days
+                if days_until < 0:
+                    continue
+                timing = e.get("hour", "")
+                timing_str = " (AMC)" if timing == "amc" else " (BMO)" if timing == "bmo" else ""
+                events.append(_SE(
+                    date=_dt.fromisoformat(d_str),
+                    type="실적",
+                    name=f"{ticker} 실적 발표{timing_str}",
+                    importance="HIGH",
+                    days_until=days_until,
+                ))
+            if events:
+                log.debug("Finnhub earnings: %s → %d events", ticker, len(events))
+                return events
+        except Exception as exc:
+            log.debug("Finnhub earnings 실패 %s: %s — 폴백", ticker, exc)
+
+    # ── 2순위: FMP ───────────────────────────────────────────────
+    fmp_key = os.getenv("FMP_API_KEY", "").strip()
+    if fmp_key:
+        events = _fmp_earnings(ticker, fmp_key, days_ahead)
+        if events:
+            log.info("earnings FMP 폴백 사용 %s: %d events", ticker, len(events))
+            return events
+
+    # ── 3순위: yfinance ──────────────────────────────────────────
+    events = _yfinance_earnings(ticker, days_ahead)
+    if events:
+        log.debug("earnings yfinance 폴백 사용 %s: %d events", ticker, len(events))
+    return events
 
 
 async def fetch_earnings_calendar_bulk(

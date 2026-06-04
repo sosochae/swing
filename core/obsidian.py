@@ -1868,25 +1868,45 @@ def _format_integrated_buy_block(
         roe_str = f"{fv.roe_pct:.1f}%" if fv.roe_pct else "N/A"
         de_str = f"{fv.debt_equity / 100:.2f}x" if fv.debt_equity else "N/A"
         fcf_str = f"${fv.fcf_ttm:,.0f}M" if fv.fcf_ttm else "N/A"
-        target_str = f"${fv.target_price:.2f}" if fv.target_price else "N/A"
-        # 목표주가 업사이드 (시나리오 역산 현재가 우선)
-        upside_str = "N/A"
+        # 목표주가: 컨센서스(중간값) + 최고 목표가 범위 표시
         _sc_cur: float | None = None
         if sc and sc.base and sc.base.target_stock_price and sc.base.stock_move_pct is not None:
             _mv2 = sc.base.stock_move_pct / 100
             if _mv2 != -1:
                 _sc_cur = sc.base.target_stock_price / (1 + _mv2)
         _ref_price = _sc_cur or (fv.price if fv.price else None)
-        if fv.target_price and _ref_price and _ref_price > 0:
-            upside_pct = (fv.target_price - _ref_price) / _ref_price * 100
-            if upside_pct < -10:
-                # 목표주가가 현재가 대비 -10% 이상 낮으면 오래된 데이터 또는 애널리스트 하향
-                upside_str = f"{upside_pct:+.1f}% ⚠️ 목표가 현재가 하회 (구식 데이터 가능)"
-                target_str = f"${fv.target_price:.2f} ⚠️"
-            elif upside_pct < 5:
-                upside_str = f"{upside_pct:+.1f}% ⚠️ 업사이드 부족 (콜옵션 진입 근거 약함)"
+        upside_str = "N/A"
+
+        # 최고 목표주가(Street-High) 추가 표시
+        _high_tp = getattr(fv, "target_price_high", None)
+        if fv.target_price:
+            if _high_tp and _high_tp > fv.target_price:
+                target_str = f"${fv.target_price:.0f} (컨센서스) / ${_high_tp:.0f} (High)"
             else:
-                upside_str = f"{upside_pct:+.1f}%"
+                target_str = f"${fv.target_price:.2f}"
+
+            if _ref_price and _ref_price > 0:
+                upside_pct = (fv.target_price - _ref_price) / _ref_price * 100
+                high_upside = ((_high_tp - _ref_price) / _ref_price * 100) if _high_tp else None
+                if upside_pct < -10:
+                    # 컨센서스가 현재가 하회 — 주가가 애널리스트 목표를 추월한 상태
+                    _high_info = f" | High: {high_upside:+.1f}%" if high_upside else ""
+                    upside_str = (
+                        f"컨센서스 {upside_pct:+.1f}%{_high_info} "
+                        f"⚠️ 주가가 컨센서스 상회 (애널리스트 목표 갱신 전)"
+                    )
+                    if _high_tp and high_upside and high_upside > 0:
+                        # High 목표가는 현재가 위에 있음 — 긍정적 신호
+                        upside_str = (
+                            f"컨센서스 {upside_pct:+.1f}% / High {high_upside:+.1f}% "
+                            f"⚠️ 컨센서스 갱신 지연 — Street-High(${_high_tp:.0f})는 현재가 상회"
+                        )
+                elif upside_pct < 5:
+                    upside_str = f"{upside_pct:+.1f}% ⚠️ 업사이드 부족 (콜옵션 진입 근거 약함)"
+                else:
+                    upside_str = f"{upside_pct:+.1f}%"
+        else:
+            target_str = "N/A"
         fund_row = f"펀더멘털 (Fwd PE {fwd_pe_str}, EPS {eps_ttm_str}, ROE {roe_str})"
         # 애널리스트 집계
         ab = fv.analyst_buy or 0
@@ -2177,6 +2197,12 @@ def _format_integrated_buy_block(
             nice_to_have.append(f"✓ RSI {_rsi14_actual:.0f} 적정 범위 (과열 없음)")
         elif _rsi14_actual is not None and _rsi14_actual > 70:
             nice_to_have.append(f"⚠️ RSI {_rsi14_actual:.0f} 과매수 구간 — 눌림목 주의")
+    # 시나리오 경고 (delta_gap_risk) — 고IV·낮은델타·세타과다 등
+    if sc and getattr(sc, "delta_gap_risk", "") and sc.delta_gap_risk not in ("해당 없음", ""):
+        for _dg in sc.delta_gap_risk.split(";"):
+            _dg = _dg.strip()
+            if _dg:
+                nice_to_have.append(f"⚠️ {_dg}")
     if not nice_to_have:
         nice_to_have.append("현재 보조 조건 없음")
 

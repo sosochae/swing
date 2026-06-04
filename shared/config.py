@@ -65,6 +65,11 @@ class Config:
         "LLM_MODEL_NL_ROUTING", "deepseek/deepseek-v4-flash:free"
     )
 
+    # ── 외부 데이터 API ──────────────────────────────────────────
+    FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
+    # FMP: 목표주가·내부자거래·어닝 폴백 (Finnhub 유료 엔드포인트 대체)
+    FMP_API_KEY: str = os.getenv("FMP_API_KEY", "")
+
     # ── Obsidian ─────────────────────────────────────────────
     OBSIDIAN_API_KEY: str = os.getenv("OBSIDIAN_API_KEY", "")
     BRAVE_API_KEY: str = os.getenv("BRAVE_API_KEY", "")

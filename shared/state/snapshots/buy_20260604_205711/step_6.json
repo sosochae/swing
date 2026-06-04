@@ -1,0 +1,17 @@
+{
+  "execution_id": "buy_20260604_205711",
+  "step": 6,
+  "completed_at": "2026-06-04T20:57:56.620892",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "MRVL"
+    ],
+    "warned": [],
+    "da_deductions": {
+      "MRVL": [
+        "내부자 순매도 $48.9M (최근 거래 집계)"
+      ]
+    }
+  }
+}

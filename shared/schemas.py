@@ -173,7 +173,8 @@ class FinvizDetail(BaseModel):
     ticker: str
     forward_pe: float | None = None
     peg: float | None = None
-    target_price: float | None = None      # 애널리스트 목표주가
+    target_price: float | None = None      # 애널리스트 목표주가 (컨센서스 평균/중간)
+    target_price_high: float | None = None  # 애널리스트 최고 목표주가 (Street-High)
     recom: float | None = None             # 1.0=Strong Buy ~ 5.0=Sell
     beta: float | None = None
     short_float_pct: float | None = None   # "2.20%" → 2.20

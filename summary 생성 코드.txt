@@ -688,30 +688,28 @@ function fetchOptions(ticker, crumbObj) {
     exp, dte: Math.round((exp - nowSec) / 86400)
   }));
 
-  // ── 만기 선택: DTE 4일 이하 제외, 20~50일 전체 수집 (July monthly 포함) ──
+  // ── 만기 선택: Python 파이프라인 DTE 범위에 맞춤 ──
+  // 단기(25~40) + 중기(45~90) + 단초단기(4~24) 포함, 최대 5개 수집
   const validExp = expWithDTE.filter(e => e.dte >= 4);
 
-  const mainCandidates  = validExp.filter(e => e.dte >= 20 && e.dte <= 50).sort((a, b) => a.dte - b.dte);
-  const midCandidates   = validExp.filter(e => e.dte >= 14 && e.dte < 20).sort((a, b) => a.dte - b.dte);
-  const shortCandidates = validExp.filter(e => e.dte >= 4  && e.dte < 14).sort((a, b) => a.dte - b.dte);
+  const midLongCandidates = validExp.filter(e => e.dte >= 25 && e.dte <= 90).sort((a, b) => a.dte - b.dte);  // 단기+중기 통합
+  const shortCandidates   = validExp.filter(e => e.dte >= 4  && e.dte < 25).sort((a, b) => a.dte - b.dte);
 
   let selectedExpiries = [];
-  if (mainCandidates.length > 0) {
-    // DTE 20~50 내 최대 4개 수집 (near + monthlies 전체 포함)
-    selectedExpiries = mainCandidates.slice(0, 4);
+  if (midLongCandidates.length > 0) {
+    // DTE 25~90 내 최대 4개 수집 (단기·중기 양쪽 커버)
+    selectedExpiries = midLongCandidates.slice(0, 4);
     if (shortCandidates.length > 0) selectedExpiries.push(shortCandidates[0]);
-    else if (midCandidates.length > 0) selectedExpiries.push(midCandidates[0]);
-  } else if (midCandidates.length > 0) {
-    selectedExpiries.push(midCandidates[0]);
-    if (shortCandidates.length > 0) selectedExpiries.push(shortCandidates[0]);
+  } else if (shortCandidates.length > 0) {
+    selectedExpiries = shortCandidates.slice(0, 2);
   } else {
     selectedExpiries = validExp.sort((a, b) => a.dte - b.dte).slice(0, 2);
   }
 
   const r         = 0.045;
-  const lower     = spot ? spot * 0.95 : 0;   // ±5% 이내
-  const upper     = spot ? spot * 1.05 : Infinity;
-  const ATM_COUNT = 5;                          // ATM 근접 순 상위 5개
+  const lower     = spot ? spot * 0.90 : 0;   // ±10% 이내 — Python api_fetcher와 일치
+  const upper     = spot ? spot * 1.10 : Infinity;
+  const ATM_COUNT = 8;                          // ±10% 범위 커버리지 확보
   const newOIMap  = {};
   const allRows   = [];
 
@@ -787,7 +785,7 @@ function fetchOptions(ticker, crumbObj) {
     const allVols  = [...(chain.calls || []), ...(chain.puts || [])].map(o => o.volume || 0);
     const avgVolOI = allVols.length > 0 ? allVols.reduce((a, b) => a + b, 0) / allVols.length : 1;
 
-    // ── processChain: ±5% 필터 + ATM 근접 순 상위 ATM_COUNT개 ──
+    // ── processChain: ±10% 필터 + ATM 근접 순 상위 ATM_COUNT개 ──
     const processChain = (arr, isCall) => {
       if (!arr) return [];
       return dedup(arr.filter(o => o.strike >= lower && o.strike <= upper))
@@ -1460,12 +1458,19 @@ function buildSummary(tickers) {
     optLines.push("");
     [...new Set(validOpts.map(r => r[0]))].forEach(exp => {
       optLines.push("  [만기 " + exp + "]");
-      validOpts.filter(r => r[0] === exp && r[1] === "CALL").forEach(r =>
-        optLines.push("    CALL  Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + r[9] + "  IVR " + r[10] + "  Mid " + r[6] + "  Sprd% " + r[8] + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15])
-      );
-      validOpts.filter(r => r[0] === exp && r[1] === "PUT").forEach(r =>
-        optLines.push("    PUT   Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + r[9] + "  IVR " + r[10] + "  Mid " + r[6] + "  Sprd% " + r[8] + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15])
-      );
+      validOpts.filter(r => r[0] === exp && r[1] === "CALL").forEach(r => {
+        // IV/IVR/Sprd%에서 '%' 제거 — parsers.py 정규식 ([\d.]+) 호환
+        const iv_n   = String(r[9]  ?? "N/A").replace("%","");
+        const ivr_n  = String(r[10] ?? "N/A").replace("%","");
+        const sprd_n = String(r[8]  ?? "N/A").replace("%","");
+        optLines.push("    CALL  Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + iv_n + "  IVR " + ivr_n + "  Mid " + r[6] + "  Sprd% " + sprd_n + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15]);
+      });
+      validOpts.filter(r => r[0] === exp && r[1] === "PUT").forEach(r => {
+        const iv_n   = String(r[9]  ?? "N/A").replace("%","");
+        const ivr_n  = String(r[10] ?? "N/A").replace("%","");
+        const sprd_n = String(r[8]  ?? "N/A").replace("%","");
+        optLines.push("    PUT   Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + iv_n + "  IVR " + ivr_n + "  Mid " + r[6] + "  Sprd% " + sprd_n + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15]);
+      });
     });
     optLines.push("");
     optLines.push("END");

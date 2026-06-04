@@ -1121,6 +1121,32 @@ class BuySteps:
                 )
                 for tk, chain in fresh_chains.items():
                     if chain and tk in ctx.summary_data.options:
+                        # ── OI 병합: yfinance OI=0 항목에 summary OI 복원 ────────────
+                        # summary chain은 장중 AppScript가 생성 → 실제 OI 보유.
+                        # yfinance 장외에는 OI=0 반환 → summary OI를 strike+type 기준으로 복사.
+                        _old_chain = ctx.summary_data.options[tk].chain
+                        if _old_chain and not any(
+                            int(e.get("oi", 0) or 0) > 0 for e in chain
+                        ):
+                            _sum_oi_map: dict[tuple, int] = {}
+                            for _se in _old_chain:
+                                _k = (float(_se.get("strike", 0)),
+                                      str(_se.get("option_type", "")))
+                                _sum_oi_map[_k] = max(
+                                    _sum_oi_map.get(_k, 0),
+                                    int(_se.get("oi", 0) or 0)
+                                )
+                            _oi_restored = 0
+                            for _e in chain:
+                                _k = (float(_e.get("strike", 0)),
+                                      str(_e.get("option_type", "")))
+                                if _k in _sum_oi_map and _sum_oi_map[_k] > 0:
+                                    _e["oi"] = _sum_oi_map[_k]
+                                    _oi_restored += 1
+                            if _oi_restored:
+                                log.info("chain_oi_restored_from_summary",
+                                         ticker=tk, entries=_oi_restored,
+                                         reason="yfinance OI=0 → summary 복원")
                         ctx.summary_data.options[tk].chain = chain
                         log.debug("option_chain_refreshed", ticker=tk, contracts=len(chain))
                     elif chain:
@@ -1531,6 +1557,29 @@ class BuySteps:
             for horizon, chain in _horizon_chains[ticker].items():
                 _d_min, _d_max, _d_tgt = _HZ_PARAMS.get(horizon, (0.42, 0.57, 0.50))
 
+                # ── horizon chain OI 복원 (summary 폴백) ─────────────────────
+                # horizon chain(yfinance)도 장외 OI=0 → summary chain OI로 복원.
+                # summary chain은 메인 교체 시 이미 OI 복원 완료 상태.
+                if ctx.summary_data:
+                    _hz_sum_opt = ctx.summary_data.options.get(ticker)
+                    _hz_sum_chain = _hz_sum_opt.chain if _hz_sum_opt else []
+                    if _hz_sum_chain and not any(
+                        int(e.get("oi", 0) or 0) > 0 for e in chain
+                    ):
+                        _hz_oi_map: dict[tuple, int] = {}
+                        for _hse in _hz_sum_chain:
+                            _hk = (float(_hse.get("strike", 0)),
+                                   str(_hse.get("option_type", "")))
+                            _hz_oi_map[_hk] = max(
+                                _hz_oi_map.get(_hk, 0),
+                                int(_hse.get("oi", 0) or 0)
+                            )
+                        for _he in chain:
+                            _hk = (float(_he.get("strike", 0)),
+                                   str(_he.get("option_type", "")))
+                            if _hk in _hz_oi_map and _hz_oi_map[_hk] > 0:
+                                _he["oi"] = _hz_oi_map[_hk]
+
                 # ── 복합 스코어로 최적 옵션 선택 ──────────────────────────────
                 # 1순위: delta 범위 + OI≥OI_MIN + bid>0
                 # 2순위: delta 범위 + OI≥OI_MIN
@@ -1595,7 +1644,7 @@ class BuySteps:
                         spread_pct=float(_best.get("spread_pct", 2.5) or 2.5),
                         mid_price=_hv_mid,
                         iv=_hv_iv,
-                        theta=float(_best.get("theta", _hv_gs.theta) or _hv_gs.theta),
+                        theta=_hv_gs.theta,   # BS 계산값 우선 (chain default -0.05는 무시)
                         gamma=_hv_gs.gamma,
                         vega=_hv_gs.vega,
                         delta_min=_d_min,

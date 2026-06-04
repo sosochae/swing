@@ -581,6 +581,9 @@ def validate_option(
     theta: float = 0.0,
     gamma: float = 0.0,
     vega: float = 0.0,
+    delta_min: float | None = None,
+    delta_max: float | None = None,
+    dte_min: int | None = None,
 ) -> OptionValidity:
     """
     옵션 유효성 검증 (섹션 9.3 기준)
@@ -605,13 +608,17 @@ def validate_option(
     """
     dte = max(0, (expiry - date.today()).days)
 
-    delta_ok = cfg.DELTA_MIN <= delta <= cfg.DELTA_MAX
+    _delta_min = delta_min if delta_min is not None else cfg.DELTA_MIN
+    _delta_max = delta_max if delta_max is not None else cfg.DELTA_MAX
+    _dte_min   = dte_min   if dte_min   is not None else cfg.DTE_MIN
+
+    delta_ok = _delta_min <= delta <= _delta_max
     ivr_ok = ivr <= cfg.IVR_MAX
     ivr_warning = cfg.IVR_WARNING <= ivr <= cfg.IVR_MAX
     oi_ok = oi >= cfg.OI_MIN
     oi_warning = cfg.OI_MIN <= oi <= cfg.OI_WARNING
     spread_ok = spread_pct <= cfg.SPREAD_MAX_PCT
-    dte_ok = dte >= cfg.DTE_MIN
+    dte_ok = dte >= _dte_min
 
     # ── 자본 가용성 체크 (경고만, 진입 차단 안 함) ──────────────────
     # 1계약 비용 = 프리미엄 × 100 + 수수료
@@ -623,7 +630,7 @@ def validate_option(
 
     reasons = []
     if not delta_ok:
-        reasons.append(f"Delta {delta:.2f} 범위 이탈 ({cfg.DELTA_MIN}~{cfg.DELTA_MAX})")
+        reasons.append(f"Delta {delta:.2f} 범위 이탈 ({_delta_min}~{_delta_max})")
     if not ivr_ok:
         reasons.append(f"IVR {ivr:.0f}% > {cfg.IVR_MAX}% 제한")
     if not oi_ok:
@@ -631,7 +638,7 @@ def validate_option(
     if not spread_ok:
         reasons.append(f"Spread {spread_pct:.1f}% > {cfg.SPREAD_MAX_PCT}% 제한")
     if not dte_ok:
-        reasons.append(f"DTE {dte}일 < {cfg.DTE_MIN}일 최소 기준")
+        reasons.append(f"DTE {dte}일 < {_dte_min}일 최소 기준")
     if not capital_ok:
         # 경고만 — 진입 차단 안 함 (실제 자본이 TOTAL_CAPITAL보다 클 수 있음)
         reasons.append(
@@ -736,6 +743,14 @@ def classify_investment_horizon(
     _pe_ok   = forward_pe is not None and 0 < forward_pe <= 80    # 고평가 배제
     if _peg_ok or (_rev_ok and _ks_ok) or (_rev_ok and _pe_ok):
         horizons.append("장기")
+
+    # ── 초장기 판정 (DTE 180~365, LEAPS) ───────────────────────
+    # 장기보다 조건 강화: 매출 성장 ≥ 30% + K-Score ≥ 7, 또는 PEG ≤ 1.5
+    _ultra_rev = revenue_growth_yoy is not None and revenue_growth_yoy >= st.HORIZON_ULTRA_REV_MIN
+    _ultra_ks  = k_score is not None and k_score >= st.HORIZON_ULTRA_KSCORE_MIN
+    _ultra_peg = peg_ratio is not None and 0 < peg_ratio <= st.HORIZON_ULTRA_PEG_MAX
+    if (_ultra_rev and _ultra_ks) or _ultra_peg:
+        horizons.append("초장기")
 
     log.debug("horizon_classified", ticker=ticker, horizons=horizons,
               rsi=rsi14, adx=adx14, rvol=avg_volume_ratio,

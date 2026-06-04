@@ -43,7 +43,6 @@ DELTA_SHORT_MIN: float = 0.55
 DELTA_SHORT_MAX: float = 0.70
 DELTA_SHORT_TARGET: float = 0.625   # 선택 기준 (이 값에 가장 가까운 것)
 
-# ─ 중기 (mid) : DTE 36~90, ATM 중심
 # ─ 중기 (mid) : DTE 45~90, ATM 중심
 DTE_MID_MIN:   int   = 45
 DTE_MID_MAX:   int   = 90
@@ -58,16 +57,28 @@ DELTA_LONG_MIN: float = 0.32
 DELTA_LONG_MAX: float = 0.48
 DELTA_LONG_TARGET: float = 0.40
 
+# ─ 초장기 (ultra) : DTE 180~365, LEAPS, 기준 제시 방식 (계약 자동 선택 시도, 없으면 criteria)
+DTE_ULTRA_MIN:            int   = 180
+DTE_ULTRA_MAX:            int   = 365
+DELTA_ULTRA_MIN:          float = 0.25
+DELTA_ULTRA_MAX:          float = 0.40
+DELTA_ULTRA_TARGET:       float = 0.32
+ULTRA_MIN_OI:             int   = 200   # LEAPS 유동성 기준 완화
+ULTRA_MAX_SPREAD_PCT:     float = 10.0  # LEAPS 스프레드 허용 범위 완화
+
 # ─ 기간 분류 신호 임계값
-HORIZON_SHORT_RSI_MIN:   float = 75.0   # RSI ≥ 75 (강한 단기 모멘텀)
-HORIZON_SHORT_ADX_MIN:   float = 30.0   # ADX ≥ 30
-HORIZON_SHORT_RVOL_MIN:  float = 1.5    # RVOL ≥ 1.5
-HORIZON_SHORT_MOVE_MIN:  float = 5.0    # 당일 등락 ≥ +5% (절댓값)
-HORIZON_SHORT_EARN_DAYS: int   = 14     # 어닝 후 14일 이내
-HORIZON_MID_ADX_MIN:     float = 20.0   # ADX ≥ 20
-HORIZON_LONG_PEG_MAX:    float = 2.0    # PEG ≤ 2.0
-HORIZON_LONG_REV_MIN:    float = 20.0   # 매출 성장률 ≥ 20%
-HORIZON_LONG_KSCORE_MIN: float = 7.0    # K-Score ≥ 7
+HORIZON_SHORT_RSI_MIN:    float = 75.0   # RSI ≥ 75 (강한 단기 모멘텀)
+HORIZON_SHORT_ADX_MIN:    float = 30.0   # ADX ≥ 30
+HORIZON_SHORT_RVOL_MIN:   float = 1.5    # RVOL ≥ 1.5
+HORIZON_SHORT_MOVE_MIN:   float = 5.0    # 당일 등락 ≥ +5% (절댓값)
+HORIZON_SHORT_EARN_DAYS:  int   = 14     # 어닝 후 14일 이내
+HORIZON_MID_ADX_MIN:      float = 20.0   # ADX ≥ 20
+HORIZON_LONG_PEG_MAX:     float = 2.0    # PEG ≤ 2.0
+HORIZON_LONG_REV_MIN:     float = 20.0   # 매출 성장률 ≥ 20%
+HORIZON_LONG_KSCORE_MIN:  float = 7.0    # K-Score ≥ 7
+HORIZON_ULTRA_REV_MIN:    float = 30.0   # 매출 성장률 ≥ 30% (초장기 조건 강화)
+HORIZON_ULTRA_KSCORE_MIN: float = 7.0    # K-Score ≥ 7
+HORIZON_ULTRA_PEG_MAX:    float = 1.5    # PEG ≤ 1.5 (장기 대비 엄격)
 
 # ══════════════════════════════════════════════════════════════════════
 # 2. 종목 스크리닝 필터  (apply_filters)

@@ -628,6 +628,7 @@ def fetch_option_chain_fresh(
                 iv_raw = _f(row.get("impliedVolatility")) or 0.0
                 iv_pct = round(iv_raw * 100, 2)   # decimal → %
                 oi = int(row.get("openInterest") or 0)
+                volume = int(row.get("volume") or 0)
                 delta_raw = _f(row.get("delta"))
 
                 # ── yfinance가 delta를 안 주면 Black-Scholes로 계산 ──────
@@ -666,6 +667,7 @@ def fetch_option_chain_fresh(
                     "iv":          iv_pct,
                     "ivr":         ivr,
                     "oi":          oi,
+                    "volume":      volume,
                     "bid":         bid,
                     "ask":         ask,
                     "spread_pct":  round(spread_pct, 2),
@@ -726,9 +728,10 @@ async def fetch_option_chains_multi(
     from shared import strategy as _st
 
     _DTE_RANGES = {
-        "단기": (_st.DTE_SHORT_MIN, _st.DTE_SHORT_MAX),
-        "중기": (_st.DTE_MID_MIN,   _st.DTE_MID_MAX),
-        "장기": (_st.DTE_LONG_MIN,  _st.DTE_LONG_MAX),
+        "단기":  (_st.DTE_SHORT_MIN, _st.DTE_SHORT_MAX),
+        "중기":  (_st.DTE_MID_MIN,   _st.DTE_MID_MAX),
+        "장기":  (_st.DTE_LONG_MIN,  _st.DTE_LONG_MAX),
+        "초장기": (_st.DTE_ULTRA_MIN, _st.DTE_ULTRA_MAX),
     }
 
     sem = asyncio.Semaphore(max_concurrency)

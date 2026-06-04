@@ -103,6 +103,7 @@ class SlackClient:
         requeue_count: int = 0,
         rankings_aggressive: list[FinalRanking] | None = None,
         high_downside_tickers: list[str] | None = None,
+        ultra_long_criteria: dict | None = None,
     ) -> str:
         """
         매수 분석 완료 결과 전송
@@ -191,6 +192,23 @@ class SlackClient:
         if high_downside_tickers:
             tickers_str = ", ".join(high_downside_tickers)
             blocks.append(_section_block(f"⚠️ *일변동 하락 주의* : {tickers_str}"))
+
+        # 초장기 (LEAPS) 기준 제시
+        if ultra_long_criteria:
+            ultra_lines = ["📅 *초장기 LEAPS 기준 제시*"]
+            for _ult_tk, _uc in ultra_long_criteria.items():
+                ultra_lines.append(
+                    f"• *{_ult_tk}* — {_uc.get('direction', 'N/A')}"
+                    f" | DTE {_uc.get('dte_range', 'N/A')}"
+                    f" | Delta {_uc.get('delta_range', 'N/A')}"
+                    f" | Strike {_uc.get('strike_range', 'N/A')}"
+                )
+                ultra_lines.append(
+                    f"  OI ≥ {_uc.get('min_oi', 200)} | Spread ≤ {_uc.get('max_spread_pct', 10.0)}%"
+                    f" | ⚠️ {_uc.get('note', '브로커 직접 확인')}"
+                )
+            blocks.append(_divider())
+            blocks.append(_section_block("\n".join(ultra_lines)))
 
         if obsidian_path:
             blocks.append(_section_block(f"*Obsidian:* `{obsidian_path}`"))

@@ -234,6 +234,7 @@ class ObsidianClient:
         filter_details: "dict[str, str] | None" = None,
         investment_horizons: "dict[str, list[str]] | None" = None,
         horizon_recommendations: "dict[str, dict[str, OptionValidity]] | None" = None,
+        ultra_long_criteria: "dict[str, dict] | None" = None,
     ) -> str:
         """
         매수 분석 노트 저장 — TYPE 1~5 통합 보고서 형식 (환각 방지 강화)
@@ -323,6 +324,7 @@ class ObsidianClient:
                     k_score=k_score, regime=regime,
                     investment_horizons=(investment_horizons or {}).get(r.ticker),
                     horizon_recs=(horizon_recommendations or {}).get(r.ticker),
+                    ultra_long_criteria=(ultra_long_criteria or {}).get(r.ticker),
                 )
 
         # ── 필터 탈락 요약 ──────────────────────────────────────
@@ -1291,6 +1293,7 @@ def _format_integrated_buy_block(
     regime: "MarketRegime | None" = None,
     investment_horizons: "list[str] | None" = None,
     horizon_recs: "dict[str, OptionValidity] | None" = None,
+    ultra_long_criteria: "dict | None" = None,
 ) -> list[str]:
     """종목 1개에 대한 TYPE 1~5 통합 매수 보고서 블록 생성 (환각 방지)"""
 
@@ -1435,9 +1438,10 @@ def _format_integrated_buy_block(
     # TYPE 2: 투자 기간 & 기간별 옵션 추천 ──────────────────────────────────
     lines += ["## ━━━ TYPE 2 · 투자 기간 & 옵션 추천 ━━━", ""]
     _hz_labels = {
-        "단기": f"단기 (DTE {st.DTE_SHORT_MIN}-{st.DTE_SHORT_MAX})",
-        "중기": f"중기 (DTE {st.DTE_MID_MIN}-{st.DTE_MID_MAX})",
-        "장기": f"장기 (DTE {st.DTE_LONG_MIN}-{st.DTE_LONG_MAX})",
+        "단기":  f"단기 (DTE {st.DTE_SHORT_MIN}-{st.DTE_SHORT_MAX})",
+        "중기":  f"중기 (DTE {st.DTE_MID_MIN}-{st.DTE_MID_MAX})",
+        "장기":  f"장기 (DTE {st.DTE_LONG_MIN}-{st.DTE_LONG_MAX})",
+        "초장기": f"초장기 LEAPS (DTE {st.DTE_ULTRA_MIN}-{st.DTE_ULTRA_MAX})",
     }
     _hz_all = ["단기", "중기", "장기"]
     _active = set(investment_horizons or [])
@@ -1512,6 +1516,39 @@ def _format_integrated_buy_block(
         elif _hz in _active:
             lines.append("  - 체인 데이터 없음 (장외 시간 또는 OI 부족)")
         lines.append("")
+
+    # ── 초장기 (LEAPS) 섹션 ─────────────────────────────────────────────────
+    _has_ultra = "초장기" in _active
+    _ok_ultra = "✅" if _has_ultra else "❌"
+    _ultra_rec = (horizon_recs or {}).get("초장기")  # 체인 있으면 OptionValidity
+    lines.append(f"**{_ok_ultra} {_hz_labels['초장기']}**"
+                 + (" — LEAPS 베팅 (PEG/성장률/K-Score 기반)" if _has_ultra else ""))
+    if _ultra_rec:
+        # 체인 데이터가 있어서 자동 선택된 계약
+        import datetime as _uzdt
+        _uz_dte = ((_ultra_rec.expiry - _uzdt.date.today()).days) if _ultra_rec.expiry else "?"
+        lines += [
+            f"  - Strike **${_ultra_rec.strike:.0f}** | DTE {_uz_dte}일"
+            f" | Delta {abs(_ultra_rec.greeks.delta):.2f} | IV {_ultra_rec.greeks.iv * 100:.1f}%",
+            f"  - 프리미엄 **${_ultra_rec.mid_price:.2f}** (1계약 ${_ultra_rec.mid_price * 100:,.0f})",
+            f"  - 유효성: {'✅ 유효' if _ultra_rec.is_valid else '⚠️ 무효 — ' + _ultra_rec.exclusion_reason}",
+        ]
+    elif ultra_long_criteria:
+        # 체인 없음 — 기준 제시 방식
+        _uc = ultra_long_criteria
+        lines += [
+            f"  - 방향: **{_uc.get('direction', 'N/A')}**"
+            f" | DTE 범위: {_uc.get('dte_range', 'N/A')}",
+            f"  - Delta 범위: {_uc.get('delta_range', 'N/A')}"
+            f" (target {_uc.get('delta_target', 'N/A')})",
+            f"  - Strike 범위(추정): **{_uc.get('strike_range', 'N/A')}**",
+            f"  - 최소 OI: {_uc.get('min_oi', 200)}계약"
+            f" | 최대 Spread: {_uc.get('max_spread_pct', 10.0)}%",
+            f"  - ⚠️ {_uc.get('note', '브로커에서 직접 확인 필요')}",
+        ]
+    elif _has_ultra:
+        lines.append("  - 체인 데이터 없음 — 브로커에서 직접 확인 필요")
+    lines.append("")
 
     # 자본 배분 요약 (중기 기준 1차 진입)
     try:

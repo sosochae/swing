@@ -1121,26 +1121,8 @@ class BuySteps:
                 )
                 for tk, chain in fresh_chains.items():
                     if chain and tk in ctx.summary_data.options:
-                        # 장외 보호 조건 1: OI=0이면 체인 업데이트 스킵
-                        has_real_oi = any(int(e.get("oi", 0) or 0) > 0 for e in chain)
-                        # 장외 보호 조건 2: bid=ask=0이면 체인 업데이트 스킵
-                        # (장외에는 bid/ask가 0으로 리턴 → IV≈0 → BS delta 오계산
-                        #  → candidates 전부 탈락 → synthetic fallback 방지)
-                        has_real_price = any(
-                            (float(e.get("bid", 0) or 0) > 0
-                             or float(e.get("ask", 0) or 0) > 0)
-                            for e in chain
-                        )
-                        if has_real_oi and has_real_price:
-                            ctx.summary_data.options[tk].chain = chain
-                            log.debug("option_chain_refreshed", ticker=tk, contracts=len(chain))
-                        else:
-                            reason = (
-                                "fresh OI 전부 0" if not has_real_oi
-                                else "bid/ask 전부 0 (장외 시간)"
-                            )
-                            log.info("option_chain_keep_summary", ticker=tk,
-                                     reason=f"{reason} — summary market-hours 체인 유지")
+                        ctx.summary_data.options[tk].chain = chain
+                        log.debug("option_chain_refreshed", ticker=tk, contracts=len(chain))
                     elif chain:
                         # options 키 자체가 없는 경우 — SummaryOptionData 없이 chain만 저장 불가
                         log.debug("option_chain_skip_no_opt_data", ticker=tk)
@@ -1170,20 +1152,9 @@ class BuySteps:
                     _c_oi  = sum(int(e.get("oi", 0) or 0) for e in _calls)
                     _p_oi  = sum(int(e.get("oi", 0) or 0) for e in _puts)
 
-                    # OI=0이면 장외 — analytics 갱신 스킵, summary 값 유지
+                    # OI=0이면 유효한 포지션 없음 — analytics 갱신 스킵
                     if _c_oi == 0 and _p_oi == 0:
                         log.debug("option_analytics_skip_zero_oi", ticker=_tk)
-                        continue
-
-                    # bid/ask 전부 0이면 장외 가격 데이터 — analytics 갱신 스킵
-                    _has_price = any(
-                        (float(e.get("bid", 0) or 0) > 0
-                         or float(e.get("ask", 0) or 0) > 0)
-                        for e in _chain
-                    )
-                    if not _has_price:
-                        log.debug("option_analytics_skip_no_price", ticker=_tk,
-                                  reason="bid/ask 전부 0 (장외) — summary analytics 유지")
                         continue
 
                     _pc    = round(_p_oi / _c_oi, 3) if _c_oi > 0 else _opt.pc_ratio
@@ -1373,17 +1344,21 @@ class BuySteps:
                         and cfg.DELTA_MIN <= abs(float(e.get("delta", 0) or 0)) <= cfg.DELTA_MAX
                     ]
 
-                # 복합 스코어: delta 이격 최소화 + OI 많을수록 유리 + spread 좁을수록 유리
+                # 복합 스코어: delta 이격(주 기준) + OI/volume 로그 보너스 + spread 패널티
                 def _composite_score(e: dict, tgt: float) -> float:
-                    _d = abs(float(e.get("delta", 0) or 0))
-                    _oi = int(e.get("oi", 0) or 0)
+                    import math as _m
+                    _d   = abs(float(e.get("delta", 0) or 0))
+                    _oi  = int(e.get("oi", 0) or 0)
+                    _vol = int(e.get("volume", 0) or 0)
                     _bid = float(e.get("bid", 0) or 0)
                     _ask = float(e.get("ask", 0) or 0)
-                    _mid = (_bid + _ask) / 2 if _bid > 0 and _ask > 0 else 0
-                    _spread = (_ask - _bid) / _mid if _mid > 0 else 1.0
-                    return (abs(_d - tgt)                    # delta 이격 (주 기준)
-                            - min(_oi / 10000, 0.1)          # OI 보너스
-                            + _spread * 0.05)                 # spread 패널티
+                    _mid_v = float(e.get("mid", 0) or e.get("mid_price", 0) or 0)
+                    _mid = (_bid + _ask) / 2 if _bid > 0 and _ask > 0 else _mid_v
+                    _spread = (_ask - _bid) / _mid if _mid > 0 and _bid > 0 and _ask > 0 else 0.0
+                    return (abs(_d - tgt)                        # delta 이격 (주 기준)
+                            - _m.log1p(_oi)  * 0.015            # OI 보너스 (로그 스케일)
+                            - _m.log1p(_vol) * 0.008            # volume 보너스 (로그 스케일)
+                            + _spread * 0.25)                    # spread 패널티 (상향)
 
                 def _pick_best(pool: list[dict]) -> dict | None:
                     if not pool:
@@ -1529,9 +1504,10 @@ class BuySteps:
 
         # ── 기간별 옵션 선택 (horizon_recommendations 구성) ──────────────────
         _HZ_PARAMS: dict[str, tuple[float, float, float]] = {
-            "단기": (st.DELTA_SHORT_MIN, st.DELTA_SHORT_MAX, st.DELTA_SHORT_TARGET),
-            "중기": (st.DELTA_MID_MIN,   st.DELTA_MID_MAX,   st.DELTA_MID_TARGET),
-            "장기": (st.DELTA_LONG_MIN,  st.DELTA_LONG_MAX,  st.DELTA_LONG_TARGET),
+            "단기":  (st.DELTA_SHORT_MIN, st.DELTA_SHORT_MAX, st.DELTA_SHORT_TARGET),
+            "중기":  (st.DELTA_MID_MIN,   st.DELTA_MID_MAX,   st.DELTA_MID_TARGET),
+            "장기":  (st.DELTA_LONG_MIN,  st.DELTA_LONG_MAX,  st.DELTA_LONG_TARGET),
+            "초장기": (st.DELTA_ULTRA_MIN, st.DELTA_ULTRA_MAX, st.DELTA_ULTRA_TARGET),
         }
         for ticker in ctx.filtered_tickers:
             if ticker not in _horizon_chains:
@@ -1546,55 +1522,35 @@ class BuySteps:
 
             # horizon DTE 범위 매핑 (has_real_price 폴백용)
             _HZ_DTE_RANGES = {
-                "단기": (st.DTE_SHORT_MIN, st.DTE_SHORT_MAX),
-                "중기": (st.DTE_MID_MIN,   st.DTE_MID_MAX),
-                "장기": (st.DTE_LONG_MIN,  st.DTE_LONG_MAX),
+                "단기":  (st.DTE_SHORT_MIN, st.DTE_SHORT_MAX),
+                "중기":  (st.DTE_MID_MIN,   st.DTE_MID_MAX),
+                "장기":  (st.DTE_LONG_MIN,  st.DTE_LONG_MAX),
+                "초장기": (st.DTE_ULTRA_MIN, st.DTE_ULTRA_MAX),
             }
 
             for horizon, chain in _horizon_chains[ticker].items():
                 _d_min, _d_max, _d_tgt = _HZ_PARAMS.get(horizon, (0.42, 0.57, 0.50))
 
-                # ── 장외 보호: bid/ask=0이면 summary 체인으로 폴백 ───────────────
-                _has_real_price = any(
-                    float(e.get("bid", 0) or 0) > 0 or float(e.get("ask", 0) or 0) > 0
-                    for e in chain
-                )
-                if not _has_real_price and ctx.summary_data:
-                    _dmin_hz, _dmax_hz = _HZ_DTE_RANGES.get(horizon, (21, 90))
-                    _sum_opt = ctx.summary_data.options.get(ticker)
-                    _sum_chain = _sum_opt.chain if _sum_opt else []
-                    _fallback = [
-                        e for e in _sum_chain
-                        if _dmin_hz <= int(e.get("dte", 0) or 0) <= _dmax_hz
-                    ]
-                    if _fallback:
-                        chain = _fallback
-                        log.debug("horizon_chain_fallback_summary",
-                                  ticker=ticker, horizon=horizon,
-                                  dte_range=f"{_dmin_hz}-{_dmax_hz}",
-                                  count=len(_fallback))
-                    else:
-                        log.debug("horizon_chain_skip_no_price_no_summary",
-                                  ticker=ticker, horizon=horizon)
-                        continue
-
                 # ── 복합 스코어로 최적 옵션 선택 ──────────────────────────────
-                # 1순위: delta 범위 + OI≥500 + bid>0 (실시간 유동성 확인)
-                # 2순위: delta 범위 + OI≥500
+                # 1순위: delta 범위 + OI≥OI_MIN + bid>0
+                # 2순위: delta 범위 + OI≥OI_MIN
                 # 3순위: delta 범위만
                 # 4순위: delta 무관 (폴백)
                 def _score(e: dict, d_tgt: float) -> float:
-                    """낮을수록 좋음: delta 이격 + spread 패널티 - OI 보너스"""
-                    _d = abs(float(e.get("delta", 0) or 0))
-                    _oi = int(e.get("oi", 0) or 0)
+                    """낮을수록 좋음: delta 이격(주) + spread 패널티 - OI/volume 로그 보너스"""
+                    import math as _m
+                    _d   = abs(float(e.get("delta", 0) or 0))
+                    _oi  = int(e.get("oi", 0) or 0)
+                    _vol = int(e.get("volume", 0) or 0)
                     _bid = float(e.get("bid", 0) or 0)
                     _ask = float(e.get("ask", 0) or 0)
-                    _mid = ((_bid + _ask) / 2) if _bid > 0 and _ask > 0 else 0
-                    _spread = (_ask - _bid) / _mid if _mid > 0 else 1.0
-                    _delta_gap = abs(_d - d_tgt)
-                    _oi_bonus = -min(_oi / 10000, 0.1)       # OI 많을수록 유리 (최대 -0.1)
-                    _spread_penalty = _spread * 0.05          # 스프레드 클수록 불리
-                    return _delta_gap + _oi_bonus + _spread_penalty
+                    _mid_v = float(e.get("mid", 0) or e.get("mid_price", 0) or 0)
+                    _mid = (_bid + _ask) / 2 if _bid > 0 and _ask > 0 else _mid_v
+                    _spread = (_ask - _bid) / _mid if _mid > 0 and _bid > 0 and _ask > 0 else 0.0
+                    return (abs(_d - d_tgt)
+                            - _m.log1p(_oi)  * 0.015
+                            - _m.log1p(_vol) * 0.008
+                            + _spread * 0.25)
 
                 _pool = [e for e in chain if e.get("option_type", "").lower() == _hv_opt]
                 _cands = [e for e in _pool if _d_min <= abs(float(e.get("delta", 0) or 0)) <= _d_max
@@ -1642,6 +1598,9 @@ class BuySteps:
                         theta=float(_best.get("theta", _hv_gs.theta) or _hv_gs.theta),
                         gamma=_hv_gs.gamma,
                         vega=_hv_gs.vega,
+                        delta_min=_d_min,
+                        delta_max=_d_max,
+                        dte_min=_HZ_DTE_RANGES.get(horizon, (cfg.DTE_MIN, 365))[0],
                     )
                     ctx.horizon_recommendations[ticker][horizon] = _hv_validity
                     log.debug("horizon_option_selected",
@@ -1651,6 +1610,64 @@ class BuySteps:
                 except Exception as _hv_e:
                     log.warning("horizon_option_error",
                                 ticker=ticker, horizon=horizon, error=str(_hv_e))
+
+        # ── Phase 4: option_validity를 primary horizon 매칭으로 오버라이드 ───────
+        # 분류된 기간 중 첫 번째(가장 짧은 기간)의 OptionValidity로 교체.
+        # 초장기는 기준 제시 방식이므로 오버라이드 대상에서 제외.
+        # 매칭 실패 시 기존 option_validity(중기 기준) 유지.
+        for _ov_tk in ctx.filtered_tickers:
+            _ov_horizons = ctx.investment_horizons.get(_ov_tk, [])
+            for _ov_h in _ov_horizons:
+                if _ov_h == "초장기":
+                    continue
+                _ov_matched = ctx.horizon_recommendations.get(_ov_tk, {}).get(_ov_h)
+                if _ov_matched and _ov_matched.is_valid:
+                    ctx.option_validity[_ov_tk] = _ov_matched
+                    log.debug("option_validity_horizon_override",
+                              ticker=_ov_tk, horizon=_ov_h)
+                    break
+
+        # ── Phase 5: 초장기 기준 제시 (체인 없거나 LEAPS 미제공 종목) ──────────
+        _ultra_dir = (
+            ctx.regime.allowed_direction
+            if ctx.regime and ctx.regime.allowed_direction != "none"
+            else "long_call"
+        )
+        if _ultra_dir == "both":
+            _ultra_dir = "long_call"
+
+        for _ult_tk in ctx.filtered_tickers:
+            _ult_horizons = ctx.investment_horizons.get(_ult_tk, [])
+            if "초장기" not in _ult_horizons:
+                continue
+            # 이미 horizon_recommendations에 초장기 OptionValidity가 있으면 스킵
+            if ctx.horizon_recommendations.get(_ult_tk, {}).get("초장기"):
+                continue
+            # 기준 제시 방식: 기술 데이터로 strike 범위 추정
+            _ult_td = ctx.summary_data.tickers.get(_ult_tk) if ctx.summary_data else None
+            _ult_spot = _ult_td.technical.price if _ult_td else 0.0
+            _ult_fv = ctx.finviz_detail.get(_ult_tk)
+            # IV 추정: Finviz RSI 기반 (없으면 40%)
+            _ult_iv = 0.40
+            if _ult_fv and _ult_fv.rsi14:
+                _ult_iv = min(0.80, _ult_fv.rsi14 / 100.0 * 0.6 + 0.25)
+            # strike 범위 = ATM ± (IV × √(DTE_min / 365))
+            _ult_move = _ult_iv * (st.DTE_ULTRA_MIN / 365.0) ** 0.5
+            _s_low  = round(_ult_spot * (1 - _ult_move), 0) if _ult_spot > 0 else 0.0
+            _s_high = round(_ult_spot * (1 + _ult_move), 0) if _ult_spot > 0 else 0.0
+            _s_range = f"${_s_low:,.0f} ~ ${_s_high:,.0f}" if _ult_spot > 0 else "N/A"
+            ctx.ultra_long_criteria[_ult_tk] = {
+                "direction":       _ultra_dir,
+                "dte_range":       f"{st.DTE_ULTRA_MIN}~{st.DTE_ULTRA_MAX}일",
+                "delta_range":     f"{st.DELTA_ULTRA_MIN:.2f}~{st.DELTA_ULTRA_MAX:.2f}",
+                "delta_target":    st.DELTA_ULTRA_TARGET,
+                "strike_range":    _s_range,
+                "min_oi":          st.ULTRA_MIN_OI,
+                "max_spread_pct":  st.ULTRA_MAX_SPREAD_PCT,
+                "note":            "체인 미제공 — 브로커에서 직접 확인 필요",
+            }
+            log.info("ultra_long_criteria_generated", ticker=_ult_tk,
+                     direction=_ultra_dir, strike_range=_s_range)
 
         if ctx.horizon_recommendations:
             log.info("horizon_recommendations_done",
@@ -2135,6 +2152,7 @@ class BuySteps:
                 filter_details=dict(ctx.filter_details) if ctx.filter_details else None,
                 investment_horizons=dict(ctx.investment_horizons) if ctx.investment_horizons else None,
                 horizon_recommendations=dict(ctx.horizon_recommendations) if ctx.horizon_recommendations else None,
+                ultra_long_criteria=dict(ctx.ultra_long_criteria) if ctx.ultra_long_criteria else None,
             )
 
             # 탈락 종목 개별 노트
@@ -2201,6 +2219,7 @@ class BuySteps:
                 requeue_count=len(_rq_list(status="waiting")),
                 rankings_aggressive=ctx.final_rankings_aggressive or None,
                 high_downside_tickers=ctx.high_downside_tickers or None,
+                ultra_long_criteria=dict(ctx.ultra_long_criteria) if ctx.ultra_long_criteria else None,
             )
         except Exception as exc:
             append_audit(ctx.execution_id, 13, "degraded", error=f"E501: Slack 전송 실패: {exc}")

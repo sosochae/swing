@@ -651,8 +651,11 @@ class PipelineContext(BaseModel):
     option_validity: dict[str, OptionValidity] = Field(default_factory=dict)
     # 기간별 옵션 추천 {ticker: {"단기": OptionValidity, "중기": ..., "장기": ...}}
     horizon_recommendations: dict[str, dict[str, "OptionValidity"]] = Field(default_factory=dict)
-    # 투자 기간 분류 결과 {ticker: ["단기", "중기", "장기"]}
+    # 투자 기간 분류 결과 {ticker: ["단기", "중기", "장기", "초장기"]}
     investment_horizons: dict[str, list[str]] = Field(default_factory=dict)
+    # 초장기 기준 제시 {ticker: {"direction": ..., "dte_range": ..., ...}}
+    # 체인 데이터가 없거나 LEAPS 미제공 종목에 대해 계약 대신 기준을 제시
+    ultra_long_criteria: dict[str, dict] = Field(default_factory=dict)
     scenarios: dict[str, Scenario] = Field(default_factory=dict)
     portfolio_exposure: PortfolioExposure = Field(default_factory=PortfolioExposure)
     final_rankings: list[FinalRanking] = Field(default_factory=list)          # 안정성+수익 균형 순위

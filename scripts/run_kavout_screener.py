@@ -20,7 +20,22 @@ screener_mcp/run_screener.py와 동일한 3단계 파이프라인이지만
 """
 
 from __future__ import annotations
-
+# ── SSL CA bundle ASCII 경로 확보 (curl_cffi 로드 전에 반드시 실행) ──────────
+import os as _os, shutil as _sh, certifi as _certifi_ssl
+_ca_raw = _certifi_ssl.where()
+try:
+    _ca_raw.encode('ascii')
+    _ca_ascii = _ca_raw
+except UnicodeEncodeError:
+    from pathlib import Path as _Path
+    _cache_dir = _Path(__file__).resolve().parents[1] / 'cache'
+    _cache_dir.mkdir(exist_ok=True)
+    _ca_ascii = str(_cache_dir / 'cacert.pem')
+    _sh.copy2(_ca_raw, _ca_ascii)
+for _ev in ('SSL_CERT_FILE', 'CURL_CA_BUNDLE', 'REQUESTS_CA_BUNDLE'):
+    _os.environ[_ev] = _ca_ascii
+del _ca_raw, _ca_ascii, _ev, _os, _sh, _certifi_ssl
+# ─────────────────────────────────────────────────────────────────────────────
 import argparse
 import asyncio
 import sys

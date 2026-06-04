@@ -232,6 +232,7 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         sma5_val = _calc_sma_val(closes, 5)
         sma20_val = _calc_sma_val(closes, 20)
         sma50_val = _calc_sma_val(closes, 50)
+        sma60_val = _calc_sma_val(closes, 60)
         sma200_val = _calc_sma_val(closes, 200)
 
         # ── 볼린저밴드 ──
@@ -263,10 +264,30 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         forward_pe = _f(info.get("forwardPE"))
         peg = _f(info.get("trailingPegRatio") or info.get("pegRatio"))
         beta = _f(info.get("beta"))
-        # analyst_price_targets['current'] = 가장 최근 컨센서스 타깃 (mean보다 최신)
+        # 애널리스트 목표주가 — 합리적 범위 체크 포함
+        # apt["current"]는 post-earnings 급등 직후 현재가와 같아지는 버그 있음
+        # → current/mean/median 모두 시도 후 현재가 ±1% 이내면 None 처리
         try:
             apt = t.analyst_price_targets or {}
-            target_price = _f(apt.get("current") or apt.get("mean") or info.get("targetMeanPrice"))
+            _tp_candidates = [
+                apt.get("current"),
+                apt.get("median"),
+                apt.get("mean"),
+                info.get("targetMeanPrice"),
+            ]
+            target_price = None
+            for _tp_raw in _tp_candidates:
+                _tp = _f(_tp_raw)
+                if _tp is None or _tp <= 0:
+                    continue
+                # 현재가와 거의 같으면 무효 (yfinance 버그: 현재가를 target으로 반환)
+                if price and abs(_tp - price) / price < 0.01:
+                    continue
+                # 현재가 대비 50%~300% 벗어난 값은 stale 데이터로 제외
+                if price and (_tp < price * 0.50 or _tp > price * 3.0):
+                    continue
+                target_price = _tp
+                break
         except Exception:
             target_price = _f(info.get("targetMeanPrice"))
         recom = _f(info.get("recommendationMean"))  # 1=Strong Buy … 5=Sell
@@ -388,6 +409,7 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         sma5_val=sma5_val,
         sma20_val=sma20_val,
         sma50_val=sma50_val,
+        sma60_val=sma60_val,
         sma200_val=sma200_val,
         bb_upper=bb_upper,
         bb_mid=bb_mid,
@@ -464,8 +486,39 @@ def fetch_option_chain_fresh(
           "mid": float, "theta": float}, ...]
         실패 시 None
     """
+    import certifi as _certifi
     import yfinance as yf
     from datetime import date as _date
+
+    # ── curl_cffi CA bundle ASCII 경로 확보 ──────────────────────────────
+    # 근본 원인: 시스템 Python 3.11 실행 시 certifi 경로가 Non-ASCII 폴더
+    # (C:\Users\소소\...) 를 가리켜 curl error 77 발생.
+    # (curl.py L354: "Non-ASCII paths encoded as UTF-8 can trigger ErrCode 77")
+    # → certifi 파일을 ASCII 경로(%TEMP%)로 복사해서 curl_cffi에 제공한다.
+    _ca_raw = _certifi.where()
+    try:
+        _ca_raw.encode('ascii')
+        _ca = _ca_raw       # 이미 ASCII 경로 → 그대로 사용
+    except UnicodeEncodeError:
+        # Non-ASCII 경로 → 프로젝트 내 ASCII 경로로 복사
+        # %TEMP%도 Non-ASCII일 수 있으므로, 프로젝트 루트(C:\MCP\Swing\cache)를 사용
+        import shutil as _sh, os as _os
+        _proj_root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        _ascii_ca_dir = _os.path.join(_proj_root, 'cache')
+        _os.makedirs(_ascii_ca_dir, exist_ok=True)
+        _ascii_ca = _os.path.join(_ascii_ca_dir, 'cacert.pem')
+        _sh.copy2(_ca_raw, _ascii_ca)   # 매번 갱신 (certifi 업그레이드 반영)
+        _ca = _ascii_ca
+    # curl_cffi DEFAULT_CACERT + 환경변수도 갱신 (신규 Curl 객체에 적용)
+    try:
+        import os as _os
+        _os.environ['SSL_CERT_FILE'] = _ca
+        _os.environ['CURL_CA_BUNDLE'] = _ca
+        _os.environ['REQUESTS_CA_BUNDLE'] = _ca
+        import curl_cffi.curl as _curl_mod
+        _curl_mod.DEFAULT_CACERT = _ca
+    except Exception:
+        pass
 
     try:
         t = yf.Ticker(ticker)
@@ -648,6 +701,54 @@ async def fetch_option_chains_bulk(
                 results[ticker] = chain
 
     await asyncio.gather(*[_one(t) for t in tickers])
+    return results
+
+
+async def fetch_option_chains_multi(
+    ticker: str,
+    horizons: list[str],
+    *,
+    max_concurrency: int = 3,
+) -> dict[str, list[dict]]:
+    """
+    투자 기간별 옵션 체인 병렬 수집.
+
+    각 기간(단기/중기/장기)에 해당하는 DTE 범위에서 ATM OI가 가장 높은 만기 1개를 선택.
+    DTE 범위는 shared/strategy.py 의 DTE_SHORT/MID/LONG_MIN/MAX 참조.
+
+    Args:
+        ticker:   종목
+        horizons: classify_investment_horizon() 반환값 (["단기","중기","장기"] 중 부분집합)
+
+    Returns:
+        {기간: chain_list}  e.g. {"중기": [...], "장기": [...]}
+    """
+    from shared import strategy as _st
+
+    _DTE_RANGES = {
+        "단기": (_st.DTE_SHORT_MIN, _st.DTE_SHORT_MAX),
+        "중기": (_st.DTE_MID_MIN,   _st.DTE_MID_MAX),
+        "장기": (_st.DTE_LONG_MIN,  _st.DTE_LONG_MAX),
+    }
+
+    sem = asyncio.Semaphore(max_concurrency)
+    results: dict[str, list[dict]] = {}
+
+    async def _one(horizon: str) -> None:
+        dte_min, dte_max = _DTE_RANGES[horizon]
+        async with sem:
+            chain = await asyncio.to_thread(
+                fetch_option_chain_fresh, ticker, dte_min, dte_max
+            )
+            if chain:
+                results[horizon] = chain
+            else:
+                log.debug("horizon_chain_empty: %s %s (DTE %d-%d)",
+                          ticker, horizon, dte_min, dte_max)
+
+    await asyncio.gather(*[_one(h) for h in horizons if h in _DTE_RANGES])
+    log.info("horizon_chains_fetched: %s requested=%s fetched=%s",
+             ticker, horizons, list(results.keys()))
     return results
 
 
@@ -840,3 +941,176 @@ def fetch_macro_realtime() -> dict:
         log.warning("fear_greed CNN 실패: %s", exc)
 
     return result
+
+
+# ─── 어닝 캘린더 실시간 수집 (Step 3용) ─────────────────────────────────────
+
+def fetch_earnings_calendar(ticker: str, days_ahead: int = 14) -> list:
+    """Finnhub /calendar/earnings → SummaryEvent 리스트.
+
+    FINNHUB_API_KEY 환경변수가 없으면 빈 리스트 반환 (graceful degradation).
+
+    Args:
+        ticker: 종목 심볼
+        days_ahead: 오늘부터 조회할 일수 (기본 14일)
+
+    Returns:
+        list[SummaryEvent] — 빈 리스트 가능
+    """
+    import json as _json
+    import os as _os
+    import urllib.request as _url
+    from datetime import date as _date, datetime as _dt, timedelta as _td
+
+    from shared.schemas import SummaryEvent as _SE
+
+    api_key = _os.getenv("FINNHUB_API_KEY", "").strip()
+    if not api_key:
+        log.debug("fetch_earnings_calendar: FINNHUB_API_KEY 없음, 스킵 (%s)", ticker)
+        return []
+
+    today = _date.today()
+    to_date = today + _td(days=days_ahead)
+    url = (
+        f"https://finnhub.io/api/v1/calendar/earnings"
+        f"?symbol={ticker}&from={today}&to={to_date}&token={api_key}"
+    )
+    try:
+        req = _url.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with _url.urlopen(req, timeout=5) as r:
+            data = _json.loads(r.read().decode())
+        events: list = []
+        for e in data.get("earningsCalendar") or []:
+            d_str = e.get("date", "")
+            if not d_str:
+                continue
+            try:
+                d_obj = _date.fromisoformat(d_str)
+            except ValueError:
+                continue
+            days_until = (d_obj - today).days
+            if days_until < 0:
+                continue
+            timing = e.get("hour", "")
+            timing_str = " (AMC)" if timing == "amc" else " (BMO)" if timing == "bmo" else ""
+            events.append(_SE(
+                date=_dt.fromisoformat(d_str),
+                type="실적",
+                name=f"{ticker} 실적 발표{timing_str}",
+                importance="HIGH",
+                days_until=days_until,
+            ))
+        log.debug("fetch_earnings_calendar: %s → %d events", ticker, len(events))
+        return events
+    except Exception as exc:
+        log.warning("fetch_earnings_calendar 실패 %s: %s", ticker, exc)
+        return []
+
+
+async def fetch_earnings_calendar_bulk(
+    tickers: list[str],
+    days_ahead: int = 14,
+    max_concurrency: int = 3,
+) -> list:
+    """fetch_earnings_calendar 비동기 병렬 버전.
+
+    Returns:
+        list[SummaryEvent] — 전체 티커 이벤트 합산 (중복 없음)
+    """
+    sem = asyncio.Semaphore(max_concurrency)
+    results: list = []
+
+    async def _one(ticker: str) -> None:
+        async with sem:
+            evs = await asyncio.to_thread(fetch_earnings_calendar, ticker, days_ahead)
+            results.extend(evs)
+
+    await asyncio.gather(*[_one(t) for t in tickers])
+    return results
+
+
+# ─── 옵션 analytics 헬퍼 (Step 7 재계산용) ──────────────────────────────────
+
+def _calc_atm_straddle(chain: list[dict], spot: float) -> float:
+    """옵션 체인에서 ATM 스트래들 가격 계산 (call_mid + put_mid).
+
+    Args:
+        chain: fetch_option_chain_fresh() 반환 형식
+               [{"option_type": "call"|"put", "strike": float, "bid": float,
+                 "ask": float, "mid": float, ...}]
+        spot: 현재 주가
+
+    Returns:
+        ATM 스트래들 가격 (달러). 계산 불가 시 0.0
+    """
+    if not chain or spot <= 0:
+        return 0.0
+
+    # spot에 가장 가까운 strike 탐색
+    strikes = list({float(e.get("strike", 0)) for e in chain if e.get("strike")})
+    if not strikes:
+        return 0.0
+    atm = min(strikes, key=lambda s: abs(s - spot))
+
+    def _mid_price(opt_type: str) -> float:
+        entry = next(
+            (e for e in chain
+             if e.get("option_type") == opt_type
+             and abs(float(e.get("strike", 0)) - atm) < 0.01),
+            None,
+        )
+        if not entry:
+            return 0.0
+        bid = float(entry.get("bid", 0) or 0)
+        ask = float(entry.get("ask", 0) or 0)
+        # mid 필드 우선, 없으면 bid+ask/2, 없으면 mid_price 필드
+        mid = float(entry.get("mid", 0) or entry.get("mid_price", 0) or 0)
+        if bid > 0 and ask > 0:
+            return (bid + ask) / 2
+        return mid
+
+    straddle = round(_mid_price("call") + _mid_price("put"), 3)
+    log.debug("_calc_atm_straddle: spot=%.2f  atm=%.2f  straddle=%.3f",
+              spot, atm, straddle)
+    return straddle
+
+
+def _calc_max_pain(chain: list[dict]) -> Optional[float]:
+    """옵션 체인에서 Max Pain strike 계산.
+
+    Max Pain: 모든 옵션 매수자에게 총 손실이 최대가 되는 주가
+              = 옵션 매도자(발행자) 이익 최대화 지점.
+
+    Args:
+        chain: [{"option_type": "call"|"put", "strike": float, "oi": int}, ...]
+
+    Returns:
+        Max Pain strike (달러). 계산 불가 시 None
+    """
+    if not chain:
+        return None
+
+    strikes = sorted({float(e.get("strike", 0)) for e in chain if e.get("strike")})
+    if not strikes:
+        return None
+
+    min_pain: float = float("inf")
+    max_pain_strike: Optional[float] = None
+
+    for test_price in strikes:
+        pain = 0.0
+        for e in chain:
+            s = float(e.get("strike", 0) or 0)
+            oi = int(e.get("oi", 0) or 0)
+            opt_type = e.get("option_type", "")
+            if opt_type == "call" and test_price > s:
+                pain += (test_price - s) * oi
+            elif opt_type == "put" and test_price < s:
+                pain += (s - test_price) * oi
+        if pain < min_pain:
+            min_pain = pain
+            max_pain_strike = test_price
+
+    log.debug("_calc_max_pain: max_pain=%.2f  min_total_pain=%.0f",
+              max_pain_strike or 0, min_pain)
+    return max_pain_strike

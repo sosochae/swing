@@ -326,6 +326,24 @@ class BuySteps:
             save_snapshot(ctx.execution_id, 3, {"reason": "regime_unfavorable"})
             return
 
+        # ── 어닝 예정일 실시간 갱신 (Finnhub, 실패 시 summary.events 폴백) ────────
+        # FINNHUB_API_KEY 없으면 fetch_earnings_calendar_bulk()가 빈 리스트 반환
+        if ctx.summary_data and ctx.watchlist:
+            try:
+                from core.api_fetcher import fetch_earnings_calendar_bulk as _fecb
+                _fresh_earn = await _fecb(ctx.watchlist[:20])
+                if _fresh_earn:
+                    # 기존 events에서 "실적" 이벤트만 교체, 경제지표/OPEX 유지
+                    _non_earn = [e for e in ctx.summary_data.events if "실적" not in e.type]
+                    ctx.summary_data.events = _non_earn + _fresh_earn
+                    append_audit(ctx.execution_id, 3, "info",
+                                 data={"earnings_calendar_realtime": "ok",
+                                       "count": len(_fresh_earn)})
+                    log.info("earnings_calendar_realtime", count=len(_fresh_earn))
+            except Exception as _ec_exc:
+                log.warning("earnings_calendar_realtime_failed", error=str(_ec_exc))
+                # summary.events 그대로 유지 — 폴백
+
         # 향후 5일 내 실적 발표 종목 추출
         earnings_tickers: list[str] = []
         if ctx.summary_data:
@@ -477,6 +495,69 @@ class BuySteps:
             log.info("finnhub_insider_refreshed", tickers=len(insider_map))
         except Exception as _exc:
             log.warning("finnhub_insider_failed", error=str(_exc))
+
+        # ── 실시간 데이터 → summary.technical 브릿지 ────────────────────────────
+        # yfinance/Finnhub으로 가져온 finviz_detail을 summary_data.technical에 반영.
+        # calculate_technical_score()가 실시간 기술지표를 사용하게 됨.
+        # 각 필드는 None이면 스킵 → 실패 시 자동으로 summary 값 유지 (폴백).
+        if ctx.summary_data:
+            _bridge_count = 0
+            for _tk in ctx.filtered_tickers:
+                _fv = ctx.finviz_detail.get(_tk)
+                if not _fv or _tk not in ctx.summary_data.tickers:
+                    continue
+                _td = ctx.summary_data.tickers[_tk]
+                _tech = _td.technical
+                _upd: dict = {}
+
+                # 가격 / 당일 등락 (DA _apply_devils_advocate에서 change_pct 사용)
+                if _fv.price       is not None: _upd["price"]            = _fv.price
+                if _fv.change_pct  is not None: _upd["change_pct"]       = _fv.change_pct
+                # RSI / RVOL
+                if _fv.rsi14       is not None: _upd["rsi14"]            = _fv.rsi14
+                if _fv.rel_volume  is not None: _upd["avg_volume_ratio"] = _fv.rel_volume
+                # ADX
+                if _fv.adx         is not None: _upd["adx14"]            = _fv.adx
+                # MA 달러값 (MA 정렬 점수 전체에 영향)
+                if _fv.sma5_val    is not None: _upd["ma5"]              = _fv.sma5_val
+                if _fv.sma20_val   is not None: _upd["ma20"]             = _fv.sma20_val
+                if _fv.sma50_val   is not None: _upd["ma50"]             = _fv.sma50_val
+                if _fv.sma60_val   is not None: _upd["ma60"]             = _fv.sma60_val
+                if _fv.sma200_val  is not None: _upd["ma200"]            = _fv.sma200_val
+                # 볼린저밴드
+                if _fv.bb_upper    is not None: _upd["bb_upper"]         = _fv.bb_upper
+                if _fv.bb_mid      is not None: _upd["bb_mid"]           = _fv.bb_mid
+                if _fv.bb_lower    is not None: _upd["bb_lower"]         = _fv.bb_lower
+                # bb_position 재계산 (DA Bollinger Break 차감 조건)
+                if _fv.price and _fv.bb_upper and _fv.bb_lower:
+                    if   _fv.price >= _fv.bb_upper: _upd["bb_position"] = "upper_break"
+                    elif _fv.price <= _fv.bb_lower: _upd["bb_position"] = "lower_break"
+                    else:                            _upd["bb_position"] = "mid"
+                # MACD
+                if _fv.macd_line   is not None: _upd["macd_line"]        = _fv.macd_line
+                if _fv.macd_signal is not None: _upd["macd_signal"]      = _fv.macd_signal
+                if _fv.macd_hist   is not None: _upd["macd_histogram"]   = _fv.macd_hist
+                # macd_cross 재계산 (MACD 점수에 영향)
+                if _fv.macd_line is not None and _fv.macd_signal is not None:
+                    _upd["macd_cross"] = (
+                        "golden" if _fv.macd_line > _fv.macd_signal else "death"
+                    )
+                # 지지/저항 (pivot 기반 — darkpool_ok / support_ok 판단)
+                if _fv.pivot_s1    is not None: _upd["support1"]         = _fv.pivot_s1
+                if _fv.pivot_s2    is not None: _upd["support2"]         = _fv.pivot_s2
+                if _fv.pivot_r1    is not None: _upd["resistance1"]      = _fv.pivot_r1
+                if _fv.pivot_r2    is not None: _upd["resistance2"]      = _fv.pivot_r2
+
+                if _upd:
+                    ctx.summary_data.tickers[_tk] = _td.model_copy(
+                        update={"technical": _tech.model_copy(update=_upd)}
+                    )
+                    _bridge_count += 1
+
+            append_audit(ctx.execution_id, 4, "info",
+                         data={"technical_bridge": "ok", "bridged": _bridge_count})
+            log.info("technical_bridge_done", bridged=_bridge_count,
+                     total=len(ctx.filtered_tickers))
 
         direction = ctx.regime.allowed_direction
         # both이면 long_call 기본
@@ -1035,24 +1116,230 @@ class BuySteps:
                 from core.api_fetcher import fetch_option_chains_bulk
                 fresh_chains = await fetch_option_chains_bulk(
                     ctx.filtered_tickers,
-                    dte_min=cfg.DTE_MIN,
-                    dte_max=cfg.DTE_MIN + 24,  # DTE_MIN ~ DTE_MIN+24 범위
+                    dte_min=st.DTE_MID_MIN,   # 중기 기준 (45일) — 주요 분석 체인
+                    dte_max=st.DTE_MID_MAX,   # ~ 90일
                 )
                 for tk, chain in fresh_chains.items():
                     if chain and tk in ctx.summary_data.options:
-                        # 장 외 시간 보호: fresh chain이 모두 OI=0이면 summary chain(market-hours 데이터) 유지
+                        # 장외 보호 조건 1: OI=0이면 체인 업데이트 스킵
                         has_real_oi = any(int(e.get("oi", 0) or 0) > 0 for e in chain)
-                        if has_real_oi:
+                        # 장외 보호 조건 2: bid=ask=0이면 체인 업데이트 스킵
+                        # (장외에는 bid/ask가 0으로 리턴 → IV≈0 → BS delta 오계산
+                        #  → candidates 전부 탈락 → synthetic fallback 방지)
+                        has_real_price = any(
+                            (float(e.get("bid", 0) or 0) > 0
+                             or float(e.get("ask", 0) or 0) > 0)
+                            for e in chain
+                        )
+                        if has_real_oi and has_real_price:
                             ctx.summary_data.options[tk].chain = chain
                             log.debug("option_chain_refreshed", ticker=tk, contracts=len(chain))
                         else:
+                            reason = (
+                                "fresh OI 전부 0" if not has_real_oi
+                                else "bid/ask 전부 0 (장외 시간)"
+                            )
                             log.info("option_chain_keep_summary", ticker=tk,
-                                     reason="fresh OI 전부 0 (장 외 시간) — summary market-hours 체인 유지")
+                                     reason=f"{reason} — summary market-hours 체인 유지")
                     elif chain:
                         # options 키 자체가 없는 경우 — SummaryOptionData 없이 chain만 저장 불가
                         log.debug("option_chain_skip_no_opt_data", ticker=tk)
             except Exception as _e:
                 log.warning("option_chain_refresh_failed", error=str(_e))
+
+        # ── 실시간 chain에서 옵션 analytics 재계산 ─────────────────────────────
+        # chain 갱신이 완료된 후, pc_ratio / OI / implied_move / max_pain /
+        # atm_straddle_price를 실시간 값으로 교체.
+        # Step 8 시나리오 계산(atm_straddle_price)에 실시간 값이 반영됨.
+        if ctx.summary_data:
+            try:
+                from core.api_fetcher import _calc_atm_straddle, _calc_max_pain
+                _analytics_updated = 0
+                for _tk in ctx.filtered_tickers:
+                    _opt = ctx.summary_data.options.get(_tk)
+                    if not _opt or not _opt.chain:
+                        continue
+                    _chain = _opt.chain
+                    _spot = (
+                        ctx.summary_data.tickers[_tk].technical.price
+                        if _tk in ctx.summary_data.tickers else 0.0
+                    )
+
+                    _calls = [e for e in _chain if e.get("option_type") == "call"]
+                    _puts  = [e for e in _chain if e.get("option_type") == "put"]
+                    _c_oi  = sum(int(e.get("oi", 0) or 0) for e in _calls)
+                    _p_oi  = sum(int(e.get("oi", 0) or 0) for e in _puts)
+
+                    # OI=0이면 장외 — analytics 갱신 스킵, summary 값 유지
+                    if _c_oi == 0 and _p_oi == 0:
+                        log.debug("option_analytics_skip_zero_oi", ticker=_tk)
+                        continue
+
+                    # bid/ask 전부 0이면 장외 가격 데이터 — analytics 갱신 스킵
+                    _has_price = any(
+                        (float(e.get("bid", 0) or 0) > 0
+                         or float(e.get("ask", 0) or 0) > 0)
+                        for e in _chain
+                    )
+                    if not _has_price:
+                        log.debug("option_analytics_skip_no_price", ticker=_tk,
+                                  reason="bid/ask 전부 0 (장외) — summary analytics 유지")
+                        continue
+
+                    _pc    = round(_p_oi / _c_oi, 3) if _c_oi > 0 else _opt.pc_ratio
+                    _strad = _calc_atm_straddle(_chain, _spot)
+                    _impl  = (
+                        round(_strad / _spot * 100, 2)
+                        if _spot > 0 and _strad > 0 else _opt.implied_move_near
+                    )
+                    _mpain = _calc_max_pain(_chain)
+
+                    ctx.summary_data.options[_tk] = _opt.model_copy(update={
+                        "total_call_oi":      _c_oi,
+                        "total_put_oi":       _p_oi,
+                        "pc_ratio":           _pc,
+                        "implied_move_near":  _impl,
+                        "max_pain_near":      float(_mpain) if _mpain else _opt.max_pain_near,
+                        "atm_straddle_price": _strad if _strad > 0 else _opt.atm_straddle_price,
+                    })
+                    _analytics_updated += 1
+                    log.debug("option_analytics_refreshed", ticker=_tk,
+                              pc_ratio=_pc, implied_move=_impl, max_pain=_mpain)
+
+                append_audit(ctx.execution_id, 7, "info",
+                             data={"option_analytics_refresh": "ok",
+                                   "updated": _analytics_updated})
+                log.info("option_analytics_done", updated=_analytics_updated)
+            except Exception as _oa_exc:
+                log.warning("option_analytics_refresh_failed", error=str(_oa_exc))
+
+        # ── option_flow_ok / signal_count / capital_flow_confirmed 재평가 ────────
+        # Step 4에서 summary 기준으로 고정됐던 option_flow_ok를
+        # 실시간 옵션 analytics(pc_ratio, OI)로 보정.
+        if ctx.summary_data and ctx.technical_scores:
+            _dir_now = ctx.regime.allowed_direction if ctx.regime else "long_call"
+            if _dir_now == "both":
+                _dir_now = "long_call"
+            _is_long_now = _dir_now == "long_call"
+            _recalc_count = 0
+
+            for _tk in ctx.filtered_tickers:
+                _score = ctx.technical_scores.get(_tk)
+                _opt_d = ctx.summary_data.options.get(_tk)
+                if not _score or not _opt_d:
+                    continue
+
+                _pc     = _opt_d.pc_ratio
+                _c_oi   = _opt_d.total_call_oi
+                _p_oi   = _opt_d.total_put_oi
+                _anomaly = sum(1 for e in _opt_d.chain if e.get("is_anomaly", False))
+
+                if _is_long_now:
+                    _new_opt = (
+                        _pc < st.PC_RATIO_CALL_BULL
+                        or (_c_oi > 0 and _p_oi > 0
+                            and _c_oi >= _p_oi * st.OI_RATIO_DOMINANCE)
+                    )
+                else:
+                    _new_opt = (
+                        _pc > st.PC_RATIO_PUT_BULL
+                        or (_c_oi > 0 and _p_oi > 0
+                            and _p_oi >= _c_oi * st.OI_RATIO_DOMINANCE)
+                    )
+                if _anomaly >= st.ANOMALY_COUNT_OVERRIDE:
+                    _new_opt = True
+
+                if _new_opt != _score.option_flow_ok:
+                    _delta = 1 if _new_opt else -1
+                    # capital_flow_confirmed 재계산
+                    # (rvol, obv_ok, option_flow_ok, darkpool_ok 중 CAPITAL_FLOW_MIN_SIGNALS개 이상)
+                    _new_cap = sum([
+                        _score.rvol_score >= st.SCORE_RVOL_LOW,
+                        _score.obv_ok,
+                        _new_opt,
+                        _score.darkpool_ok,
+                    ]) >= st.CAPITAL_FLOW_MIN_SIGNALS
+                    ctx.technical_scores[_tk] = _score.model_copy(update={
+                        "option_flow_ok":          _new_opt,
+                        "capital_flow_confirmed":  _new_cap,
+                        "signal_count":            max(0, _score.signal_count + _delta),
+                    })
+                    _recalc_count += 1
+                    log.debug("option_flow_recalc", ticker=_tk,
+                              old=_score.option_flow_ok, new=_new_opt,
+                              pc_ratio=_pc)
+
+            if _recalc_count:
+                append_audit(ctx.execution_id, 7, "info",
+                             data={"option_flow_recalc": _recalc_count})
+                log.info("option_flow_recalc_done", recalculated=_recalc_count)
+
+        # ── 투자 기간 분류 ─────────────────────────────────────────────────────
+        try:
+            from core.analysis import classify_investment_horizon as _clz_hz
+            for _hz_tk in ctx.filtered_tickers:
+                _hz_td = ctx.summary_data.tickers.get(_hz_tk) if ctx.summary_data else None
+                _hz_fv = ctx.finviz_detail.get(_hz_tk) if ctx.finviz_detail else None
+                _hz_ts = ctx.technical_scores.get(_hz_tk)
+                _hz_kscore = float((ctx.kavout_data or {}).get(_hz_tk, {}).get("k_score", 5.0))
+                _hz_rsi   = (_hz_fv.rsi14 if _hz_fv and _hz_fv.rsi14 else None) or (_hz_td.technical.rsi14 if _hz_td else None)
+                _hz_adx   = (_hz_fv.adx if _hz_fv and _hz_fv.adx else None) or (_hz_td.technical.adx14 if _hz_td else None)
+                _hz_rvol  = (_hz_fv.rel_volume if _hz_fv else None) or (_hz_td.technical.avg_volume_ratio if _hz_td else None)
+                _hz_chg   = (_hz_fv.change_pct if _hz_fv else None) or (_hz_td.technical.change_pct if _hz_td else None)
+                # ma_alignment은 TechnicalScore에 있음 (TickerTechnical 아님)
+                _hz_ma    = _hz_ts.ma_alignment if _hz_ts else None
+                # 어닝 후 경과일 추정
+                _hz_earn_days: int | None = None
+                if ctx.summary_data and ctx.summary_data.events:
+                    _hz_today = date.today()
+                    for _ev in ctx.summary_data.events:
+                        if getattr(_ev, "ticker", None) == _hz_tk or getattr(_ev, "type", "") == "실적":
+                            try:
+                                _ev_dt = date.fromisoformat(str(getattr(_ev, "date", ""))[:10])
+                                _diff = (_hz_today - _ev_dt).days
+                                if 0 <= _diff <= 30:
+                                    _hz_earn_days = _diff
+                                    break
+                            except Exception:
+                                pass
+                ctx.investment_horizons[_hz_tk] = _clz_hz(
+                    _hz_tk,
+                    rsi14=_hz_rsi,
+                    adx14=_hz_adx,
+                    avg_volume_ratio=_hz_rvol,
+                    change_pct=_hz_chg,
+                    ma_alignment=_hz_ma,
+                    peg_ratio=_hz_fv.peg if _hz_fv else None,             # FinvizDetail.peg
+                    revenue_growth_yoy=_hz_fv.revenue_growth_yoy if _hz_fv else None,
+                    k_score=_hz_kscore,
+                    days_since_earnings=_hz_earn_days,
+                    forward_pe=_hz_fv.forward_pe if _hz_fv else None,
+                )
+            log.info("horizon_classified",
+                     count=len(ctx.investment_horizons),
+                     sample={tk: v for tk, v in list(ctx.investment_horizons.items())[:3]})
+        except Exception as _hz_exc:
+            log.warning("horizon_classification_failed", error=str(_hz_exc))
+
+        # ── 기간별 옵션 체인 병렬 수집 ────────────────────────────────────────
+        _horizon_chains: dict[str, dict[str, list[dict]]] = {}
+        try:
+            from core.api_fetcher import fetch_option_chains_multi as _fmulti
+            _hz_sem = asyncio.Semaphore(2)  # 동시 티커 수 제한
+
+            async def _fetch_hz_one(tk: str) -> None:
+                _hz = ctx.investment_horizons.get(tk, ["중기"])
+                async with _hz_sem:
+                    _chains = await _fmulti(tk, _hz)
+                if _chains:
+                    _horizon_chains[tk] = _chains
+
+            await asyncio.gather(*[_fetch_hz_one(tk) for tk in ctx.filtered_tickers])
+            log.info("horizon_chains_fetched",
+                     tickers=len(_horizon_chains),
+                     detail={tk: list(v.keys()) for tk, v in _horizon_chains.items()})
+        except Exception as _hc_exc:
+            log.warning("horizon_chains_failed", error=str(_hc_exc))
 
         valid_tickers: list[str] = []
 
@@ -1076,36 +1363,66 @@ class BuySteps:
                 candidates = [
                     e for e in opt_data.chain
                     if e.get("option_type", "").lower() == opt_type
-                    and cfg.DELTA_MIN <= abs(float(e.get("delta", 0) or 0)) <= cfg.DELTA_MAX
+                    and st.DELTA_MID_MIN <= abs(float(e.get("delta", 0) or 0)) <= st.DELTA_MID_MAX
                 ]
+                # 범위 내 후보가 없으면 기존 범위로 폴백
+                if not candidates:
+                    candidates = [
+                        e for e in opt_data.chain
+                        if e.get("option_type", "").lower() == opt_type
+                        and cfg.DELTA_MIN <= abs(float(e.get("delta", 0) or 0)) <= cfg.DELTA_MAX
+                    ]
+
+                # 복합 스코어: delta 이격 최소화 + OI 많을수록 유리 + spread 좁을수록 유리
+                def _composite_score(e: dict, tgt: float) -> float:
+                    _d = abs(float(e.get("delta", 0) or 0))
+                    _oi = int(e.get("oi", 0) or 0)
+                    _bid = float(e.get("bid", 0) or 0)
+                    _ask = float(e.get("ask", 0) or 0)
+                    _mid = (_bid + _ask) / 2 if _bid > 0 and _ask > 0 else 0
+                    _spread = (_ask - _bid) / _mid if _mid > 0 else 1.0
+                    return (abs(_d - tgt)                    # delta 이격 (주 기준)
+                            - min(_oi / 10000, 0.1)          # OI 보너스
+                            + _spread * 0.05)                 # spread 패널티
 
                 def _pick_best(pool: list[dict]) -> dict | None:
                     if not pool:
                         return None
-                    return min(pool, key=lambda e: abs(abs(float(e.get("delta", 0) or 0)) - 0.55))
+                    return min(pool, key=lambda e: _composite_score(e, st.DELTA_MID_TARGET))
 
                 in_dte = [e for e in candidates if int(e.get("dte", 0) or 0) >= cfg.DTE_MIN]
 
-                # 1순위: OI≥OI_MIN + DTE 범위
-                best_entry = _pick_best([e for e in in_dte
+                # 1순위: OI≥OI_MIN + DTE 범위 + bid>0
+                _with_price = [e for e in in_dte if float(e.get("bid", 0) or 0) > 0]
+                best_entry = _pick_best([e for e in _with_price
                                          if int(e.get("oi", 0) or 0) >= cfg.OI_MIN])
-                # 2순위: OI≥OI_WARNING + DTE 범위
+                # 2순위: OI≥OI_MIN + DTE 범위 (bid 무관)
+                if not best_entry:
+                    best_entry = _pick_best([e for e in in_dte
+                                             if int(e.get("oi", 0) or 0) >= cfg.OI_MIN])
+                # 3순위: OI≥OI_WARNING + DTE 범위
                 if not best_entry:
                     best_entry = _pick_best([e for e in in_dte
                                              if int(e.get("oi", 0) or 0) >= cfg.OI_WARNING])
-                # 3순위: OI 무관 + DTE 범위
+                # 4순위: OI 무관 + DTE 범위
                 if not best_entry:
                     best_entry = _pick_best(in_dte)
-                # 4순위: DTE/OI 모두 무관
+                # 5순위: DTE/OI 모두 무관
                 if not best_entry:
                     best_entry = _pick_best(candidates)
 
                 if best_entry:
                     oi_sel = int(best_entry.get("oi", 0) or 0)
-                    log.debug("option_candidate_selected",
-                              ticker=ticker, strike=best_entry.get("strike"),
-                              dte=best_entry.get("dte"), oi=oi_sel,
-                              delta=round(abs(float(best_entry.get("delta", 0) or 0)), 3))
+                    _sel_delta = round(abs(float(best_entry.get("delta", 0) or 0)), 3)
+                    _sel_spread = round(
+                        (float(best_entry.get("ask", 0) or 0) - float(best_entry.get("bid", 0) or 0))
+                        / max((float(best_entry.get("ask", 0) or 0) + float(best_entry.get("bid", 0) or 0)) / 2, 0.01)
+                        * 100, 1)
+                    log.info("option_candidate_selected",
+                             ticker=ticker, strike=best_entry.get("strike"),
+                             dte=best_entry.get("dte"), oi=oi_sel,
+                             delta=_sel_delta, spread_pct=_sel_spread,
+                             reason=f"delta_target={st.DELTA_MID_TARGET}")
 
             # ── 만기 결정: DTE<DTE_MIN이면 35일 후로 투영 ──────────────
             if best_entry:
@@ -1210,6 +1527,137 @@ class BuySteps:
 
         # ctx.filtered_tickers는 변경하지 않음 (전체 종목 유지)
 
+        # ── 기간별 옵션 선택 (horizon_recommendations 구성) ──────────────────
+        _HZ_PARAMS: dict[str, tuple[float, float, float]] = {
+            "단기": (st.DELTA_SHORT_MIN, st.DELTA_SHORT_MAX, st.DELTA_SHORT_TARGET),
+            "중기": (st.DELTA_MID_MIN,   st.DELTA_MID_MAX,   st.DELTA_MID_TARGET),
+            "장기": (st.DELTA_LONG_MIN,  st.DELTA_LONG_MAX,  st.DELTA_LONG_TARGET),
+        }
+        for ticker in ctx.filtered_tickers:
+            if ticker not in _horizon_chains:
+                continue
+            _hv_td = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
+            _hv_spot = _hv_td.technical.price if _hv_td else 0.0
+            _hv_dir = ctx.regime.allowed_direction if ctx.regime else "long_call"
+            if _hv_dir == "both":
+                _hv_dir = "long_call"
+            _hv_opt = "call" if "call" in _hv_dir else "put"
+            ctx.horizon_recommendations[ticker] = {}
+
+            # horizon DTE 범위 매핑 (has_real_price 폴백용)
+            _HZ_DTE_RANGES = {
+                "단기": (st.DTE_SHORT_MIN, st.DTE_SHORT_MAX),
+                "중기": (st.DTE_MID_MIN,   st.DTE_MID_MAX),
+                "장기": (st.DTE_LONG_MIN,  st.DTE_LONG_MAX),
+            }
+
+            for horizon, chain in _horizon_chains[ticker].items():
+                _d_min, _d_max, _d_tgt = _HZ_PARAMS.get(horizon, (0.42, 0.57, 0.50))
+
+                # ── 장외 보호: bid/ask=0이면 summary 체인으로 폴백 ───────────────
+                _has_real_price = any(
+                    float(e.get("bid", 0) or 0) > 0 or float(e.get("ask", 0) or 0) > 0
+                    for e in chain
+                )
+                if not _has_real_price and ctx.summary_data:
+                    _dmin_hz, _dmax_hz = _HZ_DTE_RANGES.get(horizon, (21, 90))
+                    _sum_opt = ctx.summary_data.options.get(ticker)
+                    _sum_chain = _sum_opt.chain if _sum_opt else []
+                    _fallback = [
+                        e for e in _sum_chain
+                        if _dmin_hz <= int(e.get("dte", 0) or 0) <= _dmax_hz
+                    ]
+                    if _fallback:
+                        chain = _fallback
+                        log.debug("horizon_chain_fallback_summary",
+                                  ticker=ticker, horizon=horizon,
+                                  dte_range=f"{_dmin_hz}-{_dmax_hz}",
+                                  count=len(_fallback))
+                    else:
+                        log.debug("horizon_chain_skip_no_price_no_summary",
+                                  ticker=ticker, horizon=horizon)
+                        continue
+
+                # ── 복합 스코어로 최적 옵션 선택 ──────────────────────────────
+                # 1순위: delta 범위 + OI≥500 + bid>0 (실시간 유동성 확인)
+                # 2순위: delta 범위 + OI≥500
+                # 3순위: delta 범위만
+                # 4순위: delta 무관 (폴백)
+                def _score(e: dict, d_tgt: float) -> float:
+                    """낮을수록 좋음: delta 이격 + spread 패널티 - OI 보너스"""
+                    _d = abs(float(e.get("delta", 0) or 0))
+                    _oi = int(e.get("oi", 0) or 0)
+                    _bid = float(e.get("bid", 0) or 0)
+                    _ask = float(e.get("ask", 0) or 0)
+                    _mid = ((_bid + _ask) / 2) if _bid > 0 and _ask > 0 else 0
+                    _spread = (_ask - _bid) / _mid if _mid > 0 else 1.0
+                    _delta_gap = abs(_d - d_tgt)
+                    _oi_bonus = -min(_oi / 10000, 0.1)       # OI 많을수록 유리 (최대 -0.1)
+                    _spread_penalty = _spread * 0.05          # 스프레드 클수록 불리
+                    return _delta_gap + _oi_bonus + _spread_penalty
+
+                _pool = [e for e in chain if e.get("option_type", "").lower() == _hv_opt]
+                _cands = [e for e in _pool if _d_min <= abs(float(e.get("delta", 0) or 0)) <= _d_max
+                          and int(e.get("oi", 0) or 0) >= st.OI_MIN
+                          and (float(e.get("bid", 0) or 0) > 0 or float(e.get("ask", 0) or 0) > 0)]
+                if not _cands:
+                    _cands = [e for e in _pool if _d_min <= abs(float(e.get("delta", 0) or 0)) <= _d_max
+                              and int(e.get("oi", 0) or 0) >= st.OI_MIN]
+                if not _cands:
+                    _cands = [e for e in _pool if _d_min <= abs(float(e.get("delta", 0) or 0)) <= _d_max]
+                if not _cands:
+                    _cands = _pool
+                if not _cands:
+                    continue
+                _best = min(_cands, key=lambda e: _score(e, _d_tgt))
+                try:
+                    from core.analysis import validate_option as _vopt2, calculate_greeks as _cg2
+                    from datetime import datetime as _dt3
+                    _hv_exp_str = str(_best.get("expiry", ""))
+                    _hv_exp_dt = _dt3.fromisoformat(_hv_exp_str[:10]).date() if _hv_exp_str else date.today()
+                    _hv_iv = float(_best.get("iv", 0.5) or 0.5)
+                    if _hv_iv > 5.0: _hv_iv /= 100.0
+                    elif _hv_iv < 0.05: _hv_iv *= 100.0
+                    _hv_dte = max(1, (_hv_exp_dt - date.today()).days)
+                    _hv_strike = float(_best.get("strike", _hv_spot) or _hv_spot)
+                    _hv_gs = _cg2(
+                        spot=_hv_spot,
+                        strike=_hv_strike,
+                        expiry_days=_hv_dte,
+                        iv=_hv_iv,
+                        option_type=_hv_opt,
+                    )
+                    _hv_mid = float(_best.get("mid", 0) or _best.get("mid_price", 0) or 0)
+                    _hv_validity = _vopt2(
+                        ticker=ticker,
+                        direction=_hv_dir,
+                        strike=_hv_strike,
+                        expiry=_hv_exp_dt,
+                        delta=abs(float(_best.get("delta", _hv_gs.delta) or _hv_gs.delta)),
+                        ivr=float(_best.get("ivr", 40) or 40),
+                        oi=int(str(_best.get("oi", 0)).replace(",", "") or 0),
+                        spread_pct=float(_best.get("spread_pct", 2.5) or 2.5),
+                        mid_price=_hv_mid,
+                        iv=_hv_iv,
+                        theta=float(_best.get("theta", _hv_gs.theta) or _hv_gs.theta),
+                        gamma=_hv_gs.gamma,
+                        vega=_hv_gs.vega,
+                    )
+                    ctx.horizon_recommendations[ticker][horizon] = _hv_validity
+                    log.debug("horizon_option_selected",
+                              ticker=ticker, horizon=horizon,
+                              strike=_hv_strike, delta=round(_hv_gs.delta, 3),
+                              dte=_hv_dte)
+                except Exception as _hv_e:
+                    log.warning("horizon_option_error",
+                                ticker=ticker, horizon=horizon, error=str(_hv_e))
+
+        if ctx.horizon_recommendations:
+            log.info("horizon_recommendations_done",
+                     tickers=len(ctx.horizon_recommendations),
+                     detail={tk: list(v.keys())
+                             for tk, v in ctx.horizon_recommendations.items()})
+
         duration_ms = int((time.monotonic() - start) * 1000)
         append_audit(ctx.execution_id, 7, "completed", duration_ms=duration_ms,
                      data={"valid": len(valid_tickers),
@@ -1268,9 +1716,11 @@ class BuySteps:
                     atm_straddle_price=opt_data.atm_straddle_price if opt_data else 0.0,
                     adx=ticker_data.technical.adx14,
                     signal_count=tech_score.signal_count if tech_score else 4,
-                    total_capital=rp.total_capital if rp else None,
-                    max_per_position=rp.max_per_position if rp else None,
-                    commission_per_contract=rp.commission_per_contract if rp else None,
+                    # cfg.budget_1st = 전체 자본 × (1-유보) × 1차진입비율
+                    # summary risk_params가 있어도 자본 배분은 config 기준으로 override
+                    total_capital=cfg.TOTAL_CAPITAL,
+                    max_per_position=cfg.budget_1st,
+                    commission_per_contract=cfg.COMMISSION_PER_CONTRACT,
                     bull_target_price=bull_tp,
                 )
                 ctx.scenarios[ticker] = scenario
@@ -1473,7 +1923,7 @@ class BuySteps:
                     final_score=c["final_score"],
                     conviction=confidence,
                     capital_allocation=min(
-                        scenario.total_investment, cfg.MAX_PER_POSITION
+                        scenario.total_investment, cfg.budget_1st
                     ),
                     contracts=scenario.contracts,
                     strike=validity.strike,
@@ -1683,6 +2133,8 @@ class BuySteps:
                 kavout_data=dict(ctx.kavout_data) if ctx.kavout_data else None,
                 portfolio_exposure=ctx.portfolio_exposure,
                 filter_details=dict(ctx.filter_details) if ctx.filter_details else None,
+                investment_horizons=dict(ctx.investment_horizons) if ctx.investment_horizons else None,
+                horizon_recommendations=dict(ctx.horizon_recommendations) if ctx.horizon_recommendations else None,
             )
 
             # 탈락 종목 개별 노트

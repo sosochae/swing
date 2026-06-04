@@ -1,0 +1,25 @@
+{
+  "execution_id": "buy_MRVL_20260604_003842",
+  "step": 10,
+  "completed_at": "2026-06-04T00:38:58.934332",
+  "duration_ms": 15,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "MRVL",
+        "action": "보류"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "MRVL",
+        "action": "보류"
+      }
+    ],
+    "high_downside": [
+      "MRVL"
+    ]
+  }
+}

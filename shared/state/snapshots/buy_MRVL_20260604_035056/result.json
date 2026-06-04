@@ -1,0 +1,118 @@
+{
+  "execution_id": "buy_MRVL_20260604_035056",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "MRVL",
+      "direction": "long_call",
+      "action": "관찰",
+      "final_score": 65.39999999999999,
+      "conviction": {
+        "technical_signals": 8,
+        "timing_conditions": 4,
+        "total_signals": 12,
+        "rr_ratio": 0.49,
+        "ivr": 45.7,
+        "level": "medium",
+        "trend_confidence": 1.0,
+        "news_confidence": 0.614,
+        "thesis_confidence": 0.163,
+        "execution_confidence": 0.7,
+        "total_conviction": 0.641
+      },
+      "capital_allocation": 1000.0,
+      "contracts": 1,
+      "strike": 320.0,
+      "expiry": "2026-08-21",
+      "rationale": "확신도 0.64 (medium) | 신호수 8/7, 시나리오R/R 0.5, EV $5,044 | [ADX:25 RSI:10 MACD:25 RVOL:25] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $38.2 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "MRVL",
+        "direction": "long_call",
+        "strike": 320.0,
+        "expiry": "2026-08-21",
+        "contracts": 1,
+        "total_investment": 5814.0,
+        "commission_total": 5.0,
+        "implied_move_pct": 36.274137332958915,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.5,
+          "stock_move_pct": 54.41120599943837,
+          "target_stock_price": 467.395,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 147.96972422024982,
+          "gross_profit": 8987.972422024981,
+          "net_profit": 8982.972422024981,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4,
+          "stock_move_pct": 18.137068666479454,
+          "target_stock_price": 357.59499999999997,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 86.4877342202498,
+          "gross_profit": 2839.7734220249804,
+          "net_profit": 2834.7734220249804,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.1,
+          "stock_move_pct": -54.41120599943837,
+          "target_stock_price": 137.995,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -5809.0,
+          "net_profit": -5814.0,
+          "rationale": ""
+        },
+        "expected_value": 5043.995579822483,
+        "stop_loss_premium": 29.045,
+        "target_premium_1st": 87.135,
+        "target_premium_2nd": 116.18,
+        "target_premium_3rd": 145.22500000000002,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(104%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": [
+        "내부자 순매도 $48.9M (최근 거래 집계)"
+      ]
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "favorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 46.0,
+  "summary": {
+    "filtered_tickers": [
+      "MRVL"
+    ],
+    "regime": "favorable"
+  }
+}

@@ -96,12 +96,43 @@ class Config:
     RSS_FEEDS_FILE: str = os.getenv("RSS_FEEDS_FILE", str(_root / "shared" / "rss_feeds.json"))
 
     # ── 리스크 파라미터 ───────────────────────────────────────
-    TOTAL_CAPITAL: float = float(os.getenv("TOTAL_CAPITAL", "3000"))
+    # ★ TOTAL_CAPITAL 변경 시 이 한 줄만 수정 (.env의 TOTAL_CAPITAL)
+    # 3000만원 ÷ 1350 ≈ $22,222
+    TOTAL_CAPITAL: float = float(os.getenv("TOTAL_CAPITAL", "22222"))
     MAX_PER_POSITION: float = float(os.getenv("MAX_PER_POSITION", "1000"))
     COMMISSION_PER_CONTRACT: float = float(
-        os.getenv("COMMISSION_PER_CONTRACT", "5")
+        os.getenv("COMMISSION_PER_CONTRACT", "0.50")   # IBKR 기본
     )
     RISK_FREE_RATE: float = float(os.getenv("RISK_FREE_RATE", "0.0436"))
+
+    # ── 자본 배분 비율 ─────────────────────────────────────────
+    # 전체 TOTAL_CAPITAL 중 다음 투자를 위해 유보하는 비율
+    NEXT_TRADE_RESERVE_PCT: float = float(os.getenv("NEXT_TRADE_RESERVE_PCT", "0.30"))
+    # 나머지 투자 가능 금액 내 배분
+    # investable = TOTAL_CAPITAL × (1 - NEXT_TRADE_RESERVE_PCT)
+    ENTRY_1ST_PCT: float = float(os.getenv("ENTRY_1ST_PCT", "0.50"))   # 1차 진입
+    ENTRY_2ND_PCT: float = float(os.getenv("ENTRY_2ND_PCT", "0.30"))   # 2차 진입 (방향 확인 후)
+    RESERVE_PCT:   float = float(os.getenv("RESERVE_PCT",   "0.20"))   # 보험 현금
+
+    @property
+    def investable_capital(self) -> float:
+        """실제 투자 가능 금액 (다음 투자 유보분 제외)"""
+        return self.TOTAL_CAPITAL * (1.0 - self.NEXT_TRADE_RESERVE_PCT)
+
+    @property
+    def budget_1st(self) -> float:
+        """1차 진입 예산"""
+        return self.investable_capital * self.ENTRY_1ST_PCT
+
+    @property
+    def budget_2nd(self) -> float:
+        """2차 진입 예산 (방향 확인 후 수동 진입)"""
+        return self.investable_capital * self.ENTRY_2ND_PCT
+
+    @property
+    def budget_reserve(self) -> float:
+        """보험 현금"""
+        return self.investable_capital * self.RESERVE_PCT
 
     # ── 파일 감시 설정 ────────────────────────────────────────
     WATCHER_DEBOUNCE_SECONDS: int = 30

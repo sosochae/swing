@@ -656,6 +656,7 @@ def validate_option(
         is_valid=is_valid,
         exclusion_reason="; ".join(reasons),
         mid_price=mid_price,
+        oi=oi,
         greeks=greeks,
     )
 
@@ -665,6 +666,81 @@ def validate_option(
         delta=delta, ivr=ivr, dte=dte,
     )
     return result
+
+
+# ─────────────────────────────────────────────────────────────
+# 4-B. 투자 기간 분류  (Step 7 전 호출)
+# ─────────────────────────────────────────────────────────────
+
+def classify_investment_horizon(
+    ticker: str,
+    *,
+    rsi14: float | None = None,
+    adx14: float | None = None,
+    avg_volume_ratio: float | None = None,   # RVOL
+    change_pct: float | None = None,         # 당일 등락률 (%)
+    ma_alignment: str | None = None,         # "bullish" / "bearish" / "mixed"
+    analyst_buy_pct: float | None = None,    # Buy 비율 (0~1)
+    peg_ratio: float | None = None,
+    revenue_growth_yoy: float | None = None, # %
+    k_score: float | None = None,
+    days_since_earnings: int | None = None,  # 어닝 발표 후 경과일
+    forward_pe: float | None = None,
+) -> list[str]:
+    """
+    종목의 투자 기간 적합성 분류.
+    단기 / 중기 / 장기 중 해당하는 것을 모두 반환 (복수 가능).
+
+    분류 기준:
+      단기 (DTE 25-40): 강한 단기 모멘텀
+        - RSI ≥ 75 AND ADX ≥ 30 AND RVOL ≥ 1.5
+        - AND (당일 등락 ≥ +5% OR 어닝 후 14일 이내)
+      중기 (DTE 45-90): 표준 스윙
+        - ADX ≥ 20 AND MA 정배열 AND 애널리스트 Buy 우세 (≥ 60%)
+        - 조건 없어도 기본 포함 (가장 범용)
+      장기 (DTE 90-180): 구조적 성장 베팅
+        - PEG ≤ 2.0 OR 매출 성장 ≥ 20% AND K-Score ≥ 7
+
+    Returns:
+        e.g. ["중기", "장기"] or ["단기", "중기"]
+    """
+    horizons: list[str] = []
+
+    # ── 단기 판정 ──────────────────────────────────────────────
+    _rsi_ok   = rsi14 is not None and rsi14 >= st.HORIZON_SHORT_RSI_MIN
+    _adx_ok   = adx14 is not None and adx14 >= st.HORIZON_SHORT_ADX_MIN
+    _rvol_ok  = avg_volume_ratio is not None and avg_volume_ratio >= st.HORIZON_SHORT_RVOL_MIN
+    _move_ok  = change_pct is not None and abs(change_pct) >= st.HORIZON_SHORT_MOVE_MIN
+    _earn_ok  = days_since_earnings is not None and days_since_earnings <= st.HORIZON_SHORT_EARN_DAYS
+    _short_base = _rsi_ok and _adx_ok and _rvol_ok
+    _short_trigger = _move_ok or _earn_ok
+    if _short_base and _short_trigger:
+        horizons.append("단기")
+
+    # ── 중기 판정 ──────────────────────────────────────────────
+    # 가장 기본적인 기간 — ADX 조건 미달이어도 방향이 명확하면 포함
+    _mid_adx  = adx14 is not None and adx14 >= st.HORIZON_MID_ADX_MIN
+    _mid_ma   = ma_alignment == "bullish"
+    _mid_buy  = analyst_buy_pct is None or analyst_buy_pct >= 0.60
+    # ADX+MA 정배열이거나, 단순히 MA 정배열이면 중기 포함
+    if (_mid_adx and _mid_ma) or _mid_ma or _mid_adx:
+        horizons.append("중기")
+    elif not horizons:
+        # 아무 것도 해당 없으면 최소한 중기는 포함 (기본 추천)
+        horizons.append("중기")
+
+    # ── 장기 판정 ──────────────────────────────────────────────
+    _peg_ok  = peg_ratio is not None and 0 < peg_ratio <= st.HORIZON_LONG_PEG_MAX
+    _rev_ok  = revenue_growth_yoy is not None and revenue_growth_yoy >= st.HORIZON_LONG_REV_MIN
+    _ks_ok   = k_score is not None and k_score >= st.HORIZON_LONG_KSCORE_MIN
+    _pe_ok   = forward_pe is not None and 0 < forward_pe <= 80    # 고평가 배제
+    if _peg_ok or (_rev_ok and _ks_ok) or (_rev_ok and _pe_ok):
+        horizons.append("장기")
+
+    log.debug("horizon_classified", ticker=ticker, horizons=horizons,
+              rsi=rsi14, adx=adx14, rvol=avg_volume_ratio,
+              change_pct=change_pct, peg=peg_ratio)
+    return horizons
 
 
 # ─────────────────────────────────────────────────────────────

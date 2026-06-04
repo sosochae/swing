@@ -1,0 +1,11 @@
+{
+  "execution_id": "buy_MRVL_20260603_230742",
+  "step": 5,
+  "completed_at": "2026-06-03T23:08:05.018976",
+  "duration_ms": 11233,
+  "data": {
+    "researched": [
+      "MRVL"
+    ]
+  }
+}

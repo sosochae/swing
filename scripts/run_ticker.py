@@ -6,6 +6,25 @@
     python scripts/run_ticker.py TSLA --use-cache
 """
 from __future__ import annotations
+# ── SSL CA bundle ASCII 경로 확보 (curl_cffi 로드 전에 반드시 실행) ──────────
+# 시스템 Python 3.11 실행 시 certifi가 Non-ASCII 사용자 경로
+# (C:\Users\소소\...) 에 위치해 curl error 77이 발생한다.
+# curl_cffi 로드 이전에 ASCII 경로로 환경변수를 설정해 회피한다.
+import os as _os, shutil as _sh, certifi as _certifi_ssl
+_ca_raw = _certifi_ssl.where()
+try:
+    _ca_raw.encode('ascii')
+    _ca_ascii = _ca_raw
+except UnicodeEncodeError:
+    from pathlib import Path as _Path
+    _cache_dir = _Path(__file__).resolve().parents[1] / 'cache'
+    _cache_dir.mkdir(exist_ok=True)
+    _ca_ascii = str(_cache_dir / 'cacert.pem')
+    _sh.copy2(_ca_raw, _ca_ascii)
+for _ev in ('SSL_CERT_FILE', 'CURL_CA_BUNDLE', 'REQUESTS_CA_BUNDLE'):
+    _os.environ[_ev] = _ca_ascii
+del _ca_raw, _ca_ascii, _ev, _os, _sh, _certifi_ssl
+# ─────────────────────────────────────────────────────────────────────────────
 import argparse
 import asyncio
 import sys
@@ -87,7 +106,7 @@ async def run(tickers: list[str], use_cache: bool = False) -> None:
             print(f"  Strike: ${r.strike}  Expiry: {r.expiry}")
             if ctx.option_validity and r.ticker in ctx.option_validity:
                 ov = ctx.option_validity[r.ticker]
-                print(f"  IV: {ov.greeks.iv:.1f}%  Delta: {ov.greeks.delta:.2f}  IVR: {ov.greeks.ivr:.0f}")
+                print(f"  IV: {ov.greeks.iv * 100:.1f}%  Delta: {ov.greeks.delta:.2f}  IVR: {ov.greeks.ivr:.0f}")
     else:
         print("\n최종 순위 없음 (필터 탈락 또는 레짐 불리)")
         if ctx.filter_failures:

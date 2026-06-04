@@ -205,6 +205,7 @@ class FinvizDetail(BaseModel):
     sma5_val: float | None = None             # 5일 SMA 달러값
     sma20_val: float | None = None            # 20일 SMA 달러값
     sma50_val: float | None = None            # 50일 SMA 달러값
+    sma60_val: float | None = None            # 60일 SMA 달러값 (ma60 브릿지용)
     sma200_val: float | None = None           # 200일 SMA 달러값
     bb_upper: float | None = None             # 볼린저밴드 상단
     bb_mid: float | None = None               # 볼린저밴드 중앙 (≈SMA20)
@@ -419,6 +420,7 @@ class OptionValidity(BaseModel):
     is_valid: bool
     exclusion_reason: str = ""
     mid_price: float = 0.0       # 옵션 중간가 (프리미엄 추정용)
+    oi: int = 0                  # 미결제약정 (선택 이유 표시용)
     greeks: Greeks = Field(default_factory=Greeks)
 
 
@@ -647,6 +649,10 @@ class PipelineContext(BaseModel):
     filter_failures: dict[str, list[str]] = Field(default_factory=dict)
     technical_scores: dict[str, TechnicalScore] = Field(default_factory=dict)
     option_validity: dict[str, OptionValidity] = Field(default_factory=dict)
+    # 기간별 옵션 추천 {ticker: {"단기": OptionValidity, "중기": ..., "장기": ...}}
+    horizon_recommendations: dict[str, dict[str, "OptionValidity"]] = Field(default_factory=dict)
+    # 투자 기간 분류 결과 {ticker: ["단기", "중기", "장기"]}
+    investment_horizons: dict[str, list[str]] = Field(default_factory=dict)
     scenarios: dict[str, Scenario] = Field(default_factory=dict)
     portfolio_exposure: PortfolioExposure = Field(default_factory=PortfolioExposure)
     final_rankings: list[FinalRanking] = Field(default_factory=list)          # 안정성+수익 균형 순위

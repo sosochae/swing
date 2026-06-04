@@ -19,14 +19,55 @@ from __future__ import annotations
 # 1. 옵션 유효성 필터  (validate_option)
 # ══════════════════════════════════════════════════════════════════════
 
-DELTA_MIN: float = 0.40          # 진입 가능 델타 하한
+DELTA_MIN: float = 0.40          # 진입 가능 델타 하한 (기본 — 중기 기준)
 DELTA_MAX: float = 0.70          # 진입 가능 델타 상한
 IVR_MAX:   float = 70.0          # IVR 상한 (초과 시 진입 차단)
 IVR_WARNING: float = 50.0        # IVR 경고 구간 시작
 SPREAD_MAX_PCT: float = 5.0      # 매수/매도 스프레드 최대 비율 (%)
-DTE_MIN:   int   = 21            # 최소 잔존 만기일
+DTE_MIN:   int   = 21            # 최소 잔존 만기일 (기본 — 단기 최솟값)
 OI_MIN:    int   = 500           # 최소 미결제약정
 OI_WARNING: int  = 999           # OI 경고 상한 (500~999 범위)
+
+# ══════════════════════════════════════════════════════════════════════
+# 1-B. 투자 기간별 옵션 파라미터  (classify_investment_horizon + step_7)
+# ══════════════════════════════════════════════════════════════════════
+# 레버리지 단순 추정: (Delta × 주가) / 프리미엄
+#   단기(DTE~30, Delta 0.62): ~6-7배   — 짧은 모멘텀 포착
+#   중기(DTE~60, Delta 0.50): ~3.8배   — 표준 스윙
+#   장기(DTE~120, Delta 0.40): ~3-4배  — 구조적 성장 베팅
+
+# ─ 단기 (short) : DTE 25~40, ATM~약간 ITM, 높은 델타
+DTE_SHORT_MIN:   int   = 25
+DTE_SHORT_MAX:   int   = 40
+DELTA_SHORT_MIN: float = 0.55
+DELTA_SHORT_MAX: float = 0.70
+DELTA_SHORT_TARGET: float = 0.625   # 선택 기준 (이 값에 가장 가까운 것)
+
+# ─ 중기 (mid) : DTE 36~90, ATM 중심
+# ─ 중기 (mid) : DTE 45~90, ATM 중심
+DTE_MID_MIN:   int   = 45
+DTE_MID_MAX:   int   = 90
+DELTA_MID_MIN: float = 0.42
+DELTA_MID_MAX: float = 0.57
+DELTA_MID_TARGET: float = 0.50
+
+# ─ 장기 (long) : DTE 90~180, 약간 OTM, 구조적 성장
+DTE_LONG_MIN:   int   = 90
+DTE_LONG_MAX:   int   = 180
+DELTA_LONG_MIN: float = 0.32
+DELTA_LONG_MAX: float = 0.48
+DELTA_LONG_TARGET: float = 0.40
+
+# ─ 기간 분류 신호 임계값
+HORIZON_SHORT_RSI_MIN:   float = 75.0   # RSI ≥ 75 (강한 단기 모멘텀)
+HORIZON_SHORT_ADX_MIN:   float = 30.0   # ADX ≥ 30
+HORIZON_SHORT_RVOL_MIN:  float = 1.5    # RVOL ≥ 1.5
+HORIZON_SHORT_MOVE_MIN:  float = 5.0    # 당일 등락 ≥ +5% (절댓값)
+HORIZON_SHORT_EARN_DAYS: int   = 14     # 어닝 후 14일 이내
+HORIZON_MID_ADX_MIN:     float = 20.0   # ADX ≥ 20
+HORIZON_LONG_PEG_MAX:    float = 2.0    # PEG ≤ 2.0
+HORIZON_LONG_REV_MIN:    float = 20.0   # 매출 성장률 ≥ 20%
+HORIZON_LONG_KSCORE_MIN: float = 7.0    # K-Score ≥ 7
 
 # ══════════════════════════════════════════════════════════════════════
 # 2. 종목 스크리닝 필터  (apply_filters)

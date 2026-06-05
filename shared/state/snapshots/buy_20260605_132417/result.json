@@ -1,0 +1,201 @@
+{
+  "execution_id": "buy_20260605_132417",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "MRVL",
+      "direction": "long_call",
+      "action": "관찰",
+      "final_score": 75.80000000000001,
+      "conviction": {
+        "technical_signals": 8,
+        "timing_conditions": 4,
+        "total_signals": 12,
+        "rr_ratio": 0.27,
+        "ivr": 46.4,
+        "level": "medium",
+        "trend_confidence": 1.0,
+        "news_confidence": 0.629,
+        "thesis_confidence": 0.091,
+        "execution_confidence": 0.7,
+        "total_conviction": 0.623
+      },
+      "capital_allocation": 6132.5,
+      "contracts": 1,
+      "strike": 320.0,
+      "expiry": "2026-08-21",
+      "rationale": "확신도 0.62 (medium) | 신호수 8/7, 시나리오R/R 0.3, EV $2,604 | [ADX:25 RSI:10 MACD:25 RVOL:25] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $160.7 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "MRVL",
+        "direction": "long_call",
+        "strike": 320.0,
+        "expiry": "2026-08-21",
+        "contracts": 1,
+        "total_investment": 6132.5,
+        "commission_total": 0.5,
+        "implied_move_pct": 18.811427487912017,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.5,
+          "stock_move_pct": 28.217141231868037,
+          "target_stock_price": 405.71750000000003,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 112.30568709377113,
+          "gross_profit": 5098.568709377113,
+          "net_profit": 5098.068709377113,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4,
+          "stock_move_pct": 9.405713743956005,
+          "target_stock_price": 346.1925,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 76.6709995937711,
+          "gross_profit": 1535.09995937711,
+          "net_profit": 1534.59995937711,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.1,
+          "stock_move_pct": -28.217141231868027,
+          "target_stock_price": 227.1425,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 5.401624593771107,
+          "gross_profit": -5591.837540622889,
+          "net_profit": -5592.337540622889,
+          "rationale": ""
+        },
+        "expected_value": 2603.6405843771117,
+        "stop_loss_premium": 30.66,
+        "target_premium_1st": 91.98,
+        "target_premium_2nd": 122.64,
+        "target_premium_3rd": 153.3,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(105%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": [
+        "내부자 순매도 $48.9M (최근 거래 집계)"
+      ]
+    },
+    {
+      "rank": 2,
+      "ticker": "MU",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 62.0,
+      "conviction": {
+        "technical_signals": 8,
+        "timing_conditions": 4,
+        "total_signals": 12,
+        "rr_ratio": 0.46,
+        "ivr": 51.7,
+        "level": "medium",
+        "trend_confidence": 1.0,
+        "news_confidence": 0.586,
+        "thesis_confidence": 0.153,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.563
+      },
+      "capital_allocation": 7777.7,
+      "contracts": 1,
+      "strike": 1090.0,
+      "expiry": "2026-08-21",
+      "rationale": "확신도 0.56 (medium) | 신호수 8/7, 시나리오R/R 0.5, EV $14,635 | [ADX:25 RSI:10 MACD:25 RVOL:0] | K-Score 9/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $160.7 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "MU",
+        "direction": "long_call",
+        "strike": 1090.0,
+        "expiry": "2026-08-21",
+        "contracts": 1,
+        "total_investment": 17958.5,
+        "commission_total": 0.5,
+        "implied_move_pct": 34.73142570281125,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.5,
+          "stock_move_pct": 52.09713855421687,
+          "target_stock_price": 1514.8875,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 442.12598215053015,
+          "gross_profit": 26254.59821505301,
+          "net_profit": 26254.09821505301,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4,
+          "stock_move_pct": 17.365712851405632,
+          "target_stock_price": 1168.9625,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 262.17730215053024,
+          "gross_profit": 8259.730215053023,
+          "net_profit": 8259.230215053023,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.1,
+          "stock_move_pct": -52.09713855421688,
+          "target_stock_price": 477.11249999999984,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -17958.0,
+          "net_profit": -17958.5,
+          "rationale": ""
+        },
+        "expected_value": 14634.891193547714,
+        "stop_loss_premium": 89.79,
+        "target_premium_1st": 269.37,
+        "target_premium_2nd": 359.16,
+        "target_premium_3rd": 448.95000000000005,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(98%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": [
+        "내부자 순매도 $3010.4M (최근 거래 집계)"
+      ]
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "favorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 507.7,
+  "summary": {
+    "filtered_tickers": [
+      "MRVL",
+      "MU"
+    ],
+    "regime": "favorable"
+  }
+}

@@ -350,6 +350,12 @@ ANALYST_SELL_SCORE_PENALTY:  float = -5.0
 
 SHORT_FLOAT_SQUEEZE_THRESHOLD: float = 15.0  # 공매도 비율 ≥ 15% → 숏스퀴즈 가능
 
+# OI 변화 방향성 신호  (buy_steps.py Step 7)
+# 비율 기준만 사용 — 절대값 기준 없음 (종목별 유동성 편차 방지)
+OI_CHANGE_RATIO_THRESHOLD: float = 0.05   # 방향 OI 증가량 / 해당 방향 총 OI ≥ 5% → 신호
+OI_CHANGE_SIGNAL_BONUS:    int   = 1      # 방향 일치 시 signal_count 가산
+OI_CHANGE_SCORE_BONUS:     float = 2.0   # 방향 일치 시 final_score 가산 (약한 보조 신호)
+
 # ══════════════════════════════════════════════════════════════════════
 # 16. 매수 — Devil's Advocate 점수 차감  (buy_steps.py Step 6)
 # ══════════════════════════════════════════════════════════════════════

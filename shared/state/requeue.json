@@ -1,7 +1,7 @@
 [
   {
     "ticker": "MU",
-    "registered_at": "2026-05-30T00:15:29.281116",
+    "registered_at": "2026-06-06T00:41:21.130031",
     "failed_filters": [
       "F1_RVOL_LOW"
     ],
@@ -247,7 +247,7 @@
   },
   {
     "ticker": "MRVL",
-    "registered_at": "2026-06-03T17:13:58.069260",
+    "registered_at": "2026-06-05T13:32:48.457475",
     "failed_filters": [
       "F1_RVOL_LOW"
     ],

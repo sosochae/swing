@@ -1,0 +1,56 @@
+{
+  "execution_id": "sell_20260604_214147",
+  "step": 10,
+  "completed_at": "2026-06-04T22:17:46.022122",
+  "duration_ms": 490968,
+  "data": [
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "CTRA",
+      "action": "PARTIAL_EXIT"
+    },
+    {
+      "ticker": "AMD",
+      "action": "PARTIAL_EXIT"
+    },
+    {
+      "ticker": "GOOGL",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "VICR",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "DGII",
+      "action": "HOLD"
+    },
+    {
+      "ticker": "ALAB",
+      "action": "PARTIAL_EXIT"
+    },
+    {
+      "ticker": "CRDO",
+      "action": "PARTIAL_EXIT"
+    },
+    {
+      "ticker": "MRVL",
+      "action": "HOLD"
+    }
+  ]
+}

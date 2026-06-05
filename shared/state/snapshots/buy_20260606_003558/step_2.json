@@ -1,0 +1,20 @@
+{
+  "execution_id": "buy_20260606_003558",
+  "step": 2,
+  "completed_at": "2026-06-06T00:36:08.871391",
+  "duration_ms": 4968,
+  "data": {
+    "regime_status": "borderline",
+    "allowed_direction": "both",
+    "regime_confidence": 0.33,
+    "trend_confidence": 0.5,
+    "risk_factors": [
+      "QQQ 20MA 아래 — 기술주 약세",
+      "DXY 강세 (99.9 > MA20 99.0) — 달러 강세, 수익 압박",
+      "10년물 금리 4.54% — 금리 주의 구간 (4.5~5.0%)"
+    ],
+    "trend_strength": "ADX 미입력, MA 구조로 대체: 혼조",
+    "volatility": "VIX 16.58 ≤ 20.0 (Long Call 유리)",
+    "index_trend": "SPY 위, QQQ 아래 (혼조)"
+  }
+}

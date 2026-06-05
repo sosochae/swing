@@ -570,20 +570,23 @@ def _parse_options_data(data: dict[str, Any]) -> TickerOptions:
     for entry in data.get("chain_entries", []):
         try:
             dte_val = int(entry.get("DTE", 0) or 0)
+            # oi_change: int 또는 None 그대로 전달 (None = 데이터 없음)
+            _raw_oic = entry.get("oi_change")
             chain.append({
-                "expiry": entry.get("expiry", ""),
+                "expiry":      entry.get("expiry", ""),
                 "option_type": entry.get("type", "call").lower(),
-                "strike": float(entry.get("strike", 0) or 0),
-                "oi": int(entry.get("OI", 0) or 0),
-                "volume": int(entry.get("Vol", 0) or 0),
-                "iv": float(entry.get("IV", 0) or 0),
-                "ivr": float(entry.get("IVR", 0) or 0),
-                "mid_price": float(entry.get("Mid", 0) or 0),
-                "spread_pct": float(entry.get("Sprd%", 0) or 0),
-                "delta": float(entry.get("Delta", 0) or 0),
-                "theta": float(entry.get("Theta", 0) or 0),
-                "dte": dte_val,
-                "is_anomaly": entry.get("anomaly", False),
+                "strike":      float(entry.get("strike", 0) or 0),
+                "oi":          int(entry.get("OI", 0) or 0),
+                "volume":      int(entry.get("Vol", 0) or 0),
+                "iv":          float(entry.get("IV", 0) or 0),
+                "ivr":         float(entry.get("IVR", 0) or 0),
+                "mid_price":   float(entry.get("Mid", 0) or 0),
+                "spread_pct":  float(entry.get("Sprd%", 0) or 0),
+                "delta":       float(entry.get("Delta", 0) or 0),
+                "theta":       float(entry.get("Theta", 0) or 0),
+                "dte":         dte_val,
+                "is_anomaly":  entry.get("anomaly", False),
+                "oi_change":   int(_raw_oic) if _raw_oic is not None else None,
             })
         except Exception:
             pass
@@ -825,7 +828,8 @@ def _parse_summary_list_format(raw: list, file_path: Path) -> SummaryData:
             chain_m = re.search(
                 r"(CALL|PUT)\s+Strike ([\d.]+)\s+OI ([\d,]+)\s+Vol ([\d,]+)"
                 r"\s+IV ([\d.]+)\s+IVR ([\d.]+)\s+Mid ([\d.]+)\s+Sprd% ([\d.]+)"
-                r"\s+Delta ([-\d.]+)\s+Theta ([-\d.]+)",
+                r"\s+Delta ([-\d.]+)\s+Theta ([-\d.]+)"
+                r"(?:\s+OI변화\s+([-+]?[\d,]+|N/A))?",  # group(11) — 없으면 None
                 line
             )
             if chain_m:
@@ -834,21 +838,31 @@ def _parse_summary_list_format(raw: list, file_path: Path) -> SummaryData:
                 raw_ivr = float(chain_m.group(6))
                 ivr_pct = raw_ivr * 100.0 if raw_ivr <= 1.0 else raw_ivr
 
+                # OI 변화: "+123" → 123 / "-456" → -456 / "N/A" or None → None
+                _oi_chg_raw = chain_m.group(11)
+                _oi_change: int | None = None
+                if _oi_chg_raw and _oi_chg_raw != "N/A":
+                    try:
+                        _oi_change = int(_oi_chg_raw.replace("+", "").replace(",", ""))
+                    except ValueError:
+                        pass
+
                 chain_entries.append({
-                    "type":    chain_m.group(1).lower(),
-                    "strike":  float(chain_m.group(2)),
-                    "OI":      int(chain_m.group(3).replace(",", "")),
-                    "Vol":     int(chain_m.group(4).replace(",", "")),
-                    "IV":      float(chain_m.group(5)),
-                    "IVR":     ivr_pct,
-                    "Mid":     float(chain_m.group(7)),
-                    "Sprd%":   float(chain_m.group(8)),
-                    "Delta":   float(chain_m.group(9)),
-                    "Theta":   float(chain_m.group(10)),
-                    "anomaly": "⚠️ 급등" in line,
+                    "type":      chain_m.group(1).lower(),
+                    "strike":    float(chain_m.group(2)),
+                    "OI":        int(chain_m.group(3).replace(",", "")),
+                    "Vol":       int(chain_m.group(4).replace(",", "")),
+                    "IV":        float(chain_m.group(5)),
+                    "IVR":       ivr_pct,
+                    "Mid":       float(chain_m.group(7)),
+                    "Sprd%":     float(chain_m.group(8)),
+                    "Delta":     float(chain_m.group(9)),
+                    "Theta":     float(chain_m.group(10)),
+                    "oi_change": _oi_change,   # int 또는 None (데이터 없으면 무시)
+                    "anomaly":   "⚠️ 급등" in line,
                     # ── summary 헤더에서 추출한 만기/DTE ──
-                    "expiry":  current_expiry,
-                    "DTE":     current_dte,
+                    "expiry":    current_expiry,
+                    "DTE":       current_dte,
                 })
         opt_data["chain_entries"] = chain_entries
         options[ticker] = _parse_options_data(opt_data)

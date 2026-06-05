@@ -235,6 +235,7 @@ class ObsidianClient:
         investment_horizons: "dict[str, list[str]] | None" = None,
         horizon_recommendations: "dict[str, dict[str, OptionValidity]] | None" = None,
         ultra_long_criteria: "dict[str, dict] | None" = None,
+        options_analytics: "dict[str, dict] | None" = None,
     ) -> str:
         """
         매수 분석 노트 저장 — TYPE 1~5 통합 보고서 형식 (환각 방지 강화)
@@ -325,6 +326,7 @@ class ObsidianClient:
                     investment_horizons=(investment_horizons or {}).get(r.ticker),
                     horizon_recs=(horizon_recommendations or {}).get(r.ticker),
                     ultra_long_criteria=(ultra_long_criteria or {}).get(r.ticker),
+                    opt_analytics=(options_analytics or {}).get(r.ticker),
                 )
 
         # ── 필터 탈락 요약 ──────────────────────────────────────
@@ -1294,6 +1296,7 @@ def _format_integrated_buy_block(
     investment_horizons: "list[str] | None" = None,
     horizon_recs: "dict[str, OptionValidity] | None" = None,
     ultra_long_criteria: "dict | None" = None,
+    opt_analytics: "dict | None" = None,
 ) -> list[str]:
     """종목 1개에 대한 TYPE 1~5 통합 매수 보고서 블록 생성 (환각 방지)"""
 
@@ -2234,6 +2237,27 @@ def _format_integrated_buy_block(
         f"**Nice-to-Have:** {', '.join(nice_to_have)}",
         "",
     ]
+
+    # ── 옵션 시장 구조 (Implied Move / Max Pain / P/C Ratio / OI 변화) ──────
+    if opt_analytics:
+        _im  = opt_analytics.get("implied_move_pct")
+        _mp  = opt_analytics.get("max_pain")
+        _pc  = opt_analytics.get("pc_ratio")
+        _oi_sig = opt_analytics.get("oi_change_signal")
+        if any(v is not None for v in [_im, _mp, _pc, _oi_sig]):
+            lines += ["", "**📐 옵션 시장 구조**", ""]
+            lines += ["| 항목 | 값 |", "|------|-----|"]
+            if _im is not None:
+                lines.append(f"| Implied Move (내재 이동폭) | ±{_im:.1f}% |")
+            if _mp is not None:
+                lines.append(f"| Max Pain | ${_mp:,.2f} |")
+            if _pc is not None:
+                _pc_label = "풋 우세" if _pc > 1.2 else ("콜 우세" if _pc < 0.7 else "중립")
+                lines.append(f"| P/C Ratio (OI 기준) | {_pc:.3f} ({_pc_label}) |")
+            if _oi_sig is not None:
+                _oi_icon = "✅ 방향 일치 OI 증가 감지" if _oi_sig else "⬜ 해당 없음"
+                lines.append(f"| OI 변화 신호 | {_oi_icon} |")
+            lines.append("")
 
     # 거래 조건 (TYPE 5)
     lines += ["### 5-10. 거래 조건 체크 (Conditions for Trade)", ""]

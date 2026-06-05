@@ -1110,6 +1110,19 @@ class BuySteps:
         log.info("step_7_start", tickers=len(ctx.filtered_tickers))
         start = time.monotonic()
 
+        # ── SUMMARY chain의 OI 변화 데이터 미리 추출 (체인 교체 전 필수) ──────
+        # yfinance 체인 교체 후 SUMMARY oi_change 필드가 사라지므로 먼저 백업.
+        # 키: {ticker: {(strike, option_type): oi_change(int|None)}}
+        _summary_oi_change_map: dict[str, dict[tuple, int | None]] = {}
+        if ctx.summary_data:
+            for _pk in ctx.filtered_tickers:
+                _p_opt = ctx.summary_data.options.get(_pk)
+                if _p_opt and _p_opt.chain:
+                    _summary_oi_change_map[_pk] = {
+                        (float(e.get("strike", 0)), str(e.get("option_type", ""))): e.get("oi_change")
+                        for e in _p_opt.chain
+                    }
+
         # ── 옵션 체인 실시간 갱신 (yfinance) ─────────────────────────────
         if ctx.summary_data:
             try:
@@ -1270,6 +1283,87 @@ class BuySteps:
                 append_audit(ctx.execution_id, 7, "info",
                              data={"option_flow_recalc": _recalc_count})
                 log.info("option_flow_recalc_done", recalculated=_recalc_count)
+
+        # ── OI 변화 방향성 신호 (보조 신호 — 데이터 없으면 완전 무시) ──────────────
+        # 전날 대비 OI 증가량 비율로 스마트머니 방향성 포지션 구축 여부 확인.
+        # 비율 기준만 사용 (절대값 기준 없음 — 종목별 유동성 편차 방지).
+        # 헤지 목적 풋 OI 오인 위험 → 반대 방향 차감 로직 없음.
+        # NOTE: 체인은 이미 yfinance로 교체됨 → oi_change는 앞서 백업한
+        #       _summary_oi_change_map에서 (strike, option_type) 키로 조회.
+        if ctx.summary_data and ctx.technical_scores:
+            _oi_dir = ctx.regime.allowed_direction if ctx.regime else "long_call"
+            if _oi_dir == "both":
+                _oi_dir = "long_call"
+            _oi_is_long = (_oi_dir == "long_call")
+            _oi_signal_count = 0
+
+            for _oi_tk in ctx.filtered_tickers:
+                _oi_score = ctx.technical_scores.get(_oi_tk)
+                _oi_opt   = ctx.summary_data.options.get(_oi_tk)
+                _oi_td    = ctx.summary_data.tickers.get(_oi_tk)
+                _oi_chg_map = _summary_oi_change_map.get(_oi_tk, {})
+
+                if not _oi_score or not _oi_opt or not _oi_opt.chain:
+                    continue
+                if not _oi_chg_map:
+                    continue  # SUMMARY OI 변화 데이터 없음 → 무시
+
+                _oi_spot = _oi_td.technical.price if _oi_td else 0.0
+                if _oi_spot <= 0:
+                    continue
+
+                # yfinance 교체 체인 기준 ±10% Strike — OI는 yfinance 값 사용
+                # oi_change는 SUMMARY 백업 맵에서 (strike, option_type) 키로 조회
+                _oi_call_growth = 0
+                _oi_put_growth  = 0
+                _oi_call_total  = 0
+                _oi_put_total   = 0
+                _has_any_chg_data = False
+
+                for _ce in _oi_opt.chain:
+                    _ce_strike = float(_ce.get("strike", 0))
+                    _ce_type   = str(_ce.get("option_type", ""))
+                    if _oi_spot <= 0 or abs(_ce_strike / _oi_spot - 1.0) > 0.10:
+                        continue
+                    _ce_oi  = int(_ce.get("oi", 0) or 0)
+                    _ce_chg = _oi_chg_map.get((_ce_strike, _ce_type))
+                    if _ce_chg is not None:
+                        _has_any_chg_data = True
+                    if _ce_type == "call":
+                        _oi_call_total += _ce_oi
+                        if _ce_chg is not None:
+                            _oi_call_growth += max(0, _ce_chg)
+                    elif _ce_type == "put":
+                        _oi_put_total += _ce_oi
+                        if _ce_chg is not None:
+                            _oi_put_growth += max(0, _ce_chg)
+
+                if not _has_any_chg_data:
+                    continue  # 해당 ticker의 ATM 대역에 OI변화 데이터 전무
+
+                # 비율 계산 (총 OI 대비 증가량)
+                _oi_call_ratio = _oi_call_growth / _oi_call_total if _oi_call_total > 0 else 0.0
+                _oi_put_ratio  = _oi_put_growth  / _oi_put_total  if _oi_put_total  > 0 else 0.0
+
+                # 방향 일치 비율이 임계값 이상 → 보조 신호 추가
+                _oi_target_ratio = _oi_call_ratio if _oi_is_long else _oi_put_ratio
+                if _oi_target_ratio >= st.OI_CHANGE_RATIO_THRESHOLD:
+                    ctx.technical_scores[_oi_tk] = _oi_score.model_copy(update={
+                        "signal_count": _oi_score.signal_count + st.OI_CHANGE_SIGNAL_BONUS,
+                        "final_score":  min(100.0, _oi_score.final_score + st.OI_CHANGE_SCORE_BONUS),
+                    })
+                    _oi_signal_count += 1
+                    log.info("oi_change_signal_applied",
+                             ticker=_oi_tk,
+                             direction=_oi_dir,
+                             call_ratio=round(_oi_call_ratio, 3),
+                             put_ratio=round(_oi_put_ratio, 3),
+                             bonus_score=st.OI_CHANGE_SCORE_BONUS)
+
+            if _oi_signal_count:
+                append_audit(ctx.execution_id, 7, "info",
+                             data={"oi_change_signals": _oi_signal_count})
+                log.info("oi_change_signals_done", count=_oi_signal_count)
 
         # ── 투자 기간 분류 ─────────────────────────────────────────────────────
         try:
@@ -2181,6 +2275,29 @@ class BuySteps:
             )
             finviz_map_raw = {t: _merge_finviz(t) for t in all_ranked_tickers}
             finviz_map = {k: v for k, v in finviz_map_raw.items() if v is not None} or None
+
+            # ── options_analytics: Implied Move / Max Pain / P/C Ratio / OI 신호 ──
+            # summary_data.options에서 추출 (Step 7에서 실시간 갱신 완료 상태)
+            _opt_analytics: dict[str, dict] = {}
+            if ctx.summary_data:
+                for _oa_tk in all_ranked_tickers:
+                    _oa_opt = ctx.summary_data.options.get(_oa_tk)
+                    if not _oa_opt:
+                        continue
+                    # OI 변화 신호 발화 여부 (signal_count가 기본보다 높으면 발화로 간주)
+                    _oa_ts = ctx.technical_scores.get(_oa_tk)
+                    _oa_base_signal = (_oa_ts.signal_count - st.OI_CHANGE_SIGNAL_BONUS
+                                       if _oa_ts else 0)
+                    _oa_oi_fired = (_oa_ts is not None
+                                    and _oa_ts.signal_count > _oa_base_signal
+                                    and _oa_opt.total_call_oi + _oa_opt.total_put_oi > 0)
+                    _opt_analytics[_oa_tk] = {
+                        "implied_move_pct": _oa_opt.implied_move_near or None,
+                        "max_pain":         _oa_opt.max_pain_near or None,
+                        "pc_ratio":         _oa_opt.pc_ratio or None,
+                        "oi_change_signal": _oa_oi_fired,
+                    }
+
             note_path = await self.obsidian.save_buy_note(
                 execution_id=ctx.execution_id,
                 rankings=ctx.final_rankings,
@@ -2202,6 +2319,7 @@ class BuySteps:
                 investment_horizons=dict(ctx.investment_horizons) if ctx.investment_horizons else None,
                 horizon_recommendations=dict(ctx.horizon_recommendations) if ctx.horizon_recommendations else None,
                 ultra_long_criteria=dict(ctx.ultra_long_criteria) if ctx.ultra_long_criteria else None,
+                options_analytics=_opt_analytics or None,
             )
 
             # 탈락 종목 개별 노트

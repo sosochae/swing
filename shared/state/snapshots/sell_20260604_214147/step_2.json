@@ -1,0 +1,23 @@
+{
+  "execution_id": "sell_20260604_214147",
+  "step": 2,
+  "completed_at": "2026-06-04T21:56:43.646518",
+  "duration_ms": 885141,
+  "data": {
+    "regime": "favorable",
+    "regime_flags": {
+      "MRVL_2026-07-17_220.0": "REGIME_OK",
+      "MRVL_2026-06-19_200.0": "REGIME_OK",
+      "MRVL_2026-07-10_220.0": "REGIME_OK",
+      "MRVL_2026-06-26_280.0": "REGIME_OK",
+      "CTRA_2026-07-10_37.0": "REGIME_OK",
+      "AMD_2026-07-10_305.0": "REGIME_OK",
+      "GOOGL_2026-07-10_412.0": "REGIME_OK",
+      "VICR_2026-07-10_282.0": "REGIME_OK",
+      "DGII_2026-07-10_50.0": "REGIME_OK",
+      "ALAB_2026-07-10_201.0": "REGIME_OK",
+      "CRDO_2026-07-10_212.0": "REGIME_OK",
+      "MRVL_2026-08-21_320.0": "REGIME_OK"
+    }
+  }
+}

@@ -1,0 +1,272 @@
+{
+  "execution_id": "sell_20260604_214147",
+  "step": 1,
+  "completed_at": "2026-06-04T21:41:58.507090",
+  "duration_ms": 14,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "delta_pnl": 9673.96,
+      "theta_pnl": -36.42,
+      "vega_pnl": -3207.54,
+      "vega_exposure_per_pct": 6.11,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 301.65,
+      "current_premium": 83.3,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.9747060662825786,
+        "gamma": 0.001140095571628522,
+        "theta": -0.06069805742724729,
+        "vega": 0.061107358888012844,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "MRVL_2026-06-19_200.0": {
+      "delta_pnl": 9724.82,
+      "theta_pnl": -14.36,
+      "vega_pnl": -1209.46,
+      "vega_exposure_per_pct": 0.0,
+      "iv_used": 0.5,
+      "dte_urgency": "보통",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 301.65,
+      "current_premium": 102.01,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.9999812766820972,
+        "gamma": 2.659321022098701e-06,
+        "theta": -0.023929822352192553,
+        "vega": 4.9721683521008925e-05,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "MRVL_2026-07-10_220.0": {
+      "delta_pnl": 8080.81,
+      "theta_pnl": -10.7,
+      "vega_pnl": -1230.11,
+      "vega_exposure_per_pct": 4.03,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 301.65,
+      "current_premium": 82.9,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.9828274319850102,
+        "gamma": 0.0008977765259895541,
+        "theta": -0.05348740999923092,
+        "vega": 0.040286036858489506,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "MRVL_2026-06-26_280.0": {
+      "delta_pnl": 6205.55,
+      "theta_pnl": -28.85,
+      "vega_pnl": -5621.69,
+      "vega_exposure_per_pct": 23.29,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 301.65,
+      "current_premium": 28.12,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.7547488785134752,
+        "gamma": 0.008494439718045586,
+        "theta": -0.28853967281431825,
+        "vega": 0.2329384700446055,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "CTRA_2026-07-10_37.0": {
+      "delta_pnl": 0.0,
+      "theta_pnl": -10.24,
+      "vega_pnl": -28.76,
+      "vega_exposure_per_pct": 13.83,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 37.04,
+      "current_premium": 2.41,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5448975459789925,
+        "gamma": 0.06815571749843795,
+        "theta": -0.03414567788342153,
+        "vega": 0.04611305452354762,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "AMD_2026-07-10_305.0": {
+      "delta_pnl": 0.0,
+      "theta_pnl": -28.12,
+      "vega_pnl": -413.88,
+      "vega_exposure_per_pct": 37.99,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 304.85,
+      "current_premium": 19.63,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.540925811459396,
+        "gamma": 0.008290023597103532,
+        "theta": -0.2811962212175517,
+        "vega": 0.37993369043192154,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "GOOGL_2026-07-10_412.0": {
+      "delta_pnl": 0.0,
+      "theta_pnl": -38.01,
+      "vega_pnl": -590.99,
+      "vega_exposure_per_pct": 51.34,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 412.32,
+      "current_premium": 26.8,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5441297669459697,
+        "gamma": 0.006123967976015886,
+        "theta": -0.3801476944256043,
+        "vega": 0.5134301334695722,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "VICR_2026-07-10_282.0": {
+      "delta_pnl": 0.0,
+      "theta_pnl": -26.03,
+      "vega_pnl": -201.97,
+      "vega_exposure_per_pct": 35.15,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 282.5,
+      "current_premium": 18.49,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5466414844872864,
+        "gamma": 0.008931719685148321,
+        "theta": -0.26034942827618196,
+        "vega": 0.351521286964702,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "DGII_2026-07-10_50.0": {
+      "delta_pnl": 0.0,
+      "theta_pnl": -9.26,
+      "vega_pnl": -20.74,
+      "vega_exposure_per_pct": 12.47,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 50.5,
+      "current_premium": 3.51,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5672063155919636,
+        "gamma": 0.04959322827166317,
+        "theta": -0.04631592387450122,
+        "vega": 0.062371297183467435,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "ALAB_2026-07-10_201.0": {
+      "delta_pnl": 0.0,
+      "theta_pnl": -18.54,
+      "vega_pnl": -137.46,
+      "vega_exposure_per_pct": 25.04,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 201.06,
+      "current_premium": 13.02,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5429227637847831,
+        "gamma": 0.012562791135639184,
+        "theta": -0.18540615369560062,
+        "vega": 0.25044775122042656,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "CRDO_2026-07-10_212.0": {
+      "delta_pnl": 0.0,
+      "theta_pnl": -19.56,
+      "vega_pnl": -113.44,
+      "vega_exposure_per_pct": 26.42,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 212.16,
+      "current_premium": 13.79,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5440743035555679,
+        "gamma": 0.011901742091187434,
+        "theta": -0.19560738603043523,
+        "vega": 0.26419049527285066,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    },
+    "MRVL_2026-08-21_320.0": {
+      "delta_pnl": -41.89,
+      "theta_pnl": -0.0,
+      "vega_pnl": -3641.11,
+      "vega_exposure_per_pct": 55.36,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 301.65,
+      "current_premium": 21.42,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.460326340045412,
+        "gamma": 0.005693524913045935,
+        "theta": -0.19144875286310856,
+        "vega": 0.5535535333130244,
+        "iv": 0.5,
+        "ivr": 0.0
+      }
+    }
+  }
+}

@@ -1,0 +1,177 @@
+{
+  "execution_id": "sell_20260604_214147",
+  "step": 4,
+  "completed_at": "2026-06-04T22:03:11.821026",
+  "duration_ms": 388155,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 6430,
+        "theta_pnl": 0,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 6430,
+        "actual_pnl": 6430
+      }
+    },
+    "MRVL_2026-06-19_200.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 6430,
+        "theta_pnl": 0,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 6430,
+        "actual_pnl": 6430
+      }
+    },
+    "MRVL_2026-07-10_220.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 6430,
+        "theta_pnl": 0,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 6430,
+        "actual_pnl": 6430
+      }
+    },
+    "MRVL_2026-06-26_280.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 6430,
+        "theta_pnl": 0,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 6430,
+        "actual_pnl": 6430
+      }
+    },
+    "CTRA_2026-07-10_37.0": {
+      "flags": [
+        "주의_신호"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 6,
+        "theta_pnl": -40,
+        "vega_pnl": -5,
+        "total_estimated_pnl": -39,
+        "actual_pnl": -39
+      }
+    },
+    "AMD_2026-07-10_305.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 0.0,
+        "theta_pnl": -442.0,
+        "vega_pnl": 0.0,
+        "total_estimated_pnl": -442.0,
+        "actual_pnl": -442.0
+      }
+    },
+    "GOOGL_2026-07-10_412.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 0,
+        "theta_pnl": -6.29,
+        "vega_pnl": 0,
+        "total_estimated_pnl": -6.29,
+        "actual_pnl": -6.29
+      }
+    },
+    "VICR_2026-07-10_282.0": {
+      "flags": [
+        "근거_유효",
+        "주의_신호"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 0,
+        "theta_pnl": -200,
+        "vega_pnl": -28,
+        "total_estimated_pnl": -228,
+        "actual_pnl": -228
+      }
+    },
+    "DGII_2026-07-10_50.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 12.0,
+        "theta_pnl": -40.0,
+        "vega_pnl": -2.0,
+        "total_estimated_pnl": -30.0,
+        "actual_pnl": -30.0
+      }
+    },
+    "ALAB_2026-07-10_201.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 53,
+        "theta_pnl": -162,
+        "vega_pnl": -47,
+        "total_estimated_pnl": -156,
+        "actual_pnl": -156
+      }
+    },
+    "CRDO_2026-07-10_212.0": {
+      "flags": [
+        "주의_신호"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 0.0,
+        "theta_pnl": -0.8,
+        "vega_pnl": -0.53,
+        "total_estimated_pnl": -1.33,
+        "actual_pnl": -1.33
+      }
+    },
+    "MRVL_2026-08-21_320.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 6430,
+        "theta_pnl": 0,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 6430,
+        "actual_pnl": 6430
+      }
+    }
+  }
+}

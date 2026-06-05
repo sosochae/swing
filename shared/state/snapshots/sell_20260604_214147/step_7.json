@@ -1,0 +1,44 @@
+{
+  "execution_id": "sell_20260604_214147",
+  "step": 7,
+  "completed_at": "2026-06-04T22:09:35.040339",
+  "duration_ms": 0,
+  "data": [
+    {
+      "MRVL": "FULL_EXIT"
+    },
+    {
+      "MRVL": "FULL_EXIT"
+    },
+    {
+      "MRVL": "FULL_EXIT"
+    },
+    {
+      "MRVL": "PARTIAL_EXIT"
+    },
+    {
+      "CTRA": "PARTIAL_EXIT"
+    },
+    {
+      "AMD": "HOLD"
+    },
+    {
+      "GOOGL": "PARTIAL_EXIT"
+    },
+    {
+      "VICR": "HOLD"
+    },
+    {
+      "DGII": "HOLD"
+    },
+    {
+      "ALAB": "HOLD"
+    },
+    {
+      "CRDO": "HOLD"
+    },
+    {
+      "MRVL": "FULL_EXIT"
+    }
+  ]
+}

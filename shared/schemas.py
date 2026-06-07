@@ -90,6 +90,8 @@ class TickerTechnical(BaseModel):
     bb_lower: float = 0.0
     bb_position: str = "mid"         # "upper_break" | "upper" | "mid" | "lower"
     adx14: float = 20.0
+    di_plus: float = 0.0             # DMI+ (상승 방향성 지수)
+    di_minus: float = 0.0            # DMI- (하락 방향성 지수)
     obv_direction: str = "neutral"   # "up" | "down" | "neutral"
     macd_line: float = 0.0
     macd_signal: float = 0.0
@@ -605,12 +607,15 @@ class SellResult(BaseModel):
 class PipelinePaths(BaseModel):
     """파이프라인에서 사용하는 파일 경로"""
     summary_dir: Path = Path(r"R:\내 드라이브\마켓 수치")
+    # ── Finviz 파일 (screener_mcp 전용, buy/sell 파이프라인에서 직접 사용 안 함) ──
     finviz_file: Path = Path(r"Y:\내 드라이브\어닝\finviz_all_rows.txt")
     earnings_dir: Path = Path(r"Y:\내 드라이브\어닝")
-    earnings_analysis: Path = Path(r"Y:\내 드라이브\어닝\어닝 분석.md")
-    earnings_analysis_today: Path = Path(r"Y:\내 드라이브\어닝\어닝 분석_today.md")
-    finviz_output_dir: Path = Path(r"Y:\내 드라이브\어닝\finviz_output")
-    earnings_call_dir: Path = Path(r"Y:\내 드라이브\어닝\어닝콜_output")
+    # ── 어닝 분석 (Finviz 기반) — buy/sell 파이프라인에서 삭제됨 ──
+    # earnings_analysis / earnings_analysis_today / finviz_output_dir / earnings_call_dir 제거
+    # ── Kavout 어닝 분석 (K어닝) — buy pipeline Step 5에서 LLM 컨텍스트로 사용 ──
+    k_earnings_analysis: Path = Path(r"Y:\내 드라이브\어닝\K어닝 분석.md")
+    k_earnings_analysis_today: Path = Path(r"Y:\내 드라이브\어닝\K어닝 분석_today.md")
+    k_earnings_call_dir: Path = Path(r"Y:\내 드라이브\어닝\K어닝콜_output")
     positions_file: Path = Path(r"C:\lian\watchlist.md")
     watchlist_file: Path = Path(r"C:\lian\watchlist.md")
     data_dir: Path = Path(r"Y:\내 드라이브\Data")

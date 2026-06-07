@@ -48,7 +48,7 @@ _logging.getLogger("asyncio").setLevel(_logging.WARNING)
 from core.earnings_analyzer import analyze_earnings
 from core.fundamental_screener import rank_universe
 from core.obsidian import ObsidianClient
-from core.parsers import find_latest_kavout_csv, parse_finviz_detail, parse_kavout_universe
+from core.parsers import find_latest_kavout_csv, parse_kavout_universe
 from core.slack import SlackClient
 from shared.config import get_config
 from shared.logger import get_logger, setup_logging
@@ -220,12 +220,20 @@ async def _run_kavout_screen(args: dict[str, Any]) -> list[types.TextContent]:
     kavout_map: dict[str, KavoutRow] = {r.ticker: r for r in kavout_rows}
     log.info("kavout_universe_loaded", count=len(kavout_tickers))
 
-    # finviz_output/*.txt에서 kavout 티커만 추출
-    all_finviz_details = parse_finviz_detail(_FINVIZ_OUTPUT_DIR)
-    finviz_details = {t: d for t, d in all_finviz_details.items() if t in kavout_tickers}
-
-    # finviz_output에 없는 Kavout 티커 → kavout CSV price로 최소 FinvizDetail 생성
+    # finviz_output 제거 → yfinance로 실시간 FinvizDetail 수집
+    from core.api_fetcher import fetch_finviz_details_bulk
     from shared.schemas import FinvizDetail
+    ticker_list = sorted(kavout_tickers)[:60]  # API 과부하 방지 상위 60개
+    try:
+        finviz_details = await fetch_finviz_details_bulk(
+            ticker_list, sleep_sec=0.3, max_concurrency=5
+        )
+        log.info("step1_yfinance_done", fetched=len(finviz_details))
+    except Exception as exc:
+        log.warning("step1_yfinance_failed", error=str(exc))
+        finviz_details = {}
+
+    # yfinance에서 누락된 티커 → kavout CSV price로 최소 FinvizDetail 생성
     for row in kavout_rows:
         if row.ticker not in finviz_details:
             finviz_details[row.ticker] = FinvizDetail(
@@ -235,7 +243,7 @@ async def _run_kavout_screen(args: dict[str, Any]) -> list[types.TextContent]:
 
     log.info("step1_done",
              kavout=len(kavout_tickers),
-             finviz_matched=sum(1 for t in kavout_tickers if t in all_finviz_details),
+             yfinance_fetched=len([t for t in kavout_tickers if t in finviz_details]),
              total_detail=len(finviz_details))
 
     # 메타 (sector/company) — kavout CSV에서 우선, finviz_all_rows.txt 없어도 OK

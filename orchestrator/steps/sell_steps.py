@@ -33,13 +33,11 @@ from core.analysis import (
     calculate_scenario,
     calculate_technical_score,
 )
-from core.llm import analyze_with_llm, call_ddg_search
+from core.llm import analyze_with_llm, call_ddg_search, _collect_rss_feeds
 from core.obsidian import _format_sell_review_section
 from core.parsers import (
     load_latest_summary,
-    parse_earnings,
     parse_finviz,
-    parse_finviz_detail,
     parse_kavout,
     parse_positions,
 )
@@ -167,47 +165,16 @@ class SellSteps:
             log.warning("sell_finviz_warn", error=str(exc))
             ctx.finviz_rows = []
 
-        # 어닝 분석 파싱 (어닝_분석_today.md 병합)
-        try:
-            ctx.earnings_list = parse_earnings(
-                ctx.paths.earnings_analysis,
-                today_file=ctx.paths.earnings_analysis_today,
-            )
-            log.info("sell_earnings_loaded", count=len(ctx.earnings_list))
-        except Exception as exc:
-            log.warning("sell_earnings_warn", error=str(exc))
-            ctx.earnings_list = []
+        # 어닝 분석: Finviz 파일 제거 → sell pipeline은 어닝 이벤트를 summary.events로만 참조
+        ctx.earnings_list = []
 
-        # finviz_output/*.txt 상세 파싱 (screener_mcp 기반 종목)
-        try:
-            ctx.finviz_detail = parse_finviz_detail(ctx.paths.finviz_output_dir)
-            log.info("sell_finviz_detail_loaded", tickers=len(ctx.finviz_detail))
-        except Exception as exc:
-            log.warning("sell_finviz_detail_warn", error=str(exc))
-            ctx.finviz_detail = {}
-
-        # kavout_output/*.txt 상세 파싱 (kavout_mcp 기반 종목) — finviz_output보다 최신이면 덮어쓰기
-        try:
-            from pathlib import Path as _Path
-            kavout_output_dir = _Path(cfg.EARNINGS_DIR) / "kavout_output"
-            if kavout_output_dir.exists():
-                kavout_detail = parse_finviz_detail(kavout_output_dir)
-                for ticker, fvd in kavout_detail.items():
-                    existing = ctx.finviz_detail.get(ticker)
-                    # 파일 수정 시간 비교 — kavout_output이 더 최신이면 override
-                    kavout_file = kavout_output_dir / f"{ticker}.txt"
-                    finviz_file = ctx.paths.finviz_output_dir / f"{ticker}.txt"
-                    kavout_mtime = kavout_file.stat().st_mtime if kavout_file.exists() else 0
-                    finviz_mtime = finviz_file.stat().st_mtime if finviz_file.exists() else 0
-                    if existing is None or kavout_mtime >= finviz_mtime:
-                        ctx.finviz_detail[ticker] = fvd
-                log.info("sell_kavout_detail_merged", added_or_updated=len(kavout_detail))
-        except Exception as exc:
-            log.warning("sell_kavout_detail_warn", error=str(exc))
+        # finviz_output/.txt / kavout_output/.txt 제거 → yfinance 실시간 수집이 완전 대체
+        # (아래 yfinance 수집 블록에서 ctx.finviz_detail을 채움)
+        ctx.finviz_detail = {}
 
         # ── yfinance 실시간 데이터 수집 (포지션 티커 전체) ─────────────────
         # fetch_finviz_detail()로 현재 주가·RSI·RVOL·SMA·피벗·애널리스트·EPS 서프라이즈 등
-        # 실시간 수집 → finviz_detail 덮어쓰기 (파일 기반 old data 우선순위 역전)
+        # 실시간 수집 → finviz_detail 교체 (insider_trans_pct는 yfinance 미지원이라 보존)
         pos_tickers = list({p.ticker for p in ctx.positions})
         if pos_tickers:
             try:
@@ -216,7 +183,12 @@ class SellSteps:
                 _fresh_details = await _fetch_bulk(pos_tickers, sleep_sec=0.3, max_concurrency=3)
                 for _ticker, _fresh_fvd in _fresh_details.items():
                     if _fresh_fvd.price is not None:
-                        # 실시간 데이터가 있으면 finviz_detail 완전 교체
+                        # ③ insider_trans_pct 보존 (yfinance에서 직접 계산 불가)
+                        _old_fvd = ctx.finviz_detail.get(_ticker)
+                        if _old_fvd and _old_fvd.insider_trans_pct is not None:
+                            _fresh_fvd = _fresh_fvd.model_copy(
+                                update={"insider_trans_pct": _old_fvd.insider_trans_pct}
+                            )
                         ctx.finviz_detail[_ticker] = _fresh_fvd
                         log.info("sell_yfinance_fresh", ticker=_ticker,
                                  price=_fresh_fvd.price, rsi=_fresh_fvd.rsi14,
@@ -227,6 +199,74 @@ class SellSteps:
                                     reason="price=None, 기존 finviz_detail 유지")
             except Exception as _yf_exc:
                 log.warning("sell_yfinance_bulk_failed", error=str(_yf_exc))
+
+        # ── ④ Finnhub 밸류에이션으로 yfinance 구식 값 보정 ─────────────────
+        # forward_pe, peg는 yfinance가 구식 데이터를 반환하는 경우가 있음
+        # summary_data의 [VALUATION] 섹션(Finnhub 기반)으로 우선 교체
+        if ctx.summary_data and pos_tickers:
+            for _tk in pos_tickers:
+                _fv = ctx.finviz_detail.get(_tk)
+                _val = ctx.summary_data.tickers.get(_tk)
+                if not _fv or not _val:
+                    continue
+                _overrides: dict = {}
+                if _val.valuation.forward_pe is not None:
+                    _overrides["forward_pe"] = _val.valuation.forward_pe
+                if _val.valuation.peg is not None:
+                    _overrides["peg"] = _val.valuation.peg
+                if _overrides:
+                    ctx.finviz_detail[_tk] = _fv.model_copy(update=_overrides)
+
+        # ── ⑤ Finnhub 목표주가 실시간 오버라이드 ──────────────────────────
+        # yfinance targetMeanPrice는 구식 — Finnhub /stock/price-target 으로 교체
+        if pos_tickers:
+            try:
+                from core.api_fetcher import fetch_finnhub_price_targets_bulk as _fpt_bulk
+                _pt_map = await _fpt_bulk(pos_tickers)
+                for _tk, _pt in _pt_map.items():
+                    _fv = ctx.finviz_detail.get(_tk)
+                    if _fv and _pt > 0:
+                        ctx.finviz_detail[_tk] = _fv.model_copy(update={"target_price": _pt})
+                if _pt_map:
+                    append_audit(ctx.execution_id, 0, "info",
+                                 data={"finnhub_price_target": "ok", "updated": len(_pt_map)})
+                    log.info("sell_finnhub_price_target", updated=len(_pt_map))
+            except Exception as _exc:
+                log.warning("sell_finnhub_price_target_failed", error=str(_exc))
+
+        # ── ⑥ Finnhub 내부자 거래 실시간 오버라이드 ────────────────────────
+        # insider_trans_pct: yfinance 미지원 → Finnhub으로 교체
+        if pos_tickers:
+            try:
+                from core.api_fetcher import fetch_finnhub_insider_bulk as _fi_bulk
+                _insider_map = await _fi_bulk(pos_tickers)
+                for _tk, _pct in _insider_map.items():
+                    _fv = ctx.finviz_detail.get(_tk)
+                    if _fv:
+                        ctx.finviz_detail[_tk] = _fv.model_copy(
+                            update={"insider_trans_pct": _pct}
+                        )
+                if _insider_map:
+                    append_audit(ctx.execution_id, 0, "info",
+                                 data={"finnhub_insider": "ok", "updated": len(_insider_map)})
+                    log.info("sell_finnhub_insider_refreshed", tickers=len(_insider_map))
+            except Exception as _exc:
+                log.warning("sell_finnhub_insider_failed", error=str(_exc))
+
+        # ── ② 어닝 캘린더 실시간 갱신 (Finnhub, 실패 시 summary.events 폴백) ─
+        if ctx.summary_data and pos_tickers:
+            try:
+                from core.api_fetcher import fetch_earnings_calendar_bulk as _fecb
+                _fresh_earn = await _fecb(pos_tickers[:20])
+                if _fresh_earn:
+                    _non_earn = [e for e in ctx.summary_data.events if "실적" not in e.type]
+                    ctx.summary_data.events = _non_earn + _fresh_earn
+                    append_audit(ctx.execution_id, 0, "info",
+                                 data={"earnings_calendar_realtime": "ok",
+                                       "count": len(_fresh_earn)})
+                    log.info("sell_earnings_calendar_realtime", count=len(_fresh_earn))
+            except Exception as _ec_exc:
+                log.warning("sell_earnings_calendar_realtime_failed", error=str(_ec_exc))
 
         # Kavout AI 점수 파싱 (DATA_DIR 내 kavout_*.csv)
         try:
@@ -479,6 +519,22 @@ class SellSteps:
         log.info("sell_step_2_start")
         start = time.monotonic()
 
+        # ── ① 매크로 지표 실시간 갱신 (레짐 판단 전에 수행) ────────────────
+        if ctx.summary_data:
+            try:
+                from core.api_fetcher import fetch_macro_realtime
+                macro_updates = await asyncio.to_thread(fetch_macro_realtime)
+                if macro_updates:
+                    ctx.summary_data.macro = ctx.summary_data.macro.model_copy(
+                        update=macro_updates
+                    )
+                    append_audit(ctx.execution_id, 2, "info",
+                                 data={"macro_realtime": "ok",
+                                       "fields": list(macro_updates.keys())})
+                    log.info("sell_macro_realtime_refreshed", fields=len(macro_updates))
+            except Exception as _exc:
+                log.warning("sell_macro_realtime_failed", error=str(_exc))
+
         if ctx.summary_data:
             ctx.regime = analyze_market_regime(ctx.summary_data)
 
@@ -548,6 +604,8 @@ class SellSteps:
                             )
                             if isinstance(_infer_result, dict):
                                 entry_regime = _infer_result.get("inferred_entry_regime", "") or ""
+                                # LLM이 ":bullish" 같은 콜론 접두어를 반환하는 경우 제거
+                                entry_regime = entry_regime.lstrip(":").strip()
                                 _ticker_infer_cache[pos.ticker] = _infer_result
                                 _ticker_regime_cache[pos.ticker] = entry_regime
                                 log.info(
@@ -608,12 +666,88 @@ class SellSteps:
 
     async def step_3_technical(self, ctx: PipelineContext) -> None:
         """
-        보유 종목 추세 유지/약화/붕괴 판정 + DDG 뉴스 조회 + LLM 감성 분석
+        보유 종목 추세 유지/약화/붕괴 판정 + 뉴스 조회 + LLM 감성 분석
 
         스펙: §9.4 Step 3
         """
         log.info("sell_step_3_start")
         start = time.monotonic()
+
+        pos_tickers = list({p.ticker for p in ctx.positions})
+
+        # ── ⑦ 기술 데이터 브릿지 (루프 진입 전) ─────────────────────────────
+        # yfinance/Finnhub으로 수집한 finviz_detail → summary_data.technical에 반영.
+        # calculate_technical_score()가 실시간 기술지표를 사용하게 됨.
+        if ctx.summary_data:
+            _bridge_count = 0
+            for _tk in pos_tickers:
+                _fv = ctx.finviz_detail.get(_tk)
+                if not _fv or _tk not in ctx.summary_data.tickers:
+                    continue
+                _td = ctx.summary_data.tickers[_tk]
+                _tech = _td.technical
+                _upd: dict = {}
+
+                if _fv.price       is not None: _upd["price"]            = _fv.price
+                if _fv.change_pct  is not None: _upd["change_pct"]       = _fv.change_pct
+                if _fv.rsi14       is not None: _upd["rsi14"]            = _fv.rsi14
+                if _fv.rel_volume  is not None: _upd["avg_volume_ratio"] = _fv.rel_volume
+                if _fv.adx         is not None: _upd["adx14"]            = _fv.adx
+                if _fv.sma5_val    is not None: _upd["ma5"]              = _fv.sma5_val
+                if _fv.sma20_val   is not None: _upd["ma20"]             = _fv.sma20_val
+                if _fv.sma50_val   is not None: _upd["ma50"]             = _fv.sma50_val
+                if _fv.sma60_val   is not None: _upd["ma60"]             = _fv.sma60_val
+                if _fv.sma200_val  is not None: _upd["ma200"]            = _fv.sma200_val
+                if _fv.bb_upper    is not None: _upd["bb_upper"]         = _fv.bb_upper
+                if _fv.bb_mid      is not None: _upd["bb_mid"]           = _fv.bb_mid
+                if _fv.bb_lower    is not None: _upd["bb_lower"]         = _fv.bb_lower
+                if _fv.price and _fv.bb_upper and _fv.bb_lower:
+                    if   _fv.price >= _fv.bb_upper: _upd["bb_position"] = "upper_break"
+                    elif _fv.price <= _fv.bb_lower: _upd["bb_position"] = "lower_break"
+                    else:                            _upd["bb_position"] = "mid"
+                if _fv.macd_line   is not None: _upd["macd_line"]        = _fv.macd_line
+                if _fv.macd_signal is not None: _upd["macd_signal"]      = _fv.macd_signal
+                if _fv.macd_hist   is not None: _upd["macd_histogram"]   = _fv.macd_hist
+                if _fv.macd_line is not None and _fv.macd_signal is not None:
+                    _upd["macd_cross"] = (
+                        "golden" if _fv.macd_line > _fv.macd_signal else "death"
+                    )
+                if _fv.pivot_s1    is not None: _upd["support1"]         = _fv.pivot_s1
+                if _fv.pivot_s2    is not None: _upd["support2"]         = _fv.pivot_s2
+                if _fv.pivot_r1    is not None: _upd["resistance1"]      = _fv.pivot_r1
+                if _fv.pivot_r2    is not None: _upd["resistance2"]      = _fv.pivot_r2
+
+                if _upd:
+                    ctx.summary_data.tickers[_tk] = _td.model_copy(
+                        update={"technical": _tech.model_copy(update=_upd)}
+                    )
+                    _bridge_count += 1
+
+            append_audit(ctx.execution_id, 3, "info",
+                         data={"technical_bridge": "ok", "bridged": _bridge_count})
+            log.info("sell_technical_bridge_done", bridged=_bridge_count,
+                     total=len(pos_tickers))
+
+        # ── RSS 시장 피드 1회 수집 (루프 밖) ─────────────────────────────────
+        _market_rss_news: list[dict] = []
+        _rss_config: dict = {}
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            _rss_file = _Path(cfg.RSS_FEEDS_FILE)
+            if _rss_file.exists():
+                _rss_config = _json.loads(_rss_file.read_text(encoding="utf-8"))
+        except Exception as _rss_cfg_exc:
+            log.warning("sell_rss_config_load_fail", error=str(_rss_cfg_exc))
+
+        _market_feeds: list[str] = [
+            u for u in _rss_config.get("market", [])
+            if isinstance(u, str) and not u.startswith("_")
+        ]
+        if _market_feeds:
+            _market_rss_news = await _collect_rss_feeds(
+                _market_feeds, label="market", max_per_feed=50
+            )
 
         # ── 티커 단위 뉴스/감성 캐시 (같은 티커 여러 포지션 → LLM 1회만) ──
         _ticker_news_cache:      dict[str, list[dict]] = {}  # ticker → news_items
@@ -621,19 +755,64 @@ class SellSteps:
 
         for pos in ctx.positions:
             direction = "long_call" if pos.option_type == "롱콜" else "long_put"
-            if ctx.summary_data and ctx.finviz_rows:
+
+            # ── 기술 점수 계산 ────────────────────────────────────────────
+            if ctx.summary_data:
                 _kav_entry = ctx.kavout_data.get(pos.ticker, {})
                 _kavout_score = float(_kav_entry.get("k_score", 5.0)) if _kav_entry else 5.0
                 score = calculate_technical_score(
                     ticker=pos.ticker,
                     direction=direction,
                     summary=ctx.summary_data,
-                    finviz_rows=ctx.finviz_rows,
                     kavout_score=_kavout_score,
                 )
                 ctx.technical_scores[_pos_key(pos)] = score
 
-            # ── DDG 뉴스 조회 + LLM 감성 분석 (티커별 1회) ───────────────
+                # ── ⑧ Kavout post-loop signal_count/score 보정 ───────────
+                _kav_k = float(_kav_entry.get("k_score", 5.0))
+                _kav_m = float(_kav_entry.get("momentum_1m", 0.0))
+                _extra_sig = 0
+                _extra_sc  = 0.0
+                if _kav_k >= st.KAVOUT_HIGH_SCORE:
+                    _extra_sig += st.KAVOUT_HIGH_SIGNAL_BONUS
+                    _extra_sc  += st.KAVOUT_HIGH_SCORE_BONUS
+                elif _kav_k <= st.KAVOUT_LOW_SCORE:
+                    _extra_sig += st.KAVOUT_LOW_SIGNAL_PENALTY
+                    _extra_sc  += st.KAVOUT_LOW_SCORE_PENALTY
+                if _kav_m >= st.KAVOUT_MOMENTUM_THRESHOLD and _kav_k >= st.KAVOUT_COMBO_SCORE:
+                    _extra_sig += st.KAVOUT_COMBO_SIGNAL_BONUS
+                    _extra_sc  += st.KAVOUT_COMBO_SCORE_BONUS
+                if _extra_sig != 0 or _extra_sc != 0:
+                    ctx.technical_scores[_pos_key(pos)] = score.model_copy(update={
+                        "signal_count": max(0, score.signal_count + _extra_sig),
+                        "final_score":  max(0.0, min(100.0, score.final_score + _extra_sc)),
+                    })
+                    score = ctx.technical_scores[_pos_key(pos)]
+
+                # ── ⑨ Finviz 애널리스트 추천 시그널 보정 ─────────────────
+                _fvd_s = ctx.finviz_detail.get(pos.ticker)
+                if _fvd_s:
+                    _asig = 0
+                    _asc  = 0.0
+                    if _fvd_s.recom is not None:
+                        if _fvd_s.recom <= st.ANALYST_BUY_THRESHOLD:
+                            _asig += 1
+                        elif _fvd_s.recom >= st.ANALYST_SELL_THRESHOLD:
+                            _asig -= 1
+                            _asc  += st.ANALYST_SELL_SCORE_PENALTY
+                    # 롱풋은 short_float가 높으면 불리 (숏 커버링이 반대 방향 압력)
+                    if (direction == "long_put"
+                            and _fvd_s.short_float_pct is not None
+                            and _fvd_s.short_float_pct >= st.SHORT_FLOAT_SQUEEZE_THRESHOLD):
+                        _asig -= 1
+                    if _asig != 0 or _asc != 0:
+                        ctx.technical_scores[_pos_key(pos)] = score.model_copy(update={
+                            "signal_count": max(0, score.signal_count + _asig),
+                            "final_score":  max(0.0, min(100.0, score.final_score + _asc)),
+                        })
+                        score = ctx.technical_scores[_pos_key(pos)]
+
+            # ── ⑩⑪⑫ RSS + DDG 3쿼리 + Brave 뉴스 수집 + LLM 감성 분석 ──
             try:
                 ticker_data = (
                     ctx.summary_data.tickers.get(pos.ticker) if ctx.summary_data else None
@@ -647,32 +826,79 @@ class SellSteps:
                         ctx.sentiment_results[_pos_key(pos)] = _ticker_sentiment_cache[pos.ticker]
                         log.info("sell_step3_sentiment_cache_hit", ticker=pos.ticker)
                 else:
-                    # 새 티커: DDG 조회 + LLM 분석
-                    ddg_results = await asyncio.gather(
-                        call_ddg_search(f"{pos.ticker} stock news analysis", num_results=8),
-                        call_ddg_search(f"{pos.ticker} options earnings catalyst", num_results=6),
+                    # ⑩ 종목별 RSS
+                    _ticker_feeds: list[str] = [
+                        u for u in _rss_config.get("tickers", {}).get(pos.ticker, [])
+                        if isinstance(u, str)
+                    ]
+                    if not _ticker_feeds:
+                        _ticker_feeds = [
+                            f"https://feeds.finance.yahoo.com/rss/2.0/headline"
+                            f"?s={pos.ticker}&region=US&lang=en-US"
+                        ]
+                    _rss_items = await _collect_rss_feeds(
+                        _ticker_feeds, label=pos.ticker, max_per_feed=20
+                    )
+
+                    # ⑪ DDG 3쿼리 병렬
+                    _ddg_queries = [
+                        f"{pos.ticker} stock market news analysis",
+                        f"{pos.ticker} options unusual activity IV analysis",
+                        f"{pos.ticker} earnings guidance sector outlook",
+                    ]
+                    _ddg_results = await asyncio.gather(
+                        *[call_ddg_search(q, num_results=8) for q in _ddg_queries],
                         return_exceptions=True,
                     )
-                    news_items = []
-                    for r in ddg_results:
-                        if isinstance(r, list):
-                            news_items.extend(r)
-                    _ticker_news_cache[pos.ticker] = news_items
+                    news_items = list(_rss_items)
+                    for _r in _ddg_results:
+                        if isinstance(_r, list):
+                            news_items.extend(_r)
 
-                    # summary_data에 뉴스 추가 (첫 번째 처리 시에만)
+                    # ⑫ Brave Search 보완 (API 키 있을 때만)
+                    try:
+                        from core.llm import call_brave_search
+                        _brave = await call_brave_search(
+                            f"{pos.ticker} stock options news catalyst", count=5
+                        )
+                        news_items.extend(_brave)
+                    except Exception:
+                        pass
+
+                    # 시장 RSS 상위 20개 보완
+                    def _dedup(items: list[dict]) -> list[dict]:
+                        _seen: set[str] = set()
+                        _out: list[dict] = []
+                        for _it in items:
+                            _k = _it.get("url") or _it.get("title", "")
+                            if _k and _k not in _seen:
+                                _seen.add(_k)
+                                _out.append(_it)
+                        return _out
+
+                    _market_sample = _dedup(_market_rss_news)[:20]
+                    news_items = _dedup(news_items + _market_sample)
+
+                    _ticker_news_cache[pos.ticker] = news_items
+                    log.info("sell_step3_news_collected",
+                             ticker=pos.ticker, count=len(news_items))
+
+                    # summary_data에 뉴스 추가
                     if ctx.summary_data and pos.ticker in ctx.summary_data.tickers:
                         ctx.summary_data.tickers[pos.ticker].news.extend(news_items)
 
                     if news_items:
+                        _cache_key = f"{pos.ticker}_{date.today()}_sell_research"
                         llm_result = await analyze_with_llm(
                             template_name="buy_step3_research",
                             template_vars={
                                 "ticker": pos.ticker,
                                 "direction": direction,
                                 "price": round(current_price, 2),
-                                "news": news_items[:30],
+                                "news": news_items[:50],
                                 "earnings_summary": "",
                             },
+                            cache_key=_cache_key,
                         )
                         if isinstance(llm_result, dict):
                             _ticker_sentiment_cache[pos.ticker] = llm_result
@@ -683,11 +909,73 @@ class SellSteps:
                                 verdict=llm_result.get("debate_verdict", "?"),
                                 news_count=len(news_items),
                             )
+
+                # ── ⑬ LLM technical narrative ────────────────────────────
+                try:
+                    _ts = ctx.technical_scores.get(_pos_key(pos))
+                    _td2 = ctx.summary_data.tickers.get(pos.ticker) if ctx.summary_data else None
+                    _fv2 = _td2.technical if _td2 else None
+                    if _fv2 and _ts:
+                        def _g(obj, *keys, default="N/A"):
+                            for _k in keys:
+                                _v = getattr(obj, _k, None)
+                                if _v is not None and _v != 0.0:
+                                    return _v
+                            return default
+                        _nar_vars = {
+                            "ticker":       pos.ticker,
+                            "direction":    direction,
+                            "price":        _g(_fv2, 'price', default=0),
+                            "rsi":          _g(_fv2, 'rsi14'),
+                            "adx":          _g(_fv2, 'adx14', 'adx'),
+                            "rvol":         _g(_fv2, 'avg_volume_ratio', 'rel_volume'),
+                            "sma5_val":     _g(_fv2, 'ma5', 'sma5_val'),
+                            "sma20_val":    _g(_fv2, 'ma20', 'sma20_val'),
+                            "sma50_val":    _g(_fv2, 'ma50', 'sma50_val'),
+                            "sma200_val":   _g(_fv2, 'ma200', 'sma200_val'),
+                            "bb_upper":     _g(_fv2, 'bb_upper'),
+                            "bb_mid":       _g(_fv2, 'bb_mid'),
+                            "bb_lower":     _g(_fv2, 'bb_lower'),
+                            "macd_line":    _g(_fv2, 'macd_line'),
+                            "macd_signal":  _g(_fv2, 'macd_signal'),
+                            "macd_hist":    _g(_fv2, 'macd_histogram', 'macd_hist'),
+                            "atr":          _g(_fv2, 'atr'),
+                            "di_plus":      _g(_fv2, 'di_plus'),
+                            "di_minus":     _g(_fv2, 'di_minus'),
+                            "pivot":        _g(_fv2, 'pivot'),
+                            "pivot_r1":     _g(_fv2, 'resistance1', 'pivot_r1'),
+                            "pivot_r2":     _g(_fv2, 'resistance2', 'pivot_r2'),
+                            "pivot_s1":     _g(_fv2, 'support1', 'pivot_s1'),
+                            "pivot_s2":     _g(_fv2, 'support2', 'pivot_s2'),
+                            "w52_high_pct": _g(_fv2, 'w52_high_pct'),
+                            "w52_low_pct":  _g(_fv2, 'w52_low_pct'),
+                            "ma_alignment": _ts.ma_alignment,
+                            "adx_score":    _ts.adx_score,
+                            "rsi_score":    _ts.rsi_score,
+                            "macd_score":   _ts.macd_score,
+                            "rvol_score":   _ts.rvol_score,
+                            "signal_count": _ts.signal_count,
+                            "confidence_pct": round(_ts.signal_count / 8 * 100),
+                        }
+                        _nar_key = f"{pos.ticker}_{date.today()}_sell_tech_narrative"
+                        _nar_result = await analyze_with_llm(
+                            template_name="buy_step3b_technical_narrative",
+                            template_vars=_nar_vars,
+                            cache_key=_nar_key,
+                        )
+                        if _pos_key(pos) not in ctx.sentiment_results:
+                            ctx.sentiment_results[_pos_key(pos)] = _default_sentiment()
+                        ctx.sentiment_results[_pos_key(pos)]["technical_narrative"] = _nar_result
+                except Exception as _nar_exc:
+                    log.debug("sell_tech_narrative_skip", ticker=pos.ticker, error=str(_nar_exc))
+
             except Exception as exc:
                 log.warning("sell_step3_news_failed", ticker=pos.ticker, error=str(exc))
 
             if _pos_key(pos) not in ctx.sentiment_results:
                 ctx.sentiment_results[_pos_key(pos)] = _default_sentiment()
+
+            await asyncio.sleep(0.3)  # Rate limit 방지
 
         duration_ms = int((time.monotonic() - start) * 1000)
         append_audit(ctx.execution_id, 3, "completed", duration_ms=duration_ms)
@@ -806,10 +1094,92 @@ class SellSteps:
         _ticker_devils_cache: dict[str, dict] = {}  # 동일 티커 LLM 중복 방지
 
         for pos in ctx.positions:
+            # ── ⑭⑮⑯ 결정론적 점수 차감 (LLM 호출 전에 먼저 수행) ─────────────
+            _ticker_sd = ctx.summary_data.tickers.get(pos.ticker) if ctx.summary_data else None
+            _fvd_d = ctx.finviz_detail.get(pos.ticker)
+            _da_deduction = 0.0
+            _da_reasons: list[str] = []
+            _insider_deducted = False
+            _eps_deducted = False
+
+            # ⑭ summary INSIDER 섹션 기반 내부자 순매도 차감
+            # Sanity check: 개인 임원 내부자 거래는 통상 $500M 이하
+            # 그 이상이면 기관 데이터가 혼재된 오류 가능성 → 차감 스킵 + 경고
+            _INSIDER_SANITY_LIMIT = 500_000_000.0  # $500M
+            if _ticker_sd and _ticker_sd.insider:
+                _net_sell = (
+                    sum((tx.get("total") or 0.0) for tx in _ticker_sd.insider if tx.get("type") == "매도")
+                    - sum((tx.get("total") or 0.0) for tx in _ticker_sd.insider if tx.get("type") == "매수")
+                )
+                if _net_sell > _INSIDER_SANITY_LIMIT:
+                    # 비현실적 금액 — 기관 데이터 혼재 가능성, 차감 스킵
+                    log.warning("sell_da_insider_sanity_skip",
+                                ticker=pos.ticker,
+                                net_sell_M=round(_net_sell / 1e6, 1),
+                                reason="$500M 초과 → 기관 데이터 혼재 의심, 차감 스킵")
+                    _da_reasons.append(
+                        f"내부자 데이터 이상 (${_net_sell / 1e6:.0f}M — 기관 혼재 의심, 차감 보류)"
+                    )
+                    _insider_deducted = True  # Finviz 중복 차감 방지
+                elif _net_sell > st.DA_BUY_INSIDER_SELL_AMOUNT:
+                    _da_deduction += abs(st.DA_BUY_INSIDER_SELL_PENALTY)
+                    _insider_deducted = True
+                    _da_reasons.append(
+                        f"내부자 순매도 ${_net_sell / 1e6:.1f}M (최근 거래 집계)"
+                    )
+
+            # ⑮ summary EARNINGS 섹션 기반 EPS 미스 차감
+            if _ticker_sd and _ticker_sd.earnings:
+                _latest_q = _ticker_sd.earnings[-1]
+                _surprise_raw = _latest_q.get("surprise_pct")
+                if _surprise_raw is not None:
+                    _surprise = float(_surprise_raw)
+                    if _surprise > 1.0:
+                        _surprise /= 100.0
+                    if _surprise < st.DA_BUY_EPS_MISS_FRACTION:
+                        _da_deduction += abs(st.DA_BUY_EPS_MISS_PENALTY)
+                        _eps_deducted = True
+                        _da_reasons.append(
+                            f"최근 EPS 미스 {_surprise * 100:.1f}% "
+                            f"(분기: {_latest_q.get('quarter', '?')})"
+                        )
+
+            # ⑯ Finviz 내부자/EPS 보완 소스 차감 (summary에서 이미 차감한 경우 중복 방지)
+            if _fvd_d:
+                if (not _insider_deducted
+                        and _fvd_d.insider_trans_pct is not None
+                        and _fvd_d.insider_trans_pct < st.DA_BUY_FINVIZ_INSIDER_PCT):
+                    _da_deduction += abs(st.DA_BUY_FINVIZ_INSIDER_PENALTY)
+                    _da_reasons.append(
+                        f"Finviz 내부자 거래 {_fvd_d.insider_trans_pct:.1f}% (대규모 내부자 매도)"
+                    )
+                if (not _eps_deducted
+                        and _fvd_d.eps_surprise_pct is not None
+                        and _fvd_d.eps_surprise_pct < st.DA_BUY_EPS_MISS_PCT):
+                    _da_deduction += abs(st.DA_BUY_FINVIZ_EPS_PENALTY)
+                    _da_reasons.append(
+                        f"Finviz EPS 서프라이즈 {_fvd_d.eps_surprise_pct:.1f}% (미스)"
+                    )
+
+            # 차감 적용 → technical_score final_score 조정
+            if _da_deduction > 0:
+                _sc = ctx.technical_scores.get(_pos_key(pos))
+                if _sc:
+                    _new_sc = max(0.0, _sc.final_score - _da_deduction)
+                    ctx.technical_scores[_pos_key(pos)] = _sc.model_copy(
+                        update={"final_score": _new_sc}
+                    )
+                    log.info("sell_da_deduction", ticker=pos.ticker,
+                             deduction=_da_deduction, reasons=_da_reasons)
+
             # 동일 티커 캐시 히트
             if pos.ticker in _ticker_devils_cache:
                 log.info("sell_step5_devils_cache_hit", ticker=pos.ticker)
-                devils_results[_pos_key(pos)] = {**_ticker_devils_cache[pos.ticker]}
+                _cached_dv = {**_ticker_devils_cache[pos.ticker]}
+                # 결정론적 차감 이유 병합
+                if _da_reasons:
+                    _cached_dv.setdefault("da_reasons", []).extend(_da_reasons)
+                devils_results[_pos_key(pos)] = _cached_dv
                 continue
 
             opt_data = (
@@ -838,7 +1208,9 @@ class SellSteps:
                     },
                 )
                 if isinstance(llm_result, dict):
-                    event_judgment = llm_result.get("event_judgment", "중립")
+                    event_judgment = llm_result.get("event_judgment", "중립") or "중립"
+                    # LLM이 ":혼조" 같은 콜론 접두어를 반환하는 경우 제거
+                    event_judgment = event_judgment.lstrip(":").strip() or "중립"
                     iv_crush_risk = llm_result.get("iv_crush_risk", False)
                     iv_crush_loss = llm_result.get("iv_crush_estimated_loss", 0.0)
                     recommendation = llm_result.get("recommendation", "")
@@ -861,6 +1233,7 @@ class SellSteps:
                 "iv_crush_risk": iv_crush_risk,
                 "iv_crush_estimated_loss": iv_crush_loss,
                 "recommendation": recommendation,
+                "da_reasons": _da_reasons,  # 결정론적 차감 이유 포함
             }
             devils_results[_pos_key(pos)] = {**_ticker_devils_cache[pos.ticker]}
 
@@ -881,6 +1254,199 @@ class SellSteps:
         """
         log.info("sell_step_6_start")
         start = time.monotonic()
+
+        pos_tickers_6 = list({p.ticker for p in ctx.positions})
+
+        # ── ⑰ 옵션 체인 실시간 갱신 + OI 복원 ──────────────────────────────
+        if ctx.summary_data and pos_tickers_6:
+            try:
+                from core.api_fetcher import fetch_option_chains_bulk as _focb
+                from shared import strategy as _st6
+                _fresh_chains = await _focb(
+                    pos_tickers_6,
+                    dte_min=_st6.DTE_MID_MIN,
+                    dte_max=_st6.DTE_MID_MAX,
+                )
+                for _tk6, _chain6 in _fresh_chains.items():
+                    if _chain6 and _tk6 in ctx.summary_data.options:
+                        # OI=0 전체이면 summary chain OI를 strike+type 기준으로 복원
+                        _old_chain6 = ctx.summary_data.options[_tk6].chain
+                        if _old_chain6 and not any(
+                            int(e.get("oi", 0) or 0) > 0 for e in _chain6
+                        ):
+                            _sum_oi_map6: dict[tuple, int] = {}
+                            for _se6 in _old_chain6:
+                                _k6 = (float(_se6.get("strike", 0)),
+                                       str(_se6.get("option_type", "")))
+                                _sum_oi_map6[_k6] = max(
+                                    _sum_oi_map6.get(_k6, 0),
+                                    int(_se6.get("oi", 0) or 0)
+                                )
+                            _oi_restored6 = 0
+                            for _e6 in _chain6:
+                                _k6 = (float(_e6.get("strike", 0)),
+                                       str(_e6.get("option_type", "")))
+                                if _k6 in _sum_oi_map6 and _sum_oi_map6[_k6] > 0:
+                                    _e6["oi"] = _sum_oi_map6[_k6]
+                                    _oi_restored6 += 1
+                            if _oi_restored6:
+                                log.info("sell_chain_oi_restored",
+                                         ticker=_tk6, entries=_oi_restored6)
+                        ctx.summary_data.options[_tk6].chain = _chain6
+                        log.debug("sell_option_chain_refreshed",
+                                  ticker=_tk6, contracts=len(_chain6))
+            except Exception as _e6:
+                log.warning("sell_option_chain_refresh_failed", error=str(_e6))
+
+        # ── ⑱ 실시간 chain에서 옵션 analytics 재계산 ─────────────────────────
+        if ctx.summary_data and pos_tickers_6:
+            try:
+                from core.api_fetcher import _calc_atm_straddle as _cas6, _calc_max_pain as _cmp6
+                _analytics_updated6 = 0
+                for _tk6 in pos_tickers_6:
+                    _opt6 = ctx.summary_data.options.get(_tk6)
+                    if not _opt6 or not _opt6.chain:
+                        continue
+                    _chain6 = _opt6.chain
+                    _spot6 = (
+                        ctx.summary_data.tickers[_tk6].technical.price
+                        if _tk6 in ctx.summary_data.tickers else 0.0
+                    )
+                    _calls6 = [e for e in _chain6 if e.get("option_type") == "call"]
+                    _puts6  = [e for e in _chain6 if e.get("option_type") == "put"]
+                    _c_oi6  = sum(int(e.get("oi", 0) or 0) for e in _calls6)
+                    _p_oi6  = sum(int(e.get("oi", 0) or 0) for e in _puts6)
+                    if _c_oi6 == 0 and _p_oi6 == 0:
+                        log.debug("sell_option_analytics_skip_zero_oi", ticker=_tk6)
+                        continue
+                    _pc6    = round(_p_oi6 / _c_oi6, 3) if _c_oi6 > 0 else _opt6.pc_ratio
+                    _strad6 = _cas6(_chain6, _spot6)
+                    _impl6  = (
+                        round(_strad6 / _spot6 * 100, 2)
+                        if _spot6 > 0 and _strad6 > 0 else _opt6.implied_move_near
+                    )
+                    _mpain6 = _cmp6(_chain6)
+                    ctx.summary_data.options[_tk6] = _opt6.model_copy(update={
+                        "total_call_oi":      _c_oi6,
+                        "total_put_oi":       _p_oi6,
+                        "pc_ratio":           _pc6,
+                        "implied_move_near":  _impl6,
+                        "max_pain_near":      float(_mpain6) if _mpain6 else _opt6.max_pain_near,
+                        "atm_straddle_price": _strad6 if _strad6 > 0 else _opt6.atm_straddle_price,
+                    })
+                    _analytics_updated6 += 1
+                append_audit(ctx.execution_id, 6, "info",
+                             data={"option_analytics_refresh": "ok",
+                                   "updated": _analytics_updated6})
+                log.info("sell_option_analytics_done", updated=_analytics_updated6)
+            except Exception as _oa6:
+                log.warning("sell_option_analytics_refresh_failed", error=str(_oa6))
+
+        # ── ⑲ option_flow_ok / signal_count 재평가 (포지션 키 기준) ─────────
+        if ctx.summary_data and ctx.technical_scores:
+            _recalc6 = 0
+            for _pos6 in ctx.positions:
+                _score6 = ctx.technical_scores.get(_pos_key(_pos6))
+                _opt_d6 = ctx.summary_data.options.get(_pos6.ticker)
+                if not _score6 or not _opt_d6:
+                    continue
+                _is_long6 = _pos6.option_type == "롱콜"
+                _pc6v     = _opt_d6.pc_ratio
+                _c_oi6v   = _opt_d6.total_call_oi
+                _p_oi6v   = _opt_d6.total_put_oi
+                _anomaly6 = sum(1 for e in _opt_d6.chain if e.get("is_anomaly", False))
+                if _is_long6:
+                    _new_opt6 = (
+                        _pc6v < st.PC_RATIO_CALL_BULL
+                        or (_c_oi6v > 0 and _p_oi6v > 0
+                            and _c_oi6v >= _p_oi6v * st.OI_RATIO_DOMINANCE)
+                    )
+                else:
+                    _new_opt6 = (
+                        _pc6v > st.PC_RATIO_PUT_BULL
+                        or (_c_oi6v > 0 and _p_oi6v > 0
+                            and _p_oi6v >= _c_oi6v * st.OI_RATIO_DOMINANCE)
+                    )
+                if _anomaly6 >= st.ANOMALY_COUNT_OVERRIDE:
+                    _new_opt6 = True
+                if _new_opt6 != _score6.option_flow_ok:
+                    _delta6 = 1 if _new_opt6 else -1
+                    _new_cap6 = sum([
+                        _score6.rvol_score >= st.SCORE_RVOL_LOW,
+                        _score6.obv_ok,
+                        _new_opt6,
+                        _score6.darkpool_ok,
+                    ]) >= st.CAPITAL_FLOW_MIN_SIGNALS
+                    ctx.technical_scores[_pos_key(_pos6)] = _score6.model_copy(update={
+                        "option_flow_ok":         _new_opt6,
+                        "capital_flow_confirmed": _new_cap6,
+                        "signal_count":           max(0, _score6.signal_count + _delta6),
+                    })
+                    _recalc6 += 1
+                    log.debug("sell_option_flow_recalc", ticker=_pos6.ticker,
+                              old=_score6.option_flow_ok, new=_new_opt6)
+            if _recalc6:
+                append_audit(ctx.execution_id, 6, "info",
+                             data={"option_flow_recalc": _recalc6})
+                log.info("sell_option_flow_recalc_done", recalculated=_recalc6)
+
+        # ── Step 1에서 BS fallback 사용했던 포지션의 current_premium 재계산 ──────
+        # Step 6에서 옵션 체인이 갱신됐으므로, 갱신된 chain으로 매칭을 재시도.
+        # deep OTM 포지션(strike > spot ±10%)은 여전히 chain에 없을 수 있으나,
+        # 체인이 갱신된 경우엔 strike ±10% 범위 밖까지 확장 조회.
+        if ctx.summary_data and ctx.sell_health:
+            for _rpos in ctx.positions:
+                _rh = ctx.sell_health.get(_pos_key(_rpos), {})
+                # BS fallback을 사용했던 경우만 재시도
+                if _rh.get("premium_source") != "bs_estimate":
+                    continue
+                _ropt = ctx.summary_data.options.get(_rpos.ticker)
+                if not _ropt or not _ropt.chain:
+                    continue
+                _ropt_type = "put" if _rpos.option_type == "롱풋" else "call"
+                # strike 매칭 허용 오차를 ±5%로 확장 (deep OTM 포지션 대응)
+                _r_spot = (
+                    ctx.summary_data.tickers[_rpos.ticker].technical.price
+                    if _rpos.ticker in ctx.summary_data.tickers else 0.0
+                )
+                _best_r: dict | None = None
+                _best_r_dist = float("inf")
+                for _re in _ropt.chain:
+                    if _re.get("option_type", "").lower() != _ropt_type:
+                        continue
+                    _re_str = str(_re.get("expiry", ""))[:10]
+                    if _re_str and _re_str != str(_rpos.expiry)[:10]:
+                        continue
+                    _re_dist = abs(float(_re.get("strike", 0)) - _rpos.strike)
+                    if _re_dist < _best_r_dist:
+                        _best_r_dist = _re_dist
+                        _best_r = _re
+                # 최근접 strike로 mid_price 재계산 (strike 차이 $5 이내)
+                if _best_r and _best_r_dist <= 5.0:
+                    _r_bid = float(_best_r.get("bid", 0) or 0)
+                    _r_ask = float(_best_r.get("ask", 0) or 0)
+                    _r_mid = float(_best_r.get("mid", 0) or _best_r.get("mid_price", 0) or 0)
+                    if _r_bid > 0 and _r_ask > 0:
+                        _r_mid = (_r_bid + _r_ask) / 2
+                    if _r_mid > 0:
+                        _old_prem = _rh.get("current_premium", _rpos.entry_premium)
+                        _new_pnl_total = (
+                            (_r_mid - _rpos.entry_premium)
+                            * 100 * _rpos.remaining_contracts
+                        )
+                        ctx.sell_health[_pos_key(_rpos)] = {
+                            **_rh,
+                            "current_premium": round(_r_mid, 2),
+                            "premium_source":  "chain_refreshed",
+                            "delta_pnl":       round(_new_pnl_total, 2),
+                            "theta_pnl":       0.0,
+                            "vega_pnl":        0.0,
+                        }
+                        log.info("sell_health_premium_refreshed",
+                                 ticker=_rpos.ticker,
+                                 old_premium=round(_old_prem or 0, 2),
+                                 new_premium=round(_r_mid, 2),
+                                 strike_dist=round(_best_r_dist, 1))
 
         iv_crush_warnings: list[str] = []
         for pos in ctx.positions:
@@ -1068,16 +1634,28 @@ class SellSteps:
                              insider_pct=round(fvd.insider_trans_pct, 1))
 
                 # 애널리스트 목표주가 근접 → 상방 여력 소진
-                # 현재가가 목표가의 130% 초과 = 데이터가 낡아 신뢰 불가 → 무시
+                # 현재가 vs 목표주가 비교
+                # - 목표주가 초과 (current > target): 상방 여력 소진, 더 강한 청산 신호
+                # - 목표주가 근접 (current ≥ target×0.95): 상방 여력 소진 임박
+                # - 목표주가의 130% 초과: stale 데이터 → 무시
                 if (fvd.target_price and fvd.target_price > 0
                         and _stock_price > 0
-                        and _stock_price >= fvd.target_price * st.SELL_TARGET_PRICE_PROXIMITY
                         and _stock_price <= fvd.target_price * 1.30):
-                    flags.append("목표주가_근접")
-                    log.info("sell_step7_fvd_flag",
-                             ticker=pos.ticker, flag="목표주가_근접",
-                             current=round(_stock_price, 2),
-                             target=round(fvd.target_price, 2))
+                    if _stock_price > fvd.target_price:
+                        # 현재가가 이미 목표주가를 초과 — 상방 여력 없음
+                        flags.append("목표주가_초과")
+                        log.info("sell_step7_fvd_flag",
+                                 ticker=pos.ticker, flag="목표주가_초과",
+                                 current=round(_stock_price, 2),
+                                 target=round(fvd.target_price, 2),
+                                 excess_pct=round((_stock_price / fvd.target_price - 1) * 100, 1))
+                    elif _stock_price >= fvd.target_price * st.SELL_TARGET_PRICE_PROXIMITY:
+                        # 현재가가 목표주가에 근접 — 상방 여력 소진 임박
+                        flags.append("목표주가_근접")
+                        log.info("sell_step7_fvd_flag",
+                                 ticker=pos.ticker, flag="목표주가_근접",
+                                 current=round(_stock_price, 2),
+                                 target=round(fvd.target_price, 2))
 
             # 규칙 기반 예비 결정 (§9.4 Step 10 우선순위 규칙)
             regime_reversed = "레짐역전_청산권고" in flags
@@ -1093,8 +1671,9 @@ class SellSteps:
                 action = "PARTIAL_EXIT"
             elif (dv.get("event_judgment") == "청산_유리"
                   or "1차익절_달성" in flags
-                  or "목표주가_근접" in flags):
-                # 이벤트 청산 유리 or 50% 수익 or 목표주가 상방 여력 소진 → 부분 확정
+                  or "목표주가_근접" in flags
+                  or "목표주가_초과" in flags):
+                # 이벤트 청산 유리 or 50% 수익 or 목표주가 근접/초과 → 부분 확정
                 action = "PARTIAL_EXIT"
             elif tech and not tech.trend_confirmed:
                 action = "PARTIAL_EXIT"
@@ -1371,8 +1950,40 @@ class SellSteps:
             if (action == "FULL_EXIT" and pos.dte <= 7
                     and tech and tech.trend_confirmed):
                 action = "ROLL"
-                # M2: 실제 옵션 만기 = target_dte 이후 가장 가까운 금요일
-                roll_expiry = _nearest_friday(date.today(), target_dte=35)
+                # ⑳ 실시간 chain에서 ATM OI 기준 최적 만기 선택 (폴백: _nearest_friday)
+                roll_expiry = None
+                try:
+                    _roll_opt = ctx.summary_data.options.get(pos.ticker) if ctx.summary_data else None
+                    _roll_chain = _roll_opt.chain if _roll_opt else []
+                    _roll_spot = (
+                        ctx.summary_data.tickers[pos.ticker].technical.price
+                        if ctx.summary_data and pos.ticker in ctx.summary_data.tickers else 0.0
+                    )
+                    if _roll_chain and _roll_spot > 0:
+                        from datetime import datetime as _rdt
+                        # 45~90일 범위 만기별 ATM OI 집계
+                        _roll_exp_oi: dict[str, int] = {}
+                        for _re in _roll_chain:
+                            _re_dte = int(_re.get("dte", 0) or 0)
+                            if 45 <= _re_dte <= 90:
+                                _re_exp = str(_re.get("expiry", ""))
+                                _re_strike = float(_re.get("strike", 0) or 0)
+                                if abs(_re_strike - _roll_spot) / _roll_spot <= 0.05:
+                                    _roll_exp_oi[_re_exp] = (
+                                        _roll_exp_oi.get(_re_exp, 0)
+                                        + int(_re.get("oi", 0) or 0)
+                                    )
+                        if _roll_exp_oi:
+                            _best_exp = max(_roll_exp_oi, key=lambda k: _roll_exp_oi[k])
+                            roll_expiry = _rdt.fromisoformat(_best_exp[:10]).date()
+                            log.info("sell_roll_expiry_from_chain",
+                                     ticker=pos.ticker, expiry=str(roll_expiry),
+                                     atm_oi=_roll_exp_oi[_best_exp])
+                except Exception as _roll_exc:
+                    log.debug("sell_roll_expiry_chain_failed",
+                              ticker=pos.ticker, error=str(_roll_exc))
+                if roll_expiry is None:
+                    roll_expiry = _nearest_friday(date.today(), target_dte=35)
                 roll_strike = pos.strike
             else:
                 roll_expiry = None
@@ -1396,12 +2007,24 @@ class SellSteps:
                         action = llm_action
                     llm_rationale = _cached_dec.get("rationale", "")
                 else:
+                    # 현재 P&L 상태: LLM이 수익/손실 여부를 알고 판단해야 함
+                    _h10 = ctx.sell_health.get(_pos_key(pos), {})
+                    _curr_prem10 = _h10.get("current_premium")
+                    _pnl_str = (
+                        f"미실현 ${unrealized_pnl:+,.0f} "
+                        f"(진입프리미엄 ${pos.entry_premium:.2f} → "
+                        f"현재 ${_curr_prem10:.2f})" if _curr_prem10
+                        else f"미실현 ${unrealized_pnl:+,.0f} (프리미엄 추정값)"
+                    )
+                    _pnl_status = "수익 중" if unrealized_pnl >= 0 else "손실 중"
+
                     llm_decision = await analyze_with_llm(
                         template_name="sell_step3_decision",
                         template_vars={
                             "ticker": pos.ticker,
                             "flags": flags,
                             "dte_urgency": urgency,
+                            "remaining_contracts": pos.remaining_contracts,
                             "trend_status": (
                                 "확인됨" if (tech and tech.trend_confirmed) else "미확인"
                             ),
@@ -1412,6 +2035,9 @@ class SellSteps:
                             ),
                             "event_judgment": dv.get("event_judgment", "중립"),
                             "expected_value": ev_str,
+                            # 현재 P&L 상태 — 수익/손실 여부 명시
+                            "pnl_status": _pnl_status,
+                            "pnl_detail": _pnl_str,
                             # Step 3 뉴스 감성 분석 결과 전달 (연결 핵심)
                             "overall_sentiment": sentiment.get("overall_sentiment", "MIXED"),
                             "sentiment_verdict": sentiment.get("debate_verdict", "Neutral"),
@@ -1450,11 +2076,28 @@ class SellSteps:
                 log.warning("sell_step10_llm_failed", ticker=pos.ticker, error=str(exc))
 
             # PARTIAL_EXIT 청산 계약 수: 잔여 계약의 close_ratio 비율
+            # 1계약 포지션에서 PARTIAL_EXIT는 의미 없음 → FULL_EXIT로 자동 변환
             if action == "FULL_EXIT":
                 close_cnt_final = pos.remaining_contracts
             elif action == "PARTIAL_EXIT":
-                close_cnt_final = max(1, round(pos.remaining_contracts * st.SELL_PARTIAL_PROFIT_RATIO))
-                close_cnt_final = min(close_cnt_final, pos.remaining_contracts)
+                if pos.remaining_contracts <= 1:
+                    # 1계약은 쪼갤 수 없음 — FULL_EXIT 또는 HOLD만 유효
+                    # 손실 중이면 FULL_EXIT, 아니면 HOLD로 변환
+                    if unrealized_pnl < 0:
+                        action = "FULL_EXIT"
+                        close_cnt_final = pos.remaining_contracts
+                        log.info("sell_step10_partial_to_full_1contract",
+                                 ticker=pos.ticker,
+                                 reason="1계약 포지션 손실 중 → FULL_EXIT 자동 변환")
+                    else:
+                        action = "HOLD"
+                        close_cnt_final = 0
+                        log.info("sell_step10_partial_to_hold_1contract",
+                                 ticker=pos.ticker,
+                                 reason="1계약 포지션 수익 중 → HOLD 자동 변환")
+                else:
+                    close_cnt_final = max(1, round(pos.remaining_contracts * st.SELL_PARTIAL_PROFIT_RATIO))
+                    close_cnt_final = min(close_cnt_final, pos.remaining_contracts - 1)  # 최소 1계약 잔여
             else:
                 close_cnt_final = 0
 
@@ -1550,23 +2193,43 @@ class SellSteps:
         for d in full_exits:
             pos = next((p for p in ctx.positions if p.ticker == d.ticker), None)
             if pos:
-                result_str = "수익" if d.realized_pnl >= 0 else "손실"
+                # 초기 노트 — LLM 복기 블록에서 현재 P&L 기준으로 덮어씌워짐
+                _h12_pre = ctx.sell_health.get(_pos_key(pos), {})
+                _unreal12_pre = d.unrealized_pnl
+                _init_result = "수익" if (_unreal12_pre if d.realized_pnl == 0 else d.realized_pnl) >= 0 else "손실"
                 review_notes.append(
-                    f"{d.ticker}: {result_str} ${d.realized_pnl:,.0f} "
+                    f"{d.ticker}: {_init_result} "
+                    f"미실현${_unreal12_pre:+,.0f} / 실현${d.realized_pnl:+,.0f} "
                     f"| thesis: {pos.thesis[:50]}"
                 )
 
                 # ── LLM 트레이드 복기 (sell_step4_review) ─────────────
                 try:
+                    # 현재 프리미엄·미실현 P&L을 복기 LLM에 함께 전달
+                    _h12 = ctx.sell_health.get(_pos_key(pos), {})
+                    _curr_prem12 = _h12.get("current_premium") or pos.entry_premium
+                    _unreal12 = d.unrealized_pnl
+                    # realized_pnl=0 (DRY-RUN)인 경우 미실현 손익으로 결과 판단
+                    _effective_pnl = d.realized_pnl if d.realized_pnl != 0 else _unreal12
+                    result_str = "수익" if _effective_pnl >= 0 else "손실"
+                    # review_notes 덮어쓰기 (위에서 realized_pnl 기준으로 써진 것 수정)
+                    if review_notes and review_notes[-1].startswith(d.ticker):
+                        review_notes[-1] = (
+                            f"{d.ticker}: {result_str} "
+                            f"미실현${_unreal12:+,.0f} / 실현${d.realized_pnl:+,.0f} "
+                            f"| thesis: {pos.thesis[:50]}"
+                        )
                     llm_review = await analyze_with_llm(
                         template_name="sell_step4_review",
                         template_vars={
                             "ticker": d.ticker,
                             "option_type": pos.option_type,
-                            "realized_pnl": round(d.realized_pnl, 2),
+                            "realized_pnl": round(_effective_pnl, 2),
                             "entry_thesis": pos.thesis,
                             "days_held": (date.today() - pos.entry_date).days,
                             "entry_premium": pos.entry_premium,
+                            "current_premium": round(_curr_prem12, 2),
+                            "unrealized_pnl": round(_unreal12, 2),
                         },
                     )
                     if isinstance(llm_review, dict):

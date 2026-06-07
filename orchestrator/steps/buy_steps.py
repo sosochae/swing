@@ -40,8 +40,8 @@ from core.analysis import (
     validate_option,
 )
 from core.api_fetcher import fetch_finviz_details_bulk
-from core.llm import analyze_with_llm, call_ddg_search
-from core.parsers import load_latest_summary, parse_earnings, parse_finviz_detail
+from core.llm import analyze_with_llm, call_ddg_search, _collect_rss_feeds
+from core.parsers import load_latest_summary
 from core.state import (
     append_audit,
     requeue_add,
@@ -187,23 +187,12 @@ class BuySteps:
                 from shared.schemas import SummaryData
                 ctx.summary_data = SummaryData(snapshot_timestamp=datetime.now())
 
-        # 어닝 분석 파싱 (어닝_분석_today.md 병합)
-        try:
-            ctx.earnings_list = parse_earnings(
-                ctx.paths.earnings_analysis,
-                today_file=ctx.paths.earnings_analysis_today,
-            )
-        except Exception as exc:
-            log.warning("earnings_parse_warn", error=str(exc))
-            ctx.earnings_list = []
+        # 어닝 분석: Finviz 파일(어닝 분석.md) 제거 → K어닝 분석은 Step 5에서 LLM 컨텍스트로 사용
+        # (ctx.earnings_list는 Step 3 Finnhub 어닝 캘린더 전용으로만 사용)
+        ctx.earnings_list = []
 
-        # finviz_output/*.txt 상세 파싱
-        try:
-            ctx.finviz_detail = parse_finviz_detail(ctx.paths.finviz_output_dir)
-            log.info("finviz_detail_loaded", tickers=len(ctx.finviz_detail))
-        except Exception as exc:
-            log.warning("finviz_detail_parse_warn", error=str(exc))
-            ctx.finviz_detail = {}
+        # finviz_output/*.txt 제거 → Step 4 yfinance(fetch_finviz_details_bulk)가 완전 대체
+        ctx.finviz_detail = {}
 
         # Kavout AI 점수 파싱 (DATA_DIR 내 kavout_*.csv)
         try:
@@ -319,12 +308,12 @@ class BuySteps:
         log.info("step_3_start")
         start = time.monotonic()
 
+        # unfavorable 레짐이어도 분석은 계속 진행
+        # → 레짐 자체가 나쁘다는 사실은 Step 10 확신도 계산에서 낮은 점수로 반영됨
+        # → 여기서 막으면 보고서에 아무것도 안 남아 분석 자체가 불가능해짐
         if ctx.regime and ctx.regime.regime_status == "unfavorable":
-            log.warning("step_3_skip_unfavorable_regime")
-            ctx.filtered_tickers = []
-            ctx.filter_failures = {}
-            save_snapshot(ctx.execution_id, 3, {"reason": "regime_unfavorable"})
-            return
+            log.warning("step_3_unfavorable_regime_noted",
+                        msg="레짐 unfavorable — 분석은 계속 진행, 확신도에 반영됨")
 
         # ── 어닝 예정일 실시간 갱신 (Finnhub, 실패 시 summary.events 폴백) ────────
         # FINNHUB_API_KEY 없으면 fetch_earnings_calendar_bulk()가 빈 리스트 반환
@@ -516,8 +505,10 @@ class BuySteps:
                 # RSI / RVOL
                 if _fv.rsi14       is not None: _upd["rsi14"]            = _fv.rsi14
                 if _fv.rel_volume  is not None: _upd["avg_volume_ratio"] = _fv.rel_volume
-                # ADX
+                # ADX + DI 방향성 (DI+/DI-가 없으면 ADX 점수가 방향을 알 수 없음)
                 if _fv.adx         is not None: _upd["adx14"]            = _fv.adx
+                if _fv.di_plus     is not None: _upd["di_plus"]          = _fv.di_plus
+                if _fv.di_minus    is not None: _upd["di_minus"]         = _fv.di_minus
                 # MA 달러값 (MA 정렬 점수 전체에 영향)
                 if _fv.sma5_val    is not None: _upd["ma5"]              = _fv.sma5_val
                 if _fv.sma20_val   is not None: _upd["ma20"]             = _fv.sma20_val
@@ -560,15 +551,11 @@ class BuySteps:
                      total=len(ctx.filtered_tickers))
 
         direction = ctx.regime.allowed_direction
-        # both이면 long_call 기본
-        if direction == "both":
+        # both / none 모두 long_call 기본값으로 분석 계속
+        # → 기술 점수는 레짐과 독립적 (RSI/MACD/ADX는 시장 방향 무관)
+        # → none이면 관망 권고지만 종목 기술 상태 기록은 반드시 필요
+        if direction in ("both", "none"):
             direction = "long_call"
-        elif direction == "none":
-            duration_ms = int((time.monotonic() - start) * 1000)
-            append_audit(ctx.execution_id, 4, "completed", duration_ms=duration_ms,
-                         data={"skipped": "regime_none"})
-            save_snapshot(ctx.execution_id, 4, {}, duration_ms)
-            return
 
         async def analyze_one(ticker: str) -> tuple[str, TechnicalScore]:
             score = calculate_technical_score(
@@ -685,6 +672,9 @@ class BuySteps:
         start = time.monotonic()
 
         direction = ctx.regime.allowed_direction if ctx.regime else "long_call"
+        # "none" / "both" → LLM 프롬프트에 명확한 방향 전달 (오작동 방지)
+        if direction in ("none", "both"):
+            direction = "long_call"
 
         # ── RSS 피드 로드 (설정 파일) ───────────────────────────
         market_rss_news: list[dict] = []
@@ -737,7 +727,7 @@ class BuySteps:
             ]
             try:
                 ddg_results = await asyncio.gather(
-                    *[call_ddg_search(q, num_results=8) for q in ddg_queries],
+                    *[call_ddg_search(q, num_results=8, force_refresh=ctx.force_refresh) for q in ddg_queries],
                     return_exceptions=True,
                 )
                 for r in ddg_results:
@@ -781,22 +771,37 @@ class BuySteps:
                      market_sampled=len(market_sample),
                      combined=len(combined))
 
-            # 어닝 분석 요약 (EarningsAnalysis 전 섹션 — 최대 2000자)
-            ea = next((e for e in ctx.earnings_list if e.ticker == ticker), None)
+            # 어닝 분석 요약: Finviz 파일 제거 → K어닝 분석.md (Kavout) 우선 사용
             earnings_summary = ""
-            if ea:
-                parts: list[str] = []
-                if ea.quarter:
-                    parts.append(f"최근분기: {ea.quarter}")
-                if ea.industry:
-                    parts.append(f"인더스트리: {ea.industry[:200]}")
-                if ea.business_model:
-                    parts.append(f"사업모델: {ea.business_model[:600]}")
-                if ea.strategy_changes:
-                    parts.append(f"전략변화: {ea.strategy_changes[:500]}")
-                if ea.management_confidence:
-                    parts.append(f"경영진확신도: {ea.management_confidence[:400]}")
-                earnings_summary = (" | ".join(parts))[:2000]
+            try:
+                from core.parsers import _parse_earnings_file as _pef
+                from pathlib import Path as _KEPath
+                _k_candidates = [
+                    ctx.paths.k_earnings_analysis_today,
+                    ctx.paths.k_earnings_analysis,
+                ]
+                for _kp in _k_candidates:
+                    if not _kp.exists():
+                        continue
+                    _k_eas = _pef(_kp)
+                    _k_match = next((e for e in _k_eas if e.ticker == ticker), None)
+                    if _k_match and (
+                        _k_match.business_model or _k_match.strategy_changes
+                        or _k_match.management_confidence
+                    ):
+                        _parts: list[str] = []
+                        if _k_match.quarter:
+                            _parts.append(f"최근분기: {_k_match.quarter}")
+                        if _k_match.business_model:
+                            _parts.append(f"사업모델: {_k_match.business_model[:600]}")
+                        if _k_match.strategy_changes:
+                            _parts.append(f"전략변화: {_k_match.strategy_changes[:500]}")
+                        if _k_match.management_confidence:
+                            _parts.append(f"경영진확신도: {_k_match.management_confidence[:400]}")
+                        earnings_summary = (" | ".join(_parts))[:2000]
+                        break
+            except Exception as _k_exc:
+                log.debug("k_earnings_summary_skip", ticker=ticker, error=str(_k_exc))
 
             # ⑥ LLM 감성 분석 — 최대 50개 기사 (title + description 포함)
             #    claude-haiku-4.5 200k context → 50개 × 평균 300token ≒ 15k tokens, 충분
@@ -908,13 +913,15 @@ class BuySteps:
                         "rvol_score":      ts.rvol_score,
                         "signal_count":    ts.signal_count,
                         "confidence_pct":  conf_pct,
+                        # 레짐 상태 — 내러티브가 강세/약세 편향을 맹목적으로 따르지 않도록
+                        "regime_status":   ctx.regime.regime_status if ctx.regime else "unknown",
                     }
                     nar_key = f"{ticker}_{date.today()}_tech_narrative"
                     nar_result = await analyze_with_llm(
                         template_name="buy_step3b_technical_narrative",
                         template_vars=tech_vars,
                         cache_key=nar_key,
-                        force_refresh=ctx.force_refresh,
+                        force_refresh=True,
                     )
                     ctx.sentiment_results[ticker]["technical_narrative"] = nar_result
             except Exception as exc:
@@ -945,7 +952,8 @@ class BuySteps:
 
         today = date.today()
         direction = ctx.regime.allowed_direction if ctx.regime else "long_call"
-        if direction == "both":
+        # "none"이면 is_long=False(롱풋 기준)로 오작동 → long_call 기본값
+        if direction in ("both", "none"):
             direction = "long_call"
         is_long = direction == "long_call"
 
@@ -1228,7 +1236,7 @@ class BuySteps:
         # 실시간 옵션 analytics(pc_ratio, OI)로 보정.
         if ctx.summary_data and ctx.technical_scores:
             _dir_now = ctx.regime.allowed_direction if ctx.regime else "long_call"
-            if _dir_now == "both":
+            if _dir_now in ("both", "none"):
                 _dir_now = "long_call"
             _is_long_now = _dir_now == "long_call"
             _recalc_count = 0
@@ -1292,7 +1300,7 @@ class BuySteps:
         #       _summary_oi_change_map에서 (strike, option_type) 키로 조회.
         if ctx.summary_data and ctx.technical_scores:
             _oi_dir = ctx.regime.allowed_direction if ctx.regime else "long_call"
-            if _oi_dir == "both":
+            if _oi_dir in ("both", "none"):
                 _oi_dir = "long_call"
             _oi_is_long = (_oi_dir == "long_call")
             _oi_signal_count = 0
@@ -1440,7 +1448,7 @@ class BuySteps:
             ticker_data = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
             spot = ticker_data.technical.price if ticker_data else 0.0
             direction = ctx.regime.allowed_direction if ctx.regime else "long_call"
-            if direction == "both":
+            if direction in ("both", "none"):
                 direction = "long_call"
             opt_type = "call" if "call" in direction else "put"
 
@@ -1635,7 +1643,7 @@ class BuySteps:
             _hv_td = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
             _hv_spot = _hv_td.technical.price if _hv_td else 0.0
             _hv_dir = ctx.regime.allowed_direction if ctx.regime else "long_call"
-            if _hv_dir == "both":
+            if _hv_dir in ("both", "none"):
                 _hv_dir = "long_call"
             _hv_opt = "call" if "call" in _hv_dir else "put"
             ctx.horizon_recommendations[ticker] = {}
@@ -1858,6 +1866,17 @@ class BuySteps:
                 fvd = ctx.finviz_detail.get(ticker)
                 bull_tp = fvd.target_price if fvd and fvd.target_price else None
 
+                # DI 방향 + 레짐 — 시나리오 확률 현실화 (ADX 강도만으로 낙관적 왜곡 방지)
+                _fvd_di_p = fvd.di_plus  if fvd and fvd.di_plus  and fvd.di_plus  > 0 else 0.0
+                _fvd_di_n = fvd.di_minus if fvd and fvd.di_minus and fvd.di_minus > 0 else 0.0
+                # _regime_to_score 로직 인라인: favorable=75, borderline=50, unfavorable=25 ± 신뢰도 보정
+                if ctx.regime:
+                    _rs = ctx.regime.regime_status
+                    _rb = 75 if _rs == "favorable" else (50 if _rs == "borderline" else 25)
+                    _macro_sc = max(0, min(100, _rb + int((ctx.regime.regime_confidence - 0.5) * 30)))
+                else:
+                    _macro_sc = 50
+
                 scenario = calculate_scenario(
                     ticker=ticker,
                     direction=validity.direction,
@@ -1882,6 +1901,9 @@ class BuySteps:
                     max_per_position=cfg.budget_1st,
                     commission_per_contract=cfg.COMMISSION_PER_CONTRACT,
                     bull_target_price=bull_tp,
+                    di_plus=_fvd_di_p,
+                    di_minus=_fvd_di_n,
+                    macro_score=_macro_sc,
                 )
                 ctx.scenarios[ticker] = scenario
             except Exception as exc:
@@ -1955,6 +1977,8 @@ class BuySteps:
 
         # ── 후보 목록 구성 ─────────────────────────────────────────
         candidates: list[dict] = []
+        # 데이터 부족 종목: 분석은 못 해도 "탈락" 으로 순위에 기록
+        incomplete_tickers: list[str] = []
 
         for ticker in ctx.filtered_tickers:
             tech = ctx.technical_scores.get(ticker)
@@ -1962,6 +1986,12 @@ class BuySteps:
             validity = ctx.option_validity.get(ticker)
 
             if not tech or not scenario or not validity:
+                incomplete_tickers.append(ticker)
+                log.warning("step_10_incomplete_data",
+                            ticker=ticker,
+                            has_tech=bool(tech),
+                            has_scenario=bool(scenario),
+                            has_validity=bool(validity))
                 continue
 
             # Kavout K-Score 조회 (없으면 중립 5.0)
@@ -2113,6 +2143,55 @@ class BuySteps:
             -x.get("kavout_score", 5.0),                # 5순위: Kavout K-Score 높을수록 우선
         ))
         ctx.final_rankings = _build_rankings(balanced_sorted)
+
+        # ── 데이터 부족 종목 → "탈락"으로 rankings 끝에 추가 ─────────
+        # 기술점수 / 시나리오 / 옵션 중 하나라도 없으면 수치 계산 불가
+        # 그래도 보고서에는 반드시 나와야 하므로 탈락 항목으로 기록
+        if incomplete_tickers:
+            from datetime import date as _date_cls, timedelta as _td_cls
+            from shared.schemas import ConfidenceScore as _CS, Greeks as _G, OptionValidity as _OV
+            _fallback_expiry = _date_cls.today() + _td_cls(days=60)
+            _fallback_greeks = _G(delta=0.0, theta=0.0, vega=0.0, gamma=0.0, iv=0.0, ivr=0.0)
+            _fallback_ov = _OV(
+                ticker="", direction="long_call", strike=0.0,
+                expiry=_fallback_expiry, is_valid=False,
+                delta_ok=False, ivr_ok=False, oi_ok=False,
+                spread_ok=False, dte_ok=False,
+                ivr_warning=False, oi_warning=False,
+                greeks=_fallback_greeks, mid_price=0.0,
+                exclusion_reason="데이터 부족"
+            )
+            _fallback_conv = _CS(
+                total_conviction=0.0, level="low",
+                trend_confidence=0.0, news_confidence=0.0,
+                thesis_confidence=0.0, execution_confidence=0.0,
+                technical_signals=0, rr_ratio=0.0,
+            )
+            _rank_offset = len(ctx.final_rankings)
+            for _i, _tk in enumerate(incomplete_tickers, 1):
+                # 가능한 데이터는 최대한 활용
+                _tech = ctx.technical_scores.get(_tk)
+                _ov   = ctx.option_validity.get(_tk) or _fallback_ov
+                _reasons: list[str] = []
+                if not ctx.technical_scores.get(_tk):  _reasons.append("기술 점수 미산출")
+                if not ctx.scenarios.get(_tk):          _reasons.append("시나리오 미산출")
+                if not ctx.option_validity.get(_tk):    _reasons.append("옵션 유효성 미검증")
+                ctx.final_rankings.append(FinalRanking(
+                    rank=_rank_offset + _i,
+                    ticker=_tk,
+                    direction="long_call",
+                    action="탈락",
+                    final_score=_tech.final_score if _tech else 0.0,
+                    conviction=_fallback_conv,
+                    capital_allocation=0.0,
+                    contracts=0,
+                    strike=_ov.strike,
+                    expiry=_ov.expiry,
+                    rationale="데이터 부족: " + ", ".join(_reasons),
+                    risk_factors=[],
+                    scenario=None,
+                    da_reasons=ctx.da_log.get(_tk, []),
+                ))
 
         # ── ② 수익성 최우선 정렬: EV → R/R → 확신도 ───────────────
         aggressive_sorted = sorted(candidates, key=lambda x: (
@@ -2337,22 +2416,22 @@ class BuySteps:
         # note_path를 컨텍스트에 저장 (Step 13에서 사용)
         ctx.obsidian_note_path = note_path
 
-        # ── positions.md 자동 갱신 (파이프라인 전체 종목) ──────────────────
+        # ── watchlist.md 자동 갱신 (파이프라인 전체 종목) ──────────────────
         if ctx.final_rankings:
             try:
-                await _append_positions_md(ctx.final_rankings, ctx)
+                await _append_watchlist_md(ctx.final_rankings, ctx)
             except Exception as exc:
-                log.warning("positions_md_write_warn", error=str(exc))
+                log.warning("watchlist_md_write_warn", error=str(exc))
 
         duration_ms = int((time.monotonic() - start) * 1000)
         append_audit(ctx.execution_id, 12, "completed", duration_ms=duration_ms,
                      data={"note_path": note_path,
-                           "positions_written": len(ctx.final_rankings)})
+                           "watchlist_written": len(ctx.final_rankings)})
         save_snapshot(ctx.execution_id, 12, {"note_path": note_path,
-                                              "positions_written": len(ctx.final_rankings)},
+                                              "watchlist_written": len(ctx.final_rankings)},
                       duration_ms)
         log.info("step_12_done", note_path=note_path,
-                 positions_written=len(ctx.final_rankings))
+                 watchlist_written=len(ctx.final_rankings))
 
     # ─────────────────────────────────────────────────────────
     # Step 13: Slack 알림
@@ -2416,12 +2495,12 @@ def _nearest_friday(from_date: date, target_dte: int = 35) -> date:
     return target + __import__("datetime").timedelta(days=days_ahead)
 
 
-async def _append_positions_md(
+async def _append_watchlist_md(
     all_rankings: list,
     ctx: "PipelineContext",
 ) -> None:
     """
-    파이프라인 전체 종목을 positions.md에 YAML 블록으로 추가.
+    파이프라인 전체 종목을 watchlist.md에 YAML 블록으로 추가.
     파일이 없으면 생성, 이미 동일 ticker + 동일 expiry 항목이 있으면 스킵.
 
     Args:
@@ -2431,7 +2510,7 @@ async def _append_positions_md(
     from pathlib import Path as _Path
     from datetime import datetime as _dt
 
-    positions_file = _Path(cfg.POSITIONS_FILE)
+    positions_file = _Path(cfg.WATCHLIST_FILE)
     positions_file.parent.mkdir(parents=True, exist_ok=True)
 
     existing_content = ""
@@ -2530,52 +2609,11 @@ conviction_score: {ranking.conviction.total_conviction:.2f}
         separator = f"\n\n신규 분석 — {now_str}\n"
         with positions_file.open("a", encoding="utf-8") as f:
             if not existing_content:
-                f.write(f"Positions — {now_str}\n\n")
+                f.write(f"Watchlist — {now_str}\n\n")
             f.write(separator + "\n".join(new_blocks) + "\n")
-        log.info("positions_md_updated",
+        log.info("watchlist_md_updated",
                  file=str(positions_file),
                  added=len(new_blocks))
 
 
-async def _collect_rss_feeds(
-    feed_urls: list[str],
-    label: str = "feed",
-    max_per_feed: int = 5,
-) -> list[dict]:
-    """
-    RSS 피드 URL 목록에서 뉴스 항목 수집 (feedparser, Graceful Degradation)
-
-    Args:
-        feed_urls: RSS URL 리스트
-        label: 로그용 레이블 (종목 또는 "market")
-        max_per_feed: 피드 당 최대 항목 수
-
-    Returns:
-        [{"title": ..., "source": "rss", "description": ..., "url": ...}]
-    """
-    results: list[dict] = []
-    try:
-        import feedparser  # type: ignore
-    except ImportError:
-        log.warning("feedparser_not_installed", hint="pip install feedparser")
-        return results
-
-    for url in feed_urls:
-        try:
-            # feedparser는 동기 라이브러리 → 스레드풀에서 실행
-            loop = asyncio.get_running_loop()
-            feed = await loop.run_in_executor(None, feedparser.parse, url)
-            for entry in feed.entries[:max_per_feed]:
-                results.append({
-                    "title": entry.get("title", ""),
-                    "source": "rss",
-                    "description": entry.get("summary", "")[:300],
-                    "url": entry.get("link", ""),
-                    "published": entry.get("published", ""),
-                    "feed_label": label,
-                })
-        except Exception as exc:
-            log.warning("rss_feed_fail", url=url, label=label, error=str(exc))
-
-    log.info("rss_collected", label=label, count=len(results))
-    return results
+# _collect_rss_feeds는 core/llm.py로 이동됨 — import로 사용

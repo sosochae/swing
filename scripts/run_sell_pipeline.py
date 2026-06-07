@@ -56,7 +56,9 @@ def _print_step_result(ctx: Any, step_num: int) -> None:
             print(f"  {ticker}: score={score.final_score:.1f}  "
                   f"signal={score.signal_count}  "
                   f"trend={'✓' if score.trend_confirmed else '✗'}  "
-                  f"flow={'✓' if score.capital_flow_confirmed else '✗'}")
+                  f"flow={'✓' if score.capital_flow_confirmed else '✗'}  "
+                  f"ma={score.ma_alignment}  adx={score.adx_score:.0f}  "
+                  f"rsi={score.rsi_score:.0f}  macd={score.macd_score:.0f}")
 
     elif step_num == 4:
         for ticker, thesis in ctx.sell_thesis.items():
@@ -65,8 +67,10 @@ def _print_step_result(ctx: Any, step_num: int) -> None:
 
     elif step_num == 5:
         for ticker, dv in ctx.sell_devils.items():
+            da_reasons = dv.get("da_reasons", [])
+            da_str = f"  DA차감={da_reasons}" if da_reasons else ""
             print(f"  {ticker}: event={dv.get('event_judgment')}  "
-                  f"iv_crush={dv.get('iv_crush_risk')}")
+                  f"iv_crush={dv.get('iv_crush_risk')}{da_str}")
 
     elif step_num == 6:
         if ctx.sell_iv_warnings:
@@ -78,7 +82,7 @@ def _print_step_result(ctx: Any, step_num: int) -> None:
     elif step_num == 7:
         for d in ctx.sell_preliminary:
             key_flags = [f for f in d.get("flags", [])
-                         if any(k in f for k in ["권고", "달성", "역전", "발동", "도달"])]
+                         if any(k in f for k in ["권고", "달성", "역전", "발동", "도달", "초과", "근접"])]
             print(f"  {d['ticker']}: {d['action']}  "
                   f"unrealized=${d.get('unrealized_pnl', 0):+,.0f}  "
                   f"flags={key_flags}")
@@ -94,9 +98,18 @@ def _print_step_result(ctx: Any, step_num: int) -> None:
 
     elif step_num == 10:
         for d in ctx.sell_decisions:
-            print(f"  {d.ticker}: {d.action}  urgency={d.urgency}")
-            rationale = (d.rationale or "(없음)")[:80]
-            print(f"    └─ {rationale}")
+            tech = ctx.technical_scores.get(
+                next((f"{p.ticker}_{p.expiry}_{p.strike}"
+                      for p in ctx.positions if p.ticker == d.ticker), ""), None
+            )
+            tech_str = f"  [기술점수 {tech.final_score:.1f}/signal={tech.signal_count}]" if tech else ""
+            print(f"  {d.ticker}: {d.action}  urgency={d.urgency}{tech_str}")
+            # 근거 전문 출력 (잘리지 않게)
+            rationale = d.rationale or "(없음)"
+            for i, line in enumerate(rationale.split(".")):
+                line = line.strip()
+                if line:
+                    print(f"    {'└─' if i == 0 else '  '} {line}.")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -227,9 +240,14 @@ def _print_final_report(ctx: Any, failed_steps: list[int]) -> None:
             print(f"     실현P&L  : ${d.realized_pnl:+,.0f}")
             print(f"     미실현P&L: ${d.unrealized_pnl:+,.0f}")
             if d.risk_factors:
-                print(f"     리스크   : {d.risk_factors[0][:70]}")
-            rationale = (d.rationale or "(없음)")[:80]
-            print(f"     근거     : {rationale}")
+                print(f"     리스크   : {d.risk_factors[0][:100]}")
+            # 근거 전문 출력 (잘리지 않게)
+            rationale = d.rationale or "(없음)"
+            lines = [l.strip() for l in rationale.split(".") if l.strip()]
+            if lines:
+                print(f"     근거     : {lines[0]}.")
+                for extra in lines[1:]:
+                    print(f"               {extra}.")
 
     print(f"\n{'='*60}\n")
 

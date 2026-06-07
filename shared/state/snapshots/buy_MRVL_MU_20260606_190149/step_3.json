@@ -1,0 +1,17 @@
+{
+  "execution_id": "buy_MRVL_MU_20260606_190149",
+  "step": 3,
+  "completed_at": "2026-06-06T19:02:18.894672",
+  "duration_ms": 1297,
+  "data": {
+    "all_tickers": [
+      "MRVL",
+      "MU"
+    ],
+    "filter_pass": [
+      "MRVL"
+    ],
+    "filter_fail_count": 1,
+    "hard_stopped": []
+  }
+}

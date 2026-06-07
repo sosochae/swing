@@ -1,0 +1,214 @@
+{
+  "execution_id": "sell_20260606_030803",
+  "step": 4,
+  "completed_at": "2026-06-06T03:35:13.251726",
+  "duration_ms": 766250,
+  "data": {
+    "MRVL_2026-07-17_220.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 7665,
+        "theta_pnl": -270,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 7395,
+        "actual_pnl": 7395
+      }
+    },
+    "MRVL_2026-06-19_200.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 7665,
+        "theta_pnl": -270,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 7395,
+        "actual_pnl": 7395
+      }
+    },
+    "MRVL_2026-07-10_220.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 7665,
+        "theta_pnl": -270,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 7395,
+        "actual_pnl": 7395
+      }
+    },
+    "MRVL_2026-06-26_280.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 7665,
+        "theta_pnl": -270,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 7395,
+        "actual_pnl": 7395
+      }
+    },
+    "CTRA_2026-07-10_37.0": {
+      "flags": [
+        "근거_유효",
+        "주의_신호"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [
+        {
+          "condition": "S&P 500 지수 편출로 인한 패시브 펀드 매도 압력",
+          "status": "유지"
+        },
+        {
+          "condition": "SEC 등록 취소로 인한 정보 투명성 감소",
+          "status": "유지"
+        },
+        {
+          "condition": "합병 통합 과정에서 발생할 수 있는 운영상 마찰과 비용 초과",
+          "status": "유지"
+        },
+        {
+          "condition": "원자재 가격, 특히 천연가스 가격의 약세가 지속될 경우 합병 시너지 효과가 상쇄될 수 있음",
+          "status": "유지"
+        },
+        {
+          "condition": "Aristotle Value Equity Strategy가 1분기에 Coterra 지분을 매도한 것은 가치 투자자 관점에서 현재 밸류에이션이 매력적이지 않을 수 있음을 시사함",
+          "status": "유지"
+        }
+      ],
+      "pnl_attribution": {
+        "delta_pnl": 6,
+        "theta_pnl": -66,
+        "vega_pnl": 0,
+        "total_estimated_pnl": -60,
+        "actual_pnl": -60
+      }
+    },
+    "AMD_2026-07-10_305.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 0.0,
+        "theta_pnl": -4.99,
+        "vega_pnl": 0.0,
+        "total_estimated_pnl": -4.99,
+        "actual_pnl": -4.99
+      }
+    },
+    "GOOGL_2026-07-10_412.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": -0.5,
+        "theta_pnl": -4.0,
+        "vega_pnl": -2.57,
+        "total_estimated_pnl": -7.07,
+        "actual_pnl": -7.07
+      }
+    },
+    "VICR_2026-07-10_282.0": {
+      "flags": [
+        "주의_신호",
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 0,
+        "theta_pnl": -240,
+        "vega_pnl": -40,
+        "total_estimated_pnl": -280,
+        "actual_pnl": -280
+      }
+    },
+    "DGII_2026-07-10_50.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 285.6,
+        "theta_pnl": -336.0,
+        "vega_pnl": 0.0,
+        "total_estimated_pnl": -50.4,
+        "actual_pnl": -50.0
+      }
+    },
+    "ALAB_2026-07-10_201.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 0.0,
+        "theta_pnl": -1.0,
+        "vega_pnl": -0.94,
+        "total_estimated_pnl": -1.94,
+        "actual_pnl": -1.94
+      }
+    },
+    "CRDO_2026-07-10_212.0": {
+      "flags": [
+        "주의_신호",
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 8.0,
+        "theta_pnl": -140.0,
+        "vega_pnl": -41.0,
+        "total_estimated_pnl": -173.0,
+        "actual_pnl": -173.0
+      }
+    },
+    "MRVL_2026-08-21_320.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 7665,
+        "theta_pnl": -270,
+        "vega_pnl": 0,
+        "total_estimated_pnl": 7395,
+        "actual_pnl": 7395
+      }
+    },
+    "MU_2026-08-21_1090.0": {
+      "flags": [
+        "근거_유효"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 500,
+        "theta_pnl": -50,
+        "vega_pnl": 460,
+        "total_estimated_pnl": 910,
+        "actual_pnl": 910
+      }
+    }
+  }
+}

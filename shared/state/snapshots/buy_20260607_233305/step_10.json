@@ -1,0 +1,25 @@
+{
+  "execution_id": "buy_20260607_233305",
+  "step": 10,
+  "completed_at": "2026-06-07T23:34:39.189197",
+  "duration_ms": 0,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "MU",
+        "action": "보류"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "MU",
+        "action": "보류"
+      }
+    ],
+    "high_downside": [
+      "MU"
+    ]
+  }
+}

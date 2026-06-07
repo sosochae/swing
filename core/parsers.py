@@ -1000,13 +1000,17 @@ def parse_earnings(
     today_file: Path | None = None,
 ) -> list[EarningsAnalysis]:
     """
-    어닝_분석.md + 어닝_분석_today.md 병합 파싱.
+    어닝 분석 파일 병합 파싱 (Finviz 기반 또는 K어닝 분석 공용).
+
+    Note: buy/sell 파이프라인은 Finviz 어닝 분석.md를 더 이상 사용하지 않음.
+    K어닝 분석.md(Kavout) 파싱 시에도 동일 함수를 재사용합니다.
+    run_kavout_screener.py, kavout_mcp/server.py(via analyze_earnings)에서 계속 사용.
 
     today_file에 같은 ticker가 있으면 base_file 항목을 덮어씁니다.
     실제 내용(business_model 또는 strategy_changes)이 없는 today 항목은 무시합니다.
 
     Args:
-        file_path: 기본 어닝_분석.md 경로
+        file_path: 기본 어닝 분석.md 또는 K어닝 분석.md 경로
         today_file: 오늘 추가분 어닝_분석_today.md 경로 (없으면 None)
 
     Returns:
@@ -1426,7 +1430,10 @@ def _parse_finviz_detail_file(ticker: str, content: str) -> FinvizDetail:
 
 def parse_finviz_detail(ticker_dir: Path) -> dict[str, FinvizDetail]:
     """
-    finviz_output/ 디렉토리 내 모든 <TICKER>.txt 파싱
+    [DEPRECATED] finviz_output/ 디렉토리 내 모든 <TICKER>.txt 파싱
+
+    ⚠️ buy/sell 파이프라인에서 제거됨 — yfinance fetch_finviz_details_bulk() 사용.
+    screener_mcp (Finviz 기반) 전용으로만 남겨둠.
 
     Args:
         ticker_dir: finviz_output 디렉토리 경로
@@ -1690,10 +1697,10 @@ def _parse_kavout_output_file(ticker: str, content: str) -> FinvizDetail:
 
 def parse_kavout_output(kavout_output_dir: Path) -> dict[str, FinvizDetail]:
     """
-    kavout_output/ 디렉토리 내 모든 <TICKER>.txt 파싱 → {ticker: FinvizDetail}
+    [DEPRECATED] kavout_output/ 디렉토리 내 모든 <TICKER>.txt 파싱 → {ticker: FinvizDetail}
 
-    장전 스냅샷 기준 펀더멘털·밸류에이션 필드만 채움.
-    기술지표(RSI, SMA 등)는 채우지 않음 (Yahoo Finance API 담당).
+    ⚠️ buy/sell 파이프라인 및 run_kavout_screener.py에서 제거됨.
+    kavout_output 파일은 오래된 스냅샷 기준이므로 yfinance가 완전 대체.
 
     Args:
         kavout_output_dir: Y:\\내 드라이브\\어닝\\kavout_output 경로

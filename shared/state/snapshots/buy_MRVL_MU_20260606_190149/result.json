@@ -1,0 +1,99 @@
+{
+  "execution_id": "buy_MRVL_MU_20260606_190149",
+  "pipeline_type": "buy",
+  "status": "partial",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {
+    "7": "1 validation error for OptionValidity\ndirection\n  Input should be 'long_call' or 'long_put' [type=literal_error, input_value='none', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/literal_error"
+  },
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "MRVL",
+      "direction": "long_call",
+      "action": "탈락",
+      "final_score": 90.0,
+      "conviction": {
+        "technical_signals": 0,
+        "timing_conditions": 0,
+        "total_signals": 0,
+        "rr_ratio": 0.0,
+        "ivr": 0.0,
+        "level": "low",
+        "trend_confidence": 0.0,
+        "news_confidence": 0.0,
+        "thesis_confidence": 0.0,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.0
+      },
+      "capital_allocation": 0.0,
+      "contracts": 0,
+      "strike": 0.0,
+      "expiry": "2026-08-05",
+      "rationale": "데이터 부족: 시나리오 미산출, 옵션 유효성 미검증",
+      "risk_factors": [],
+      "scenario": null,
+      "da_reasons": [
+        "내부자 순매도 $48.9M (최근 거래 집계)"
+      ]
+    },
+    {
+      "rank": 2,
+      "ticker": "MU",
+      "direction": "long_call",
+      "action": "탈락",
+      "final_score": 86.0,
+      "conviction": {
+        "technical_signals": 0,
+        "timing_conditions": 0,
+        "total_signals": 0,
+        "rr_ratio": 0.0,
+        "ivr": 0.0,
+        "level": "low",
+        "trend_confidence": 0.0,
+        "news_confidence": 0.0,
+        "thesis_confidence": 0.0,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.0
+      },
+      "capital_allocation": 0.0,
+      "contracts": 0,
+      "strike": 0.0,
+      "expiry": "2026-08-05",
+      "rationale": "데이터 부족: 시나리오 미산출, 옵션 유효성 미검증",
+      "risk_factors": [],
+      "scenario": null,
+      "da_reasons": [
+        "내부자 순매도 $3010.4M (최근 거래 집계)"
+      ]
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "unfavorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 45.4,
+  "summary": {
+    "filtered_tickers": [
+      "MRVL",
+      "MU"
+    ],
+    "regime": "unfavorable"
+  }
+}

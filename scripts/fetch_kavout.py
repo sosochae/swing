@@ -163,7 +163,8 @@ _SHOW_MORE_NTW_JS = """
 () => {
     const btns = Array.from(document.querySelectorAll('button'))
         .filter(b => b.innerText.trim() === 'Show More');
-    if (btns.length === 0) return 0;
+    // 버튼이 2개 이상일 때만 클릭 (1개면 QMP 전용 버튼이므로 건드리지 않음)
+    if (btns.length < 2) return 0;
     btns[0].click();
     return btns.length;
 }
@@ -200,21 +201,28 @@ _NTW_ROW_COUNT_JS = """
 })()
 """
 
-# 로그인 확인: "Market Cap" 헤더가 있는 테이블에 '$' 데이터 1행 이상 존재
-# 비로그인: lock 아이콘(텍스트 없음) / 로그인: "$12.09B" 형식
-_LOGGED_IN_CHECK = (
-    "(() => {"
-    "  for (const t of document.querySelectorAll('table')) {"
-    "    const hdrs = Array.from(t.querySelectorAll('thead th,thead td')).map(h=>h.textContent.trim());"
-    "    if (!hdrs.some(h=>h.includes('Market Cap'))) continue;"
-    "    const row = t.querySelector('tbody tr');"
-    "    if (!row) continue;"
-    "    const cell = row.querySelector('td:nth-child(3)');"
-    "    if (cell && cell.textContent.trim().startsWith('$')) return true;"
-    "  }"
-    "  return false;"
-    "})()"
-)
+# 로그인 확인: Market Cap 테이블에서 실제 추출 가능한 티커(lock 아닌 행)가 3개 이상인지 확인.
+# (비로그인: DOM에 $ 값이 있어도 대부분 lock 아이콘으로 가려져 추출 불가 → false positive 방지)
+_LOGGED_IN_CHECK = """
+(() => {
+  for (const t of document.querySelectorAll('table')) {
+    const hdrs = Array.from(t.querySelectorAll('thead th,thead td')).map(h=>h.textContent.trim());
+    if (!hdrs.some(h=>h.includes('Market Cap'))) continue;
+    let validCount = 0;
+    for (const row of t.querySelectorAll('tbody tr')) {
+      const cells = row.querySelectorAll('td');
+      if (!cells[0]) continue;
+      const btn = cells[0].querySelector('button');
+      if (!btn) continue;
+      const spans = btn.querySelectorAll('span');
+      const symbol = spans[0] ? spans[0].textContent.trim() : '';
+      if (symbol && !symbol.toLowerCase().includes('lock')) validCount++;
+    }
+    if (validCount >= 3) return true;
+  }
+  return false;
+})()
+"""
 
 
 # ── 메인 스크래핑 ─────────────────────────────────────────────
@@ -262,10 +270,14 @@ def fetch_kavout(universe: str = "all-caps") -> Path:
         try:
             log.info("kavout_goto", url=url)
             page.goto(url, timeout=30_000)
-            page.wait_for_load_state("domcontentloaded", timeout=15_000)
-            page.wait_for_timeout(2_000)
+            # networkidle: React SPA의 모든 API 호출 완료까지 대기
+            try:
+                page.wait_for_load_state("networkidle", timeout=20_000)
+            except Exception:
+                pass  # timeout 허용 — 이후 폴링으로 보완
+            page.wait_for_timeout(3_000)
 
-            # ── 로그인 확인 ──────────────────────────────────────
+            # ── 로그인 + 데이터 로드 대기 ────────────────────────
             is_logged_in = page.evaluate(_LOGGED_IN_CHECK)
 
             if not is_logged_in:
@@ -275,7 +287,6 @@ def fetch_kavout(universe: str = "all-caps") -> Path:
                 print("  (이후 실행은 자동 로그인됩니다)")
                 print("=" * 55)
                 log.info("kavout_waiting_for_login")
-                # Python 폴링: 2초마다 체크, 최대 5분
                 deadline = time.time() + 300
                 while time.time() < deadline:
                     try:
@@ -288,58 +299,179 @@ def fetch_kavout(universe: str = "all-caps") -> Path:
                     log.warning("kavout_login_timeout")
                     raise RuntimeError("로그인 타임아웃 (5분). 재실행하세요.")
                 log.info("kavout_login_detected")
+                # 로그인 후 추가 대기 (데이터 렌더링)
+                page.wait_for_timeout(3_000)
             else:
                 log.info("kavout_session_valid")
 
             # ── 타깃 universe 확인 / 이동 ───────────────────────
             if param not in page.url:
                 page.goto(url, timeout=30_000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=20_000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(3_000)
 
-            # QMP 테이블 로드 대기
-            deadline2 = time.time() + 25
+            # QMP 테이블 행 등장 대기 (최대 30초)
+            _QMP_ROWS_READY = (
+                "(() => {"
+                + _QMP_ROW_COUNT_JS.strip().lstrip("(").rstrip(")")
+                + " > 0})()"
+            )
+            deadline2 = time.time() + 30
             while time.time() < deadline2:
                 try:
-                    if page.evaluate(_LOGGED_IN_CHECK):
+                    cnt = page.evaluate(_QMP_ROW_COUNT_JS)
+                    if cnt > 0:
+                        log.info("kavout_table_ready", rows=cnt)
                         break
                 except Exception:
                     pass
                 page.wait_for_timeout(1_000)
-            page.wait_for_timeout(1_500)
+            page.wait_for_timeout(1_000)
 
-            # ── Show More (JS click — NTW 먼저, QMP 다음) ───────────
+            # ── 팝업 모달 닫기 (WHAT'S NEW / 프로모션 등) ─────────
             page.bring_to_front()
             _ss = ROOT / "scripts"
             page.screenshot(path=str(_ss / "kavout_before.png"))
             log.info("kavout_screenshot_before")
 
-            def _expand_table(row_count_js, show_more_js, label, max_rows=999):
-                """Show More를 JS click으로 반복해 테이블 전체 로드"""
+            _DISMISS_MODAL_JS = """
+() => {
+    // X 닫기 버튼 우선 (aria-label 또는 텍스트 × / ✕)
+    const close = document.querySelector(
+        'button[aria-label="Close"], button[aria-label="close"], ' +
+        'button[aria-label="Dismiss"], [data-dismiss="modal"]'
+    );
+    if (close) { close.click(); return 'clicked_aria_close'; }
+
+    // × 또는 ✕ 텍스트인 button
+    for (const btn of document.querySelectorAll('button')) {
+        const t = btn.textContent.trim();
+        if (t === '×' || t === '✕' || t === 'x' || t === 'X') {
+            btn.click();
+            return 'clicked_x_button';
+        }
+    }
+
+    // 모달 감지만 (닫기 실패 시 Escape 사용)
+    const hasModal = !!document.querySelector(
+        '[role="dialog"], [class*="modal"], [class*="Modal"], [class*="popup"], [class*="Popup"]'
+    );
+    return hasModal ? 'modal_found_no_close' : 'no_modal';
+}
+"""
+            dismiss_result = page.evaluate(_DISMISS_MODAL_JS)
+            log.info("kavout_modal_check", result=dismiss_result)
+            if dismiss_result != "no_modal":
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(800)
+
+            # bring_to_front 후 React 재렌더링으로 테이블이 깜빡일 수 있음
+            # → 2초 간격으로 2회 연속 rows > 0 이어야 안정 상태로 판단
+            deadline3 = time.time() + 30
+            while time.time() < deadline3:
+                try:
+                    cnt = page.evaluate(_QMP_ROW_COUNT_JS)
+                    if cnt > 0:
+                        page.wait_for_timeout(2_000)
+                        cnt2 = page.evaluate(_QMP_ROW_COUNT_JS)
+                        if cnt2 > 0:
+                            log.info("kavout_table_stable", rows=cnt2)
+                            break
+                except Exception:
+                    pass
+                page.wait_for_timeout(500)
+            page.wait_for_timeout(500)
+
+            # ── Show More (JS click — NTW 먼저, QMP 다음) ───────────
+            _NTW_EXISTS_JS = (
+                "(() => { for (const t of document.querySelectorAll('table')) {"
+                " const h = Array.from(t.querySelectorAll('thead th,thead td')).map(e=>e.textContent.trim());"
+                " if (h.some(s=>s.includes('Entry Date'))) return true; } return false; })()"
+            )
+
+            def _expand_table(row_count_js, show_more_js, label, max_rows=999, exists_js=None):
+                """Show More를 JS click으로 반복해 테이블 전체 로드.
+                - 테이블 없거나 초기 0행이면 skip (다른 테이블 Show More 오클릭 방지)
+                - Show More 클릭 후 행 수가 실제로 증가할 때까지 최대 8초 대기
+                - 최종 행 수도 안정될 때까지 대기
+                """
+                if exists_js is not None and not page.evaluate(exists_js):
+                    log.info("kavout_expand_skip", table=label, reason="no_table")
+                    return 0
+                cnt = page.evaluate(row_count_js)
+                if cnt == 0:
+                    log.info("kavout_expand_skip", table=label, reason="empty")
+                    return 0
                 clicks = 0
                 for _ in range(20):
-                    cnt = page.evaluate(row_count_js)
                     if cnt >= max_rows:
                         break
-                    n = page.evaluate(show_more_js)
+                    try:
+                        n = page.evaluate(show_more_js)
+                    except Exception:
+                        # Show More 클릭이 페이지 이동을 유발한 경우 원래 URL로 복귀
+                        log.warning("kavout_show_more_nav", table=label)
+                        try:
+                            page.goto(url, timeout=30_000)
+                            page.wait_for_load_state("networkidle", timeout=15_000)
+                            page.wait_for_timeout(3_000)
+                        except Exception:
+                            pass
+                        break
                     if n == 0:
                         break
-                    page.wait_for_timeout(800)
-                    new_cnt = page.evaluate(row_count_js)
+                    # Show More 클릭 후 행 수가 증가할 때까지 최대 8초 대기
+                    deadline_w = time.monotonic() + 8
+                    new_cnt = cnt
+                    while time.monotonic() < deadline_w:
+                        page.wait_for_timeout(600)
+                        try:
+                            new_cnt = page.evaluate(row_count_js)
+                        except Exception:
+                            new_cnt = 0
+                        if new_cnt > cnt:
+                            break
                     if new_cnt <= cnt:
                         break
                     clicks += 1
-                final = page.evaluate(row_count_js)
+                    cnt = new_cnt
+                # 최종 행 수: 일시적 0 후 복구 대기 (최대 5초)
+                deadline_f = time.monotonic() + 5
+                try:
+                    final = page.evaluate(row_count_js)
+                except Exception:
+                    final = cnt
+                while final == 0 and time.monotonic() < deadline_f:
+                    page.wait_for_timeout(500)
+                    try:
+                        final = page.evaluate(row_count_js)
+                    except Exception:
+                        final = cnt
+                        break
                 log.info("kavout_expand_done", table=label, clicks=clicks, rows=final)
                 return final
 
-            ntw_final = _expand_table(_NTW_ROW_COUNT_JS, _SHOW_MORE_NTW_JS, "ntw")
-            qmp_final = _expand_table(_QMP_ROW_COUNT_JS, _SHOW_MORE_QMP_JS, "qmp", max_rows=30)
+            ntw_final = _expand_table(_NTW_ROW_COUNT_JS, _SHOW_MORE_NTW_JS, "ntw", exists_js=_NTW_EXISTS_JS)
+
+            # ── 추출 (Show More 전 먼저 시도) ────────────────────
+            page.wait_for_timeout(500)
+            result = page.evaluate(_EXTRACT_JS)
+            log.info("kavout_extract_debug_pre", debug=result.get("debug", ""))
+            pre_qmp = result.get("qmp", [])
+
+            # QMP Show More가 필요한 경우만 expand (초기 추출이 부족할 때)
+            if len(pre_qmp) < 30:
+                qmp_final = _expand_table(_QMP_ROW_COUNT_JS, _SHOW_MORE_QMP_JS, "qmp", max_rows=30)
+                if qmp_final > len(pre_qmp):
+                    page.wait_for_timeout(800)
+                    result = page.evaluate(_EXTRACT_JS)
 
             page.screenshot(path=str(_ss / "kavout_after.png"))
             log.info("kavout_screenshot_after")
-
-            # ── 추출 ─────────────────────────────────────────────
-            page.wait_for_timeout(800)
-            result = page.evaluate(_EXTRACT_JS)
+            log.info("kavout_extract_debug", debug=result.get("debug", ""))
             log.info("kavout_extract_debug", debug=result.get("debug", ""))
             qmp_rows = result.get("qmp", [])
             ntw_rows = result.get("ntw", [])

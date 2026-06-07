@@ -66,11 +66,15 @@ class PipelineEngine:
     def __init__(self) -> None:
         self._obsidian = ObsidianClient()
         self._slack = SlackClient()
+        _earnings_dir = Path(cfg.EARNINGS_DIR)
         self._paths = PipelinePaths(
             summary_dir=Path(cfg.SUMMARY_DIR),
             finviz_file=Path(cfg.FINVIZ_FILE),
-            earnings_dir=Path(cfg.EARNINGS_DIR),
-            earnings_analysis=Path(cfg.EARNINGS_DIR) / "어닝 분석.md",
+            earnings_dir=_earnings_dir,
+            # K어닝 분석 (Kavout 기반 — buy pipeline Step 5 LLM 컨텍스트용)
+            k_earnings_analysis=_earnings_dir / "K어닝 분석.md",
+            k_earnings_analysis_today=_earnings_dir / "K어닝 분석_today.md",
+            k_earnings_call_dir=_earnings_dir / "K어닝콜_output",
             positions_file=Path(cfg.POSITIONS_FILE),
             watchlist_file=Path(cfg.WATCHLIST_FILE),
             data_dir=Path(cfg.DATA_DIR),

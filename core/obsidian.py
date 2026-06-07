@@ -931,18 +931,37 @@ def _format_type3_section(
     trend_confirmed = getattr(ts, 'trend_confirmed', False)
     signal_count = getattr(ts, 'signal_count', 0) or 0
 
+    # DI+/DI- 방향성 (FinvizDetail에서 추출)
+    di_p_fv = (fv.di_plus  if fv and fv.di_plus  and fv.di_plus  > 0 else None)
+    di_n_fv = (fv.di_minus if fv and fv.di_minus and fv.di_minus > 0 else None)
+    # DI 방향 판정: 5% 이상 차이 시 방향성 인정 (10%는 너무 엄격)
+    di_bearish = (di_p_fv is not None and di_n_fv is not None and di_n_fv > di_p_fv * 1.05)
+    di_bullish = (di_p_fv is not None and di_n_fv is not None and di_p_fv > di_n_fv * 1.05)
+
     # adx_score is 0-25 range; normalize to 0-100 for comparisons
     adx_norm = adx * 4  # 0-100
 
-    if ma >= 4 and adx_norm >= 60:
+    # BULLISH/NEUTRAL/BEARISH 판정: MA정배열 + ADX 강도 + DI 방향성 종합
+    # 수정 전: MA정배열 + ADX만으로 결정 → 급락 당일 BULLISH 오판
+    # 수정 후: DI- > DI+ 이면 BULLISH 차단, ma_str='mixed'이면 NEUTRAL 이하
+    if di_bearish:
+        # 강한 하락추세(DI->DI+): BULLISH 판정 불가
+        outlook = "NEUTRAL"
+        outlook_conf = "Low"
+        outlook_emoji = "🟡"
+        if ma <= 1 or adx_norm >= 60:
+            outlook = "BEARISH"
+            outlook_conf = "Medium"
+            outlook_emoji = "🔴"
+    elif ma >= 4 and adx_norm >= 60 and not di_bearish:
         outlook = "BULLISH"
         outlook_conf = "High"
         outlook_emoji = "🟢"
-    elif ma >= 3 and trend_confirmed:
+    elif ma >= 3 and trend_confirmed and not di_bearish:
         outlook = "BULLISH"
         outlook_conf = "Medium"
         outlook_emoji = "🟢"
-    elif ma <= 1:
+    elif ma <= 1 or di_bearish:
         outlook = "BEARISH"
         outlook_conf = "Medium" if adx_norm >= 50 else "Low"
         outlook_emoji = "🔴"
@@ -968,7 +987,7 @@ def _format_type3_section(
     else:
         stop_ref = "N/A"
 
-    # Action signal
+    # Action signal — DI bearish 시 signal_count에 관계없이 WAIT로 강제
     if signal_count >= 6:
         trade_signal = "BUY"
         entry_quality = "Good" if signal_count >= 7 else "Fair"
@@ -978,14 +997,34 @@ def _format_type3_section(
     else:
         trade_signal = "WAIT"
         entry_quality = "Poor"
+    # DI 방향이 하락 추세이면 BUY → WAIT (방향 역행 진입 경고)
+    if di_bearish and trade_signal == "BUY":
+        trade_signal = "WAIT"
+        entry_quality = "Fair" if entry_quality == "Good" else entry_quality
 
-    # Short/Medium/Long term assessment (rsi/macd are 0-25 range)
+    # Short/Medium/Long term assessment — DI 방향성을 short_term에 반영
     rsi_norm = rsi * 4
     macd_norm = macd * 4
-    short_term = "Bullish" if rsi_norm >= 55 and macd_norm >= 55 else ("Bearish" if rsi_norm <= 40 else "Neutral")
-    medium_term = "Bullish" if ma >= 3 else ("Bearish" if ma <= 1 else "Neutral")
     regime_status = getattr(regime, 'regime_status', 'N/A') if regime else 'N/A'
+
+    # Short-term: DI+/DI- 방향을 우선 사용 (일봉 RSI/MACD보다 방향성 신뢰도 높음)
+    if di_bearish:
+        short_term = "Bearish"
+    elif di_bullish:
+        short_term = "Bullish"
+    elif rsi_norm >= 55 and macd_norm >= 55:
+        short_term = "Bullish"
+    elif rsi_norm <= 40 or macd_norm <= 20:
+        short_term = "Bearish"
+    else:
+        short_term = "Neutral"
+
+    medium_term = "Bullish" if ma >= 3 else ("Bearish" if ma <= 1 else "Neutral")
     long_term = "Bullish" if ma >= 4 else ("Bearish" if ma <= 1 else "Neutral")
+    # DI 하락 추세이면 Long-term도 최소 Neutral로 하향 (MA배열만으로 Bullish 선언 방지)
+    _lt_di_overridden = di_bearish and long_term == "Bullish"
+    if _lt_di_overridden:
+        long_term = "Neutral"
 
     # LLM narrative로 entry_quality/outlook override (가능한 경우)
     if narrative:
@@ -995,6 +1034,13 @@ def _format_type3_section(
             outlook = nar_outlook
         if nar_quality in ("Good", "Fair", "Poor"):
             entry_quality = nar_quality
+
+    # DI 방향을 최종 override로 재적용 — LLM 캐시가 구버전 결과를 반환해도 보정
+    # (캐시된 내러티브가 regime_status 없이 생성된 경우 DI bearish임에도 BULLISH 반환 가능)
+    if di_bearish and outlook == "BULLISH":
+        outlook = "NEUTRAL"
+        outlook_conf = "Low"
+        outlook_emoji = "🟡"
 
     # 현재가: 시나리오 역산(base 케이스) 우선 → fv.price fallback
     # 이유: fv.price는 로컬 Finviz 캐시 기반(오래될 수 있음)
@@ -1049,6 +1095,8 @@ def _format_type3_section(
 
     # 실제 지표값 테이블 (fv 있을 때만)
     if fv:
+        _di_plus_str  = f"{fv.di_plus:.1f}"  if fv.di_plus  and fv.di_plus  > 0 else "N/A"
+        _di_minus_str = f"{fv.di_minus:.1f}" if fv.di_minus and fv.di_minus > 0 else "N/A"
         lines += [
             "### 3-2. 실제 지표값 (Live Indicators)",
             "",
@@ -1057,6 +1105,7 @@ def _format_type3_section(
             "| 지표 | 값 | 지표 | 값 |",
             "|------|-----|------|-----|",
             f"| RSI(14) | {rsi_val_str} | ADX | {adx_val_str} |",
+            f"| DI+ | {_di_plus_str} | DI- | {_di_minus_str} |",
             f"| SMA5 | {sma5_str} | SMA20 | {sma20_str} |",
             f"| SMA50 | {sma50_str} | ATR(14) | {atr_str} |",
             f"| BB 상단 | {bb_upper_str} | BB 하단 | {bb_lower_str} |",
@@ -1098,6 +1147,17 @@ def _format_type3_section(
             if overall_nar:
                 lines += [f"> **종합 판단:** {overall_nar}", ""]
 
+    # DI 근거 문자열 생성
+    _di_basis = (
+        f"DI+{di_p_fv:.1f} / DI-{di_n_fv:.1f} ({'하락추세 우세' if di_bearish else '상승추세 우세' if di_bullish else '방향 혼조'})"
+        if di_p_fv and di_n_fv
+        else f"RSI {rsi_val_str}, MACD {macd}/25 (DI 데이터 없음)"
+    )
+    _st_emoji = "🔴" if short_term == "Bearish" else ("🟢" if short_term == "Bullish" else "🟡")
+    _mt_emoji = "🔴" if medium_term == "Bearish" else ("🟢" if medium_term == "Bullish" else "🟡")
+    _lt_emoji = "🔴" if long_term == "Bearish" else ("🟢" if long_term == "Bullish" else "🟡")
+    _rg_emoji = "🔴" if regime_status == "unfavorable" else ("🟢" if regime_status == "favorable" else "🟡")
+
     lines += [
         "### 3-4. 멀티 타임프레임 추세",
         "",
@@ -1105,9 +1165,10 @@ def _format_type3_section(
         "",
         "| 시계열 | 방향 | 근거 |",
         "|--------|------|------|",
-        f"| Short-term (days) | {short_term} | {'RSI ' + rsi_val_str + ' (과매수)' if short_term == 'Bearish' else 'RSI ' + rsi_val_str + ', MACD ' + str(macd) + '/25'} |",
-        f"| Medium-term (1-3M) | {medium_term} | MA Alignment: {ma_str} |",
-        f"| Long-term (3-6M) | {long_term} | Regime: {regime_status} |",
+        f"| Short-term (Daily DI 기반) | {_st_emoji} {short_term} | {_di_basis} |",
+        f"| Medium-term (1-3M) | {_mt_emoji} {medium_term} | MA Alignment: {ma_str} |",
+        f"| Long-term (3-6M) | {_lt_emoji} {long_term} | SMA배열(5/20/50){' + DI 하락추세 → Neutral 하향' if _lt_di_overridden else ''} |",
+        f"| Weekly Regime | {_rg_emoji} {regime_status} | Market Regime |",
         "",
         "### 3-5. 행동 지침",
         "",
@@ -1649,23 +1710,67 @@ def _format_integrated_buy_block(
 
         nt_t2_str = "N/A"
         nt_t3_str = "N/A"
+        # 진입 프리미엄: stop = entry × 0.5 → entry = stop / 0.5
+        _entry_prem_nt_disp = _fmt(round(stop_prem / 0.5, 2)) if stop_prem > 0 else "N/A"
+        _entry_prem_sw_disp = _fmt(round(stop_prem / 0.5, 2)) if stop_prem > 0 else "N/A"
 
-        nt_row = f"| Near-Term (1-5일) | Current market | {_fmt(nt_stop)} | {_fmt(nt_t1)} / {nt_t2_str} / {nt_t3_str} | {nt_rr} | {nt_time_stop}일 |"
-        sw_row = f"| Swing (5-15일) | Current market | {_fmt(sw_stop)} | {_fmt(sw_t1)} / {_fmt(t2_val)} / {_fmt(sw_t3)} | {sw_rr} | {sw_time_stop}일 |"
+        nt_row = f"| Near-Term (1-5일) | 프리미엄 {_entry_prem_nt_disp} | {_fmt(nt_stop)} | {_fmt(nt_t1)} / {nt_t2_str} / {nt_t3_str} | {nt_rr} | {nt_time_stop}일 |"
+        sw_row = f"| Swing (5-15일) | 프리미엄 {_entry_prem_sw_disp} | {_fmt(sw_stop)} | {_fmt(sw_t1)} / {_fmt(t2_val)} / {_fmt(sw_t3)} | {sw_rr} | {sw_time_stop}일 |"
     else:
         dte_val = max(7, signal_count * 5)
         nt_time_stop = min(dte_val // 3, 5)
         sw_time_stop = min(dte_val // 2, 15)
-        nt_row = f"| Near-Term (1-5일) | Current market | N/A | N/A / N/A / N/A | N/A | {nt_time_stop}일 |"
-        sw_row = f"| Swing (5-15일) | Current market | N/A | N/A / N/A / N/A | N/A | {sw_time_stop}일 |"
+        nt_row = f"| Near-Term (1-5일) | 프리미엄 N/A | N/A | N/A / N/A / N/A | N/A | {nt_time_stop}일 |"
+        sw_row = f"| Swing (5-15일) | 프리미엄 N/A | N/A | N/A / N/A / N/A | N/A | {sw_time_stop}일 |"
 
-    # Preferred horizon
+    # DI 변수를 preferred 계산 전에 선언 (Timeframe Alignment 섹션보다 앞에 필요)
+    _t4_di_p = (fv.di_plus  if fv and fv.di_plus  and fv.di_plus  > 0 else None)
+    _t4_di_n = (fv.di_minus if fv and fv.di_minus and fv.di_minus > 0 else None)
+    _t4_di_bearish = _t4_di_p is not None and _t4_di_n is not None and _t4_di_n > _t4_di_p * 1.05
+    _t4_di_bullish = _t4_di_p is not None and _t4_di_n is not None and _t4_di_p > _t4_di_n * 1.05
+
+    # Preferred horizon — signal_count + DI 방향 + 레짐 복합 판정
+    # ▸ signal_count 단독 기준은 DI bearish/레짐 불리를 무시해 SWING 추천 오류 발생
+    # ▸ 수정: DI bearish 또는 레짐 unfavorable 시 추천 등급 강제 하향
+    _regime_unfavorable = (macro_score < 30)  # _regime_to_score 기준: unfavorable=25, confidence 조정 후 ~10~35
+    _di_str = (f"DI+{_t4_di_p:.1f}/DI-{_t4_di_n:.1f}"
+               if _t4_di_p and _t4_di_n else "DI 없음")
+
     if signal_count >= 6:
-        preferred = "SWING"
-        preferred_reason = f"signal_count={signal_count}/8, 추세 지속력 충분"
+        if _t4_di_bearish and _regime_unfavorable:
+            # 신호 수는 충분하나 DI 역방향 + 레짐 불리 → 진입 보류
+            preferred = "NEITHER"
+            preferred_reason = (
+                f"signal_count={signal_count}/8 — "
+                f"DI 하락추세({_di_str}) + 레짐 불리 → 관망 우선"
+            )
+        elif _t4_di_bearish:
+            # DI 역방향 단독 → 단기만 조건부
+            preferred = "NEAR-TERM"
+            preferred_reason = (
+                f"signal_count={signal_count}/8 — "
+                f"DI 하락추세({_di_str}), 스윙 보류·단기 조건부"
+            )
+        elif _regime_unfavorable:
+            # 레짐 불리 단독 → 스윙 축소, 단기만
+            preferred = "NEAR-TERM"
+            preferred_reason = (
+                f"signal_count={signal_count}/8 — "
+                f"레짐 불리(unfavorable), 스윙 보류·단기 조건부"
+            )
+        else:
+            preferred = "SWING"
+            preferred_reason = f"signal_count={signal_count}/8, 추세 지속력 충분"
     elif signal_count >= 4:
-        preferred = "NEAR-TERM"
-        preferred_reason = f"signal_count={signal_count}/8, 단기 모멘텀 우선"
+        if _t4_di_bearish or _regime_unfavorable:
+            preferred = "NEITHER"
+            preferred_reason = (
+                f"signal_count={signal_count}/8 — "
+                f"{'DI 하락추세 + ' if _t4_di_bearish else ''}레짐 불리 → 관망"
+            )
+        else:
+            preferred = "NEAR-TERM"
+            preferred_reason = f"signal_count={signal_count}/8, 단기 모멘텀 우선"
     else:
         preferred = "NEITHER"
         preferred_reason = f"signal_count={signal_count}/8, 관망 권고"
@@ -1675,15 +1780,23 @@ def _format_integrated_buy_block(
         "",
         "#### 듀얼 호라이즌 (Near-Term / Swing)",
         "",
-        "| 항목 | 진입 | 손절 | T1/T2/T3 목표 | R/R | Time Stop |",
-        "|------|------|------|----------------|-----|-----------|",
+        "> ⚠️ **아래 수치는 옵션 프리미엄 기준입니다.** 주가(Stock Price)가 아닙니다.",
+        "",
+        "| 항목 | 진입(프리미엄) | 손절(프리미엄) | T1/T2/T3 목표(프리미엄) | R/R | Time Stop |",
+        "|------|--------------|--------------|------------------------|-----|-----------|",
         nt_row,
         sw_row,
         "",
     ]
 
-    # Timeframe Alignment
-    def _tf_signal(score: float) -> str:
+    # Timeframe Alignment — DI 변수는 preferred 계산 전에 이미 선언됨 (위 참조)
+    def _tf_signal(score: float, use_di: bool = False) -> str:
+        # DI 데이터 있으면 DI 방향 우선 (일봉 지표보다 신뢰도 높음)
+        if use_di:
+            if _t4_di_bearish:
+                return "🔴 Bearish"
+            elif _t4_di_bullish:
+                return "🟢 Bullish"
         norm = score * 4  # 0-25 → 0-100
         if norm >= 65:
             return "🟢 Bullish"
@@ -1691,6 +1804,15 @@ def _format_integrated_buy_block(
             return "🟡 Neutral"
         else:
             return "🔴 Bearish"
+
+    def _daily_signal(ma_n: int) -> str:
+        # Daily: MA alignment + DI 방향 종합
+        ma_base = "🟢 Bullish" if ma_n >= 3 else ("🔴 Bearish" if ma_n <= 1 else "🟡 Neutral")
+        if _t4_di_bearish and ma_base == "🟢 Bullish":
+            return "🟡 Neutral"  # MA는 bullish지만 DI bearish → Neutral
+        return ma_base
+
+    _t4_di_basis = f"DI+{_t4_di_p:.1f}/DI-{_t4_di_n:.1f}" if _t4_di_p and _t4_di_n else "RSI/MACD 기반"
 
     regime_trend = macro_label if macro_label != "N/A" else "N/A"
 
@@ -1701,9 +1823,9 @@ def _format_integrated_buy_block(
         "",
         "| Timeframe | Signal | 근거 |",
         "|-----------|--------|------|",
-        f"| 1H | {_tf_signal(rsi_score)} | RSI score {rsi_score}/25 |",
-        f"| 4H | {_tf_signal(macd_score)} | MACD score {macd_score}/25 |",
-        f"| Daily | {'🟢 Bullish' if ma_num >= 3 else ('🔴 Bearish' if ma_num <= 1 else '🟡 Neutral')} | MA Alignment: {ma_score_str} |",
+        f"| 1H | {_tf_signal(rsi_score, use_di=True)} | {_t4_di_basis} (DI 기반) |",
+        f"| 4H | {_tf_signal(macd_score, use_di=True)} | {_t4_di_basis} (DI 기반) |",
+        f"| Daily | {_daily_signal(ma_num)} | MA {ma_score_str} / {_t4_di_basis} |",
         f"| Weekly | {regime_trend} | Market Regime |",
         "",
         f"**Preferred Horizon:** {preferred} — {preferred_reason}",
@@ -1755,6 +1877,10 @@ def _format_integrated_buy_block(
     sw_quality  = "Good" if signal_count >= 7 else ("Fair" if signal_count >= 5 else "Poor")
     nt_signal   = "BUY" if signal_count >= 6 else ("WAIT" if signal_count >= 4 else "HOLD")
     sw_signal   = "BUY" if signal_count >= 6 else ("WAIT" if signal_count >= 4 else "HOLD")
+    # DI bearish 시 BUY → WAIT (방향 역행 경고 — Type 3와 일관성 유지)
+    if _t4_di_bearish:
+        if nt_signal == "BUY": nt_signal = "WAIT"
+        if sw_signal == "BUY": sw_signal = "WAIT"
     _be = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(nt_bias, "🟡")
     _bs = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(sw_bias, "🟡")
 

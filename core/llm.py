@@ -393,6 +393,7 @@ def parse_llm_json(response: LLMResponse) -> dict:
 async def call_ddg_search(
     query: str,
     num_results: int = 8,
+    force_refresh: bool = False,
 ) -> list[dict[str, str]]:
     """
     DuckDuckGo 실시간 웹 검색 (ddgs 패키지 사용, region=us-en 고정)
@@ -406,10 +407,11 @@ async def call_ddg_search(
         [{"title": ..., "description": ..., "url": ..., "source": "duckduckgo"}]
     """
     cache_key = f"{hashlib.md5(query.encode()).hexdigest()[:8]}_{date.today()}_ddg"
-    cached = get_cache(cache_key)
-    if cached:
-        log.info("ddg_cache_hit", query=query[:60])
-        return cached  # type: ignore
+    if not force_refresh:
+        cached = get_cache(cache_key)
+        if cached:
+            log.info("ddg_cache_hit", query=query[:60])
+            return cached  # type: ignore
 
     try:
         from ddgs import DDGS  # type: ignore
@@ -816,3 +818,50 @@ async def analyze_with_llm(
         set_cache(cache_key, result)
 
     return result
+
+
+# ─────────────────────────────────────────────────────────────
+# 7. RSS 피드 수집 유틸리티 (buy/sell 공용)
+# ─────────────────────────────────────────────────────────────
+
+async def _collect_rss_feeds(
+    feed_urls: list[str],
+    label: str = "feed",
+    max_per_feed: int = 5,
+) -> list[dict]:
+    """
+    RSS 피드 URL 목록에서 뉴스 항목 수집 (feedparser, Graceful Degradation)
+
+    Args:
+        feed_urls: RSS URL 리스트
+        label: 로그용 레이블 (종목 또는 "market")
+        max_per_feed: 피드 당 최대 항목 수
+
+    Returns:
+        [{"title": ..., "source": "rss", "description": ..., "url": ...}]
+    """
+    results: list[dict] = []
+    try:
+        import feedparser  # type: ignore
+    except ImportError:
+        log.warning("feedparser_not_installed", hint="pip install feedparser")
+        return results
+
+    for url in feed_urls:
+        try:
+            loop = asyncio.get_running_loop()
+            feed = await loop.run_in_executor(None, feedparser.parse, url)
+            for entry in feed.entries[:max_per_feed]:
+                results.append({
+                    "title": entry.get("title", ""),
+                    "source": "rss",
+                    "description": entry.get("summary", "")[:300],
+                    "url": entry.get("link", ""),
+                    "published": entry.get("published", ""),
+                    "feed_label": label,
+                })
+        except Exception as exc:
+            log.warning("rss_feed_fail", url=url, label=label, error=str(exc))
+
+    log.info("rss_collected", label=label, count=len(results))
+    return results

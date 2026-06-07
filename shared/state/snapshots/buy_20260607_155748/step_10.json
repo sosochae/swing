@@ -1,0 +1,25 @@
+{
+  "execution_id": "buy_20260607_155748",
+  "step": 10,
+  "completed_at": "2026-06-07T15:59:35.525877",
+  "duration_ms": 0,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "MU",
+        "action": "관찰"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "MU",
+        "action": "관찰"
+      }
+    ],
+    "high_downside": [
+      "MU"
+    ]
+  }
+}

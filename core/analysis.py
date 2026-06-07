@@ -265,40 +265,71 @@ def calculate_technical_score(
     tech = ticker_data.technical
     is_long = direction == "long_call"
 
-    # ── MA 정렬 점수 (0~25) — MA200 포함 ─────────────────────
+    # ── MA 정렬 점수 (0~25) — MA200 + 주가 위치 포함 ──────────
+    # 기존: MA 순서만 체크 → 급락 당일 SMA5>SMA20>SMA60 이어도 가격은 SMA20 아래
+    # 수정: 주가가 SMA20 위에 있어야 full/partial 점수 인정 (방향성 확인)
     if is_long:
-        if tech.ma5 > tech.ma20 > tech.ma60 and tech.ma60 > 0:
+        full_align = tech.ma5 > tech.ma20 > tech.ma60 and tech.ma60 > 0
+        price_above_ma20 = (tech.price > tech.ma20) if tech.ma20 > 0 else True
+        if full_align and price_above_ma20:
             ma_above_200 = tech.ma200 > 0 and tech.price > tech.ma200
             ma_score = st.SCORE_MA_FULL_WITH_MA200 if ma_above_200 else st.SCORE_MA_FULL_NO_MA200
             ma_align = "bullish"
-        elif tech.ma5 > tech.ma20 and tech.ma20 > 0:
+        elif full_align and not price_above_ma20:
+            # 장기 MA 정배열이지만 주가가 SMA20 이탈 → mixed (급락 당일 패턴)
+            ma_score = st.SCORE_MA_NONE
+            ma_align = "mixed"
+        elif tech.ma5 > tech.ma20 and tech.ma20 > 0 and price_above_ma20:
             ma_score = st.SCORE_MA_PARTIAL
             ma_align = "bullish"
         else:
             ma_score = st.SCORE_MA_NONE
             ma_align = "mixed"
     else:
-        if tech.ma5 < tech.ma20 < tech.ma60 and tech.ma60 > 0:
+        full_align = tech.ma5 < tech.ma20 < tech.ma60 and tech.ma60 > 0
+        price_below_ma20 = (tech.price < tech.ma20) if tech.ma20 > 0 else True
+        if full_align and price_below_ma20:
             ma_below_200 = tech.ma200 > 0 and tech.price < tech.ma200
             ma_score = st.SCORE_MA_FULL_WITH_MA200 if ma_below_200 else st.SCORE_MA_FULL_NO_MA200
             ma_align = "bearish"
-        elif tech.ma5 < tech.ma20 and tech.ma20 > 0:
+        elif full_align and not price_below_ma20:
+            # 장기 역배열이지만 주가가 SMA20 위 → mixed
+            ma_score = st.SCORE_MA_NONE
+            ma_align = "mixed"
+        elif tech.ma5 < tech.ma20 and tech.ma20 > 0 and price_below_ma20:
             ma_score = st.SCORE_MA_PARTIAL
             ma_align = "bearish"
         else:
             ma_score = st.SCORE_MA_NONE
             ma_align = "mixed"
 
-    # ── ADX 점수 (0~25) ────────────────────────────────────
+    # ── ADX 점수 (0~25) — DI+/DI- 방향성 인식 ────────────────
+    # 기존: ADX 강도만 측정 → 강한 하락추세도 만점
+    # 수정: DI-가 DI+를 초과하면 롱콜에서 0점 (방향 역행 추세)
     adx = tech.adx14
     if adx >= st.ADX_STRONG:
-        adx_score = st.SCORE_ADX_STRONG
+        adx_base = st.SCORE_ADX_STRONG
     elif adx >= st.ADX_MEDIUM:
-        adx_score = st.SCORE_ADX_MEDIUM
+        adx_base = st.SCORE_ADX_MEDIUM
     elif adx >= st.ADX_WEAK:
-        adx_score = st.SCORE_ADX_WEAK
+        adx_base = st.SCORE_ADX_WEAK
     else:
-        adx_score = st.SCORE_ADX_NONE
+        adx_base = st.SCORE_ADX_NONE
+
+    di_p = getattr(tech, "di_plus", 0.0) or 0.0
+    di_n = getattr(tech, "di_minus", 0.0) or 0.0
+    if di_p > 0 and di_n > 0:
+        if is_long and di_n > di_p:
+            # 강한 하락추세 (DI- > DI+) → 롱콜 역방향, 점수 0
+            adx_score = 0
+        elif not is_long and di_p > di_n:
+            # 강한 상승추세 (DI+ > DI-) → 롱풋 역방향, 점수 0
+            adx_score = 0
+        else:
+            adx_score = adx_base
+    else:
+        # DI 데이터 없으면 기존 강도 기준만 적용
+        adx_score = adx_base
 
     # ── RSI 점수 (0~25) ────────────────────────────────────
     rsi = tech.rsi14
@@ -484,6 +515,14 @@ def _apply_devils_advocate(tech: Any, direction: str, is_long: bool) -> float:
         deduction += abs(st.DA_LARGE_DAILY_MOVE)
     elif not is_long and change <= -st.DA_DAILY_MOVE_MEDIUM:
         deduction += abs(st.DA_MEDIUM_DAILY_MOVE)
+
+    # SMA20 이탈 + 급락 복합 패널티 — 추세 붕괴 신호
+    # 조건: 롱콜에서 주가가 SMA20 아래 + 당일 -5% 이상 하락
+    ma20_val = getattr(tech, "ma20", 0.0) or 0.0
+    price_val = getattr(tech, "price", 0.0) or 0.0
+    if (is_long and ma20_val > 0 and price_val > 0
+            and price_val < ma20_val and change <= -5.0):
+        deduction += abs(st.DA_MA20_BREAK_PENALTY)
 
     return deduction
 
@@ -778,7 +817,10 @@ def calculate_scenario(
     total_capital: float | None = None,
     max_per_position: float | None = None,
     commission_per_contract: float | None = None,
-    bull_target_price: float | None = None,  # Finviz 애널리스트 목표주가 (롱콜 bull case 오버라이드)
+    bull_target_price: float | None = None,  # 애널리스트 목표주가 (롱콜 bull case 오버라이드)
+    di_plus: float = 0.0,    # DI+ (방향성 DMI)
+    di_minus: float = 0.0,   # DI- (방향성 DMI)
+    macro_score: int = 50,   # 레짐 매크로 점수 (0-100)
 ) -> Scenario:
     """
     3-케이스 시나리오 분석 (Bullish / Base / Bearish)
@@ -823,6 +865,7 @@ def calculate_scenario(
     base_bear = st.SCENARIO_BASE_BEAR_PROB
 
     # ADX 조정: 강할수록 추세 방향 확률 +5~10%
+    # ※ ADX는 강도만 측정, 방향은 DI+/DI-로 별도 판단
     if adx >= st.SCENARIO_ADX_STRONG_THRESHOLD:
         adx_adj = st.SCENARIO_ADX_STRONG_ADJ
     elif adx >= st.SCENARIO_ADX_MED_THRESHOLD:
@@ -839,6 +882,42 @@ def calculate_scenario(
     else:
         bull_prob = max(st.SCENARIO_BULL_PROB_MIN, min(st.SCENARIO_BEAR_PROB_MAX, base_bull - adx_adj - signal_adj))
         bear_prob = max(st.SCENARIO_BEAR_PROB_MIN, min(st.SCENARIO_BULL_PROB_MAX, base_bear + adx_adj + signal_adj))
+
+    # ── DI 방향 조정 ─────────────────────────────────────────
+    # ADX 강도 부스트는 방향 무관 — DI-/DI+로 실제 추세 방향 반영
+    # DI bearish (DI- > DI+ × 1.05): long_call이면 bull -10%, bear +10%
+    # DI bullish (DI+ > DI- × 1.05): long_put이면 bear -10%, bull +10%
+    if di_plus > 0 and di_minus > 0:
+        _di_bearish = di_minus > di_plus * 1.05
+        _di_bullish = di_plus > di_minus * 1.05
+        if is_long and _di_bearish:
+            bull_prob -= 0.10
+            bear_prob += 0.10
+        elif not is_long and _di_bullish:
+            bear_prob -= 0.10
+            bull_prob += 0.10
+
+    # ── 레짐(Macro) 조정 ─────────────────────────────────────
+    # unfavorable (macro_score < 30): long_call bull -8%, bear +8%
+    # favorable (macro_score > 70): long_call bull +5%, bear -5%
+    if macro_score < 30:
+        if is_long:
+            bull_prob -= 0.08
+            bear_prob += 0.08
+        else:
+            bear_prob -= 0.08
+            bull_prob += 0.08
+    elif macro_score > 70:
+        if is_long:
+            bull_prob += 0.05
+            bear_prob -= 0.05
+        else:
+            bear_prob += 0.05
+            bull_prob -= 0.05
+
+    # 범위 클램프 (각 확률 최소 PROB_MIN 보장)
+    bull_prob = max(st.SCENARIO_BULL_PROB_MIN, min(st.SCENARIO_BULL_PROB_MAX, bull_prob))
+    bear_prob = max(st.SCENARIO_BEAR_PROB_MIN, min(st.SCENARIO_BEAR_PROB_MAX, bear_prob))
 
     base_prob = max(0.05, 1.0 - bull_prob - bear_prob)
 

@@ -15,8 +15,13 @@ screener_mcp/run_screener.py와 동일한 3단계 파이프라인이지만
 
 사용법:
     cd C:\\MCP\\Swing
-    .venv\\Scripts\\python scripts\\run_kavout_screener.py
-    .venv\\Scripts\\python scripts\\run_kavout_screener.py --force-refresh --top 20
+    .venv\\Scripts\\python scripts\\run_kavout_screener.py                   # 기본 (어닝 캐시 재사용)
+    .venv\\Scripts\\python scripts\\run_kavout_screener.py --refresh-earnings # 어닝 LLM 새로 실행
+    .venv\\Scripts\\python scripts\\run_kavout_screener.py --top 20
+
+Kavout CSV 수집 (별도 선행 실행):
+    .venv\\Scripts\\python scripts\\fetch_kavout.py
+    .venv\\Scripts\\python scripts\\fetch_kavout.py --universe sp500
 """
 
 from __future__ import annotations
@@ -49,12 +54,12 @@ _root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_root))
 
 
-async def run(force_refresh: bool = False, top_n: int = 10, earnings_cache_only: bool = False) -> None:
+async def run(refresh_earnings: bool = False, top_n: int = 10) -> None:
     from core.api_fetcher import fetch_finviz_details_bulk
     from core.earnings_analyzer import analyze_earnings
     from core.fundamental_screener import rank_universe
     from core.obsidian import ObsidianClient
-    from core.parsers import parse_kavout_output, parse_kavout_universe, parse_earnings
+    from core.parsers import parse_kavout_universe, parse_earnings
     from core.slack import SlackClient
     from shared.config import get_config
     from shared.logger import setup_logging
@@ -75,7 +80,7 @@ async def run(force_refresh: bool = False, top_n: int = 10, earnings_cache_only:
 
     print(f"\n{'='*60}")
     print(f"  SwingMCP Kavout 스크리닝  [{execution_id}]")
-    print(f"  force_refresh={force_refresh}  earnings_cache_only={earnings_cache_only}  top_n={top_n}")
+    print(f"  refresh_earnings={refresh_earnings}  top_n={top_n}")
     print(f"{'='*60}")
 
     start = time.monotonic()
@@ -111,38 +116,12 @@ async def run(force_refresh: bool = False, top_n: int = 10, earnings_cache_only:
         for r in kavout_rows
     }
 
-    # ── kavout_output 펀더멘털 보강 ──────────────────────────
-    print(f"  ▷ kavout_output 펀더멘털 데이터 로드 중...")
-    kavout_output_data = parse_kavout_output(earnings_dir / "kavout_output")
-    if kavout_output_data:
-        # API가 채우지 못한 펀더멘털 필드만 kavout_output으로 보완
-        _KAVOUT_FILL_FIELDS = [
-            "forward_pe", "peg", "beta", "target_price", "recom",
-            "eps_surprise_pct", "sales_surprise_pct",
-            "gross_margin_pct", "op_margin_pct", "profit_margin_pct",
-            "eps_next_5y_pct", "revenue_growth_yoy", "net_income_growth_yoy",
-            "roe_pct", "fcf_ttm", "revenue_ttm", "net_income_ttm",
-            "short_float_pct", "insider_trans_pct",
-        ]
-        filled_count = 0
-        for ticker, kout in kavout_output_data.items():
-            if ticker not in finviz_details:
-                continue
-            api_detail = finviz_details[ticker]
-            for field in _KAVOUT_FILL_FIELDS:
-                if getattr(api_detail, field, None) is None:
-                    val = getattr(kout, field, None)
-                    if val is not None:
-                        setattr(api_detail, field, val)
-                        filled_count += 1
-        print(f"  ✓ kavout_output 보강: {len(kavout_output_data)}개 파일 / {filled_count}개 필드 채움")
-    else:
-        print(f"  △ kavout_output 없음 — 펀더멘털 보강 건너뜀")
+    # kavout_output 펀더멘털 보강 제거 → yfinance API(fetch_finviz_details_bulk)가 완전 대체
+    kavout_output_data: dict = {}  # 시가총액 맵에서 참조되는 변수 — 빈 dict로 유지
 
     # ── Step 2: K어닝콜 LLM 분석 ─────────────────────────────
     print("\n▶ Step 2: K어닝콜 LLM 분석...")
-    # earnings_cache_only: 어닝 캐시는 항상 재사용 (force_refresh 무시)
-    earnings_force_refresh = False if earnings_cache_only else force_refresh
+    earnings_force_refresh = refresh_earnings
     earnings_analyses: dict = {}
     earnings_raw: dict = {}   # {ticker: EarningsAnalysis} — 노트용 원문
     if k_earnings.exists():
@@ -187,17 +166,14 @@ async def run(force_refresh: bool = False, top_n: int = 10, earnings_cache_only:
             r.roe = getattr(krow, "roe", None)
 
     # ── 시가총액 맵 구성 ─────────────────────────────────────
-    # 우선순위: API(Yahoo Finance) → kavout_output → kavout CSV
+    # 우선순위: API(Yahoo Finance) → kavout CSV
     mcap_map: dict[str, float] = {}
     for ticker in finviz_details:
         fd = finviz_details.get(ticker)
         mc = getattr(fd, "market_cap", None) if fd else None          # 1순위: API
         if mc is None:
-            kout = kavout_output_data.get(ticker)
-            mc = getattr(kout, "market_cap", None) if kout else None  # 2순위: kavout_output
-        if mc is None:
             krow = kavout_map.get(ticker)
-            mc = getattr(krow, "market_cap_raw", None) if krow else None  # 3순위: kavout CSV
+            mc = getattr(krow, "market_cap_raw", None) if krow else None  # 2순위: kavout CSV
         if mc is not None:
             mcap_map[ticker] = mc
 
@@ -490,18 +466,9 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="SwingMCP Kavout AI 유니버스 스크리닝 + K어닝콜 LLM 분석"
     )
-    cache_group = parser.add_mutually_exclusive_group()
-    cache_group.add_argument(
-        "--no-cache", "--force-refresh", dest="no_cache", action="store_true",
-        help="모든 LLM 캐시 무시하고 새로 분석 (어닝 포함)"
-    )
-    cache_group.add_argument(
-        "--earnings-cache-only", action="store_true",
-        help="어닝 LLM 캐시만 재사용, 나머지는 새로 실행"
-    )
-    cache_group.add_argument(
-        "--use-cache", dest="use_cache", action="store_true", default=True,
-        help="캐시 있으면 재사용 (기본값)"
+    parser.add_argument(
+        "--refresh-earnings", action="store_true",
+        help="어닝 LLM 캐시 무시하고 새로 분석 (기본: 캐시 재사용)"
     )
     parser.add_argument(
         "--top", type=int, default=10, metavar="N",
@@ -515,7 +482,6 @@ if __name__ == "__main__":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     args = _parse_args()
     asyncio.run(run(
-        force_refresh=args.no_cache,
+        refresh_earnings=args.refresh_earnings,
         top_n=args.top,
-        earnings_cache_only=args.earnings_cache_only,
     ))

@@ -1,0 +1,17 @@
+{
+  "execution_id": "sell_20260606_142618",
+  "step": 5,
+  "completed_at": "2026-06-06T14:30:43.439343",
+  "duration_ms": 93610,
+  "data": {
+    "MU_2026-08-21_1090.0": {
+      "event_judgment": "청산_유리",
+      "iv_crush_risk": true,
+      "iv_crush_estimated_loss": 2.0,
+      "recommendation": "IVR이 매우 높아 옵션 프리미엄이 과대평가되어 있으며, 주요 거시 이벤트들이 연이어 예정된 점을 고려할 때 IV 크러시 위험이 크므로 현재 롱 포지션을 청산하거나 새로운 롱 진입을 자제하는 것이 적절하다.",
+      "da_reasons": [
+        "내부자 데이터 이상 ($3010M — 기관 혼재 의심, 차감 보류)"
+      ]
+    }
+  }
+}

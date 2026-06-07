@@ -197,6 +197,7 @@ DA_BOLLINGER_BREAK_PENALTY: float = -5.0   # 볼린저밴드 상/하단 돌파
 DA_NEAR_52W_HIGH_PENALTY:  float = -3.0    # 52주 고점 95% 근처 롱콜
 DA_LARGE_DAILY_MOVE:       float = -8.0    # 6%+ 급등/급락
 DA_MEDIUM_DAILY_MOVE:      float = -4.0    # 4~6% 급등/급락
+DA_MA20_BREAK_PENALTY:     float = -10.0  # 주가 SMA20 아래 이탈 + 당일 -5%↓ 동시 발생
 
 # ══════════════════════════════════════════════════════════════════════
 # 10. 확신도 가중치  (calculate_confidence)

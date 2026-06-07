@@ -1,0 +1,9 @@
+{
+  "execution_id": "verify_report2",
+  "step": 11,
+  "completed_at": "2026-06-07T16:03:38.221677",
+  "duration_ms": 16,
+  "data": {
+    "requeue_count": 1
+  }
+}

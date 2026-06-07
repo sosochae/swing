@@ -119,3 +119,206 @@
 {"timestamp": "2026-06-05T15:58:49.951846+00:00", "execution_id": "buy_MRVL_MU_20260606_005814", "step": 12, "status": "completed", "duration_ms": 94, "data": {"note_path": "swing-procedure/notes/buy/2026-06-06.md", "positions_written": 0}}
 {"timestamp": "2026-06-05T15:58:49.957590+00:00", "execution_id": "buy_MRVL_MU_20260606_005814", "step": 13, "status": "started", "duration_ms": 0}
 {"timestamp": "2026-06-05T15:58:50.530255+00:00", "execution_id": "buy_MRVL_MU_20260606_005814", "step": 13, "status": "completed", "duration_ms": 578, "data": {"slack_ts": "1780675130.456509"}}
+{"timestamp": "2026-06-05T18:07:40.256305+00:00", "execution_id": "sell_20260606_030707", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 9}}
+{"timestamp": "2026-06-05T18:07:42.873115+00:00", "execution_id": "sell_20260606_030707", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 9}}
+{"timestamp": "2026-06-05T18:07:45.496116+00:00", "execution_id": "sell_20260606_030707", "step": 0, "status": "completed", "duration_ms": 34172, "data": {"positions": 13, "summary_tickers": 2, "finviz_rows": 74, "earnings": 49, "finviz_detail": 130, "kavout": 41}}
+{"timestamp": "2026-06-05T18:07:45.527969+00:00", "execution_id": "sell_20260606_030707", "step": 1, "status": "completed", "duration_ms": 16}
+{"timestamp": "2026-06-05T18:07:48.667384+00:00", "execution_id": "sell_20260606_030707", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-05T18:08:22.267321+00:00", "execution_id": "sell_20260606_030803", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 9}}
+{"timestamp": "2026-06-05T18:08:25.485767+00:00", "execution_id": "sell_20260606_030803", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 9}}
+{"timestamp": "2026-06-05T18:08:28.009931+00:00", "execution_id": "sell_20260606_030803", "step": 0, "status": "completed", "duration_ms": 19889, "data": {"positions": 13, "summary_tickers": 2, "finviz_rows": 74, "earnings": 49, "finviz_detail": 130, "kavout": 41}}
+{"timestamp": "2026-06-05T18:08:28.036966+00:00", "execution_id": "sell_20260606_030803", "step": 1, "status": "completed", "duration_ms": 32}
+{"timestamp": "2026-06-05T18:08:31.816304+00:00", "execution_id": "sell_20260606_030803", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-05T18:22:15.690817+00:00", "execution_id": "sell_20260606_030803", "step": 2, "status": "completed", "duration_ms": 827640, "data": {"regime": "unfavorable", "reversed": ["MRVL_2026-07-17_220.0", "MRVL_2026-06-19_200.0", "MRVL_2026-07-10_220.0", "MRVL_2026-06-26_280.0", "CTRA_2026-07-10_37.0", "AMD_2026-07-10_305.0", "GOOGL_2026-07-10_412.0", "VICR_2026-07-10_282.0", "DGII_2026-07-10_50.0", "ALAB_2026-07-10_201.0", "CRDO_2026-07-10_212.0", "MRVL_2026-08-21_320.0", "MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-05T18:22:15.701062+00:00", "execution_id": "sell_20260606_030803", "step": 3, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 2}}
+{"timestamp": "2026-06-05T18:35:13.259595+00:00", "execution_id": "sell_20260606_030803", "step": 4, "status": "completed", "duration_ms": 766250, "data": {"tickers": ["MRVL_2026-07-17_220.0", "MRVL_2026-06-19_200.0", "MRVL_2026-07-10_220.0", "MRVL_2026-06-26_280.0", "CTRA_2026-07-10_37.0", "AMD_2026-07-10_305.0", "GOOGL_2026-07-10_412.0", "VICR_2026-07-10_282.0", "DGII_2026-07-10_50.0", "ALAB_2026-07-10_201.0", "CRDO_2026-07-10_212.0", "MRVL_2026-08-21_320.0", "MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T04:21:19.768880+00:00", "execution_id": "sell_20260606_132053", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T04:21:20.639879+00:00", "execution_id": "sell_20260606_132053", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T04:21:21.684428+00:00", "execution_id": "sell_20260606_132053", "step": 0, "status": "completed", "duration_ms": 22047, "data": {"positions": 1, "summary_tickers": 2, "finviz_rows": 74, "earnings": 49, "finviz_detail": 130, "kavout": 41}}
+{"timestamp": "2026-06-06T04:21:21.709282+00:00", "execution_id": "sell_20260606_132053", "step": 1, "status": "completed", "duration_ms": 30}
+{"timestamp": "2026-06-06T04:21:24.912859+00:00", "execution_id": "sell_20260606_132053", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-06T04:22:12.361243+00:00", "execution_id": "sell_20260606_132053", "step": 2, "status": "completed", "duration_ms": 50625, "data": {"regime": "unfavorable", "reversed": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T04:22:12.365781+00:00", "execution_id": "sell_20260606_132053", "step": 3, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 1}}
+{"timestamp": "2026-06-06T04:24:06.028245+00:00", "execution_id": "sell_20260606_132053", "step": 3, "status": "completed", "duration_ms": 113657}
+{"timestamp": "2026-06-06T04:24:51.175192+00:00", "execution_id": "sell_20260606_132053", "step": 4, "status": "completed", "duration_ms": 45140, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T04:25:08.780133+00:00", "execution_id": "sell_20260606_132053", "step": 5, "status": "completed", "duration_ms": 17609, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T04:25:10.824084+00:00", "execution_id": "sell_20260606_132053", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T04:25:10.824084+00:00", "execution_id": "sell_20260606_132053", "step": 6, "status": "completed", "duration_ms": 2045}
+{"timestamp": "2026-06-06T04:25:10.829730+00:00", "execution_id": "sell_20260606_132053", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T04:25:10.831831+00:00", "execution_id": "sell_20260606_132053", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T04:25:10.836125+00:00", "execution_id": "sell_20260606_132053", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 1, "total_invested": 17958.0}}
+{"timestamp": "2026-06-06T04:25:52.725609+00:00", "execution_id": "sell_20260606_132053", "step": 10, "status": "completed", "duration_ms": 41891, "data": {"decisions": 1}}
+{"timestamp": "2026-06-06T04:25:52.837307+00:00", "execution_id": "sell_20260606_132053", "step": 11, "status": "completed", "duration_ms": 108}
+{"timestamp": "2026-06-06T04:26:16.716768+00:00", "execution_id": "sell_20260606_132053", "step": 12, "status": "completed", "duration_ms": 23875, "data": {"reviewed": 1}}
+{"timestamp": "2026-06-06T04:26:17.183156+00:00", "execution_id": "sell_20260606_132053", "step": 13, "status": "completed", "duration_ms": 469, "data": {"slack_ts": "1780719976.999109"}}
+{"timestamp": "2026-06-06T05:15:20.033224+00:00", "execution_id": "sell_20260606_141511", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:15:20.549947+00:00", "execution_id": "sell_20260606_141511", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:15:21.113593+00:00", "execution_id": "sell_20260606_141511", "step": 0, "status": "completed", "duration_ms": 8407, "data": {"positions": 1, "summary_tickers": 2, "finviz_rows": 74, "earnings": 49, "finviz_detail": 130, "kavout": 41}}
+{"timestamp": "2026-06-06T05:15:21.117390+00:00", "execution_id": "sell_20260606_141511", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:15:24.194498+00:00", "execution_id": "sell_20260606_141511", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-06T05:15:54.890319+00:00", "execution_id": "sell_20260606_141511", "step": 2, "status": "completed", "duration_ms": 33781, "data": {"regime": "unfavorable", "reversed": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:15:54.894865+00:00", "execution_id": "sell_20260606_141511", "step": 3, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 1}}
+{"timestamp": "2026-06-06T05:16:05.445039+00:00", "execution_id": "sell_20260606_141511", "step": 3, "status": "completed", "duration_ms": 10547}
+{"timestamp": "2026-06-06T05:16:32.981625+00:00", "execution_id": "sell_20260606_141511", "step": 4, "status": "completed", "duration_ms": 27530, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:17:32.970595+00:00", "execution_id": "sell_20260606_141511", "step": 5, "status": "completed", "duration_ms": 59983, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:17:34.917025+00:00", "execution_id": "sell_20260606_141511", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:17:34.917656+00:00", "execution_id": "sell_20260606_141511", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_flow_recalc": 1}}
+{"timestamp": "2026-06-06T05:17:34.917656+00:00", "execution_id": "sell_20260606_141511", "step": 6, "status": "completed", "duration_ms": 1938}
+{"timestamp": "2026-06-06T05:17:34.917656+00:00", "execution_id": "sell_20260606_141511", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:17:34.917656+00:00", "execution_id": "sell_20260606_141511", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:17:34.923956+00:00", "execution_id": "sell_20260606_141511", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 1, "total_invested": 17958.0}}
+{"timestamp": "2026-06-06T05:17:58.389693+00:00", "execution_id": "sell_20260606_141511", "step": 10, "status": "completed", "duration_ms": 23468, "data": {"decisions": 1}}
+{"timestamp": "2026-06-06T05:17:58.428097+00:00", "execution_id": "sell_20260606_141511", "step": 11, "status": "completed", "duration_ms": 31}
+{"timestamp": "2026-06-06T05:18:17.765751+00:00", "execution_id": "sell_20260606_141511", "step": 12, "status": "completed", "duration_ms": 19343, "data": {"reviewed": 1}}
+{"timestamp": "2026-06-06T05:18:18.350924+00:00", "execution_id": "sell_20260606_141511", "step": 13, "status": "completed", "duration_ms": 577, "data": {"slack_ts": "1780723098.195939"}}
+{"timestamp": "2026-06-06T05:20:43.073140+00:00", "execution_id": "sell_20260606_142034", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:20:43.758519+00:00", "execution_id": "sell_20260606_142034", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:20:44.387659+00:00", "execution_id": "sell_20260606_142034", "step": 0, "status": "completed", "duration_ms": 8391, "data": {"positions": 1, "summary_tickers": 2, "finviz_rows": 74, "earnings": 49, "finviz_detail": 130, "kavout": 41}}
+{"timestamp": "2026-06-06T05:20:44.399695+00:00", "execution_id": "sell_20260606_142034", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:20:47.414194+00:00", "execution_id": "sell_20260606_142034", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-06T05:21:34.953687+00:00", "execution_id": "sell_20260606_142034", "step": 2, "status": "completed", "duration_ms": 50545, "data": {"regime": "unfavorable", "reversed": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:21:34.961539+00:00", "execution_id": "sell_20260606_142034", "step": 3, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 1}}
+{"timestamp": "2026-06-06T05:21:46.096744+00:00", "execution_id": "sell_20260606_142034", "step": 3, "status": "completed", "duration_ms": 11141}
+{"timestamp": "2026-06-06T05:23:04.911147+00:00", "execution_id": "sell_20260606_142034", "step": 4, "status": "completed", "duration_ms": 78813, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:23:25.969329+00:00", "execution_id": "sell_20260606_142034", "step": 5, "status": "completed", "duration_ms": 21061, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:23:27.357757+00:00", "execution_id": "sell_20260606_142034", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:23:27.362494+00:00", "execution_id": "sell_20260606_142034", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_flow_recalc": 1}}
+{"timestamp": "2026-06-06T05:23:27.364745+00:00", "execution_id": "sell_20260606_142034", "step": 6, "status": "completed", "duration_ms": 1391}
+{"timestamp": "2026-06-06T05:23:27.368113+00:00", "execution_id": "sell_20260606_142034", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:23:27.371497+00:00", "execution_id": "sell_20260606_142034", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:23:27.373286+00:00", "execution_id": "sell_20260606_142034", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 1, "total_invested": 17958.0}}
+{"timestamp": "2026-06-06T05:24:19.697324+00:00", "execution_id": "sell_20260606_142034", "step": 10, "status": "completed", "duration_ms": 52313, "data": {"decisions": 1}}
+{"timestamp": "2026-06-06T05:24:19.763272+00:00", "execution_id": "sell_20260606_142034", "step": 11, "status": "completed", "duration_ms": 63}
+{"timestamp": "2026-06-06T05:24:34.319042+00:00", "execution_id": "sell_20260606_142034", "step": 12, "status": "completed", "duration_ms": 14547, "data": {"reviewed": 1}}
+{"timestamp": "2026-06-06T05:24:34.904297+00:00", "execution_id": "sell_20260606_142034", "step": 13, "status": "completed", "duration_ms": 579, "data": {"slack_ts": "1780723474.779779"}}
+{"timestamp": "2026-06-06T05:26:27.362562+00:00", "execution_id": "sell_20260606_142618", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:26:27.939086+00:00", "execution_id": "sell_20260606_142618", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:26:28.507667+00:00", "execution_id": "sell_20260606_142618", "step": 0, "status": "completed", "duration_ms": 8358, "data": {"positions": 1, "summary_tickers": 2, "finviz_rows": 74, "earnings": 49, "finviz_detail": 130, "kavout": 41}}
+{"timestamp": "2026-06-06T05:26:28.515268+00:00", "execution_id": "sell_20260606_142618", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:26:31.279623+00:00", "execution_id": "sell_20260606_142618", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-06T05:28:42.071864+00:00", "execution_id": "sell_20260606_142618", "step": 2, "status": "completed", "duration_ms": 133547, "data": {"regime": "unfavorable", "reversed": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:28:42.076042+00:00", "execution_id": "sell_20260606_142618", "step": 3, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 1}}
+{"timestamp": "2026-06-06T05:28:52.397672+00:00", "execution_id": "sell_20260606_142618", "step": 3, "status": "completed", "duration_ms": 10313}
+{"timestamp": "2026-06-06T05:29:09.837119+00:00", "execution_id": "sell_20260606_142618", "step": 4, "status": "completed", "duration_ms": 17436, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:30:43.456538+00:00", "execution_id": "sell_20260606_142618", "step": 5, "status": "completed", "duration_ms": 93610, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:30:44.944745+00:00", "execution_id": "sell_20260606_142618", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:30:44.946753+00:00", "execution_id": "sell_20260606_142618", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_flow_recalc": 1}}
+{"timestamp": "2026-06-06T05:30:44.946753+00:00", "execution_id": "sell_20260606_142618", "step": 6, "status": "completed", "duration_ms": 1485}
+{"timestamp": "2026-06-06T05:30:44.953087+00:00", "execution_id": "sell_20260606_142618", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:30:44.955098+00:00", "execution_id": "sell_20260606_142618", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:30:44.961237+00:00", "execution_id": "sell_20260606_142618", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 1, "total_invested": 17958.0}}
+{"timestamp": "2026-06-06T05:31:39.646394+00:00", "execution_id": "sell_20260606_142618", "step": 10, "status": "completed", "duration_ms": 54688, "data": {"decisions": 1}}
+{"timestamp": "2026-06-06T05:31:39.707445+00:00", "execution_id": "sell_20260606_142618", "step": 11, "status": "completed", "duration_ms": 61}
+{"timestamp": "2026-06-06T05:32:00.805104+00:00", "execution_id": "sell_20260606_142618", "step": 12, "status": "completed", "duration_ms": 21094, "data": {"reviewed": 1}}
+{"timestamp": "2026-06-06T05:32:01.426524+00:00", "execution_id": "sell_20260606_142618", "step": 13, "status": "completed", "duration_ms": 608, "data": {"slack_ts": "1780723921.246999"}}
+{"timestamp": "2026-06-06T05:33:34.487714+00:00", "execution_id": "sell_20260606_143322", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:33:35.228551+00:00", "execution_id": "sell_20260606_143322", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:33:35.872244+00:00", "execution_id": "sell_20260606_143322", "step": 0, "status": "completed", "duration_ms": 9422, "data": {"positions": 1, "summary_tickers": 2, "finviz_rows": 74, "earnings": 49, "finviz_detail": 130, "kavout": 41}}
+{"timestamp": "2026-06-06T05:33:35.882816+00:00", "execution_id": "sell_20260606_143322", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:33:38.896593+00:00", "execution_id": "sell_20260606_143322", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-06T05:34:26.279818+00:00", "execution_id": "sell_20260606_143322", "step": 2, "status": "completed", "duration_ms": 50407, "data": {"regime": "unfavorable", "reversed": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:34:26.295893+00:00", "execution_id": "sell_20260606_143322", "step": 3, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 1}}
+{"timestamp": "2026-06-06T05:34:37.713296+00:00", "execution_id": "sell_20260606_143322", "step": 3, "status": "completed", "duration_ms": 11405}
+{"timestamp": "2026-06-06T05:35:12.001920+00:00", "execution_id": "sell_20260606_143322", "step": 4, "status": "completed", "duration_ms": 34297, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:35:45.586819+00:00", "execution_id": "sell_20260606_143322", "step": 5, "status": "completed", "duration_ms": 33577, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:35:47.045247+00:00", "execution_id": "sell_20260606_143322", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:35:47.048899+00:00", "execution_id": "sell_20260606_143322", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_flow_recalc": 1}}
+{"timestamp": "2026-06-06T05:35:47.049254+00:00", "execution_id": "sell_20260606_143322", "step": 6, "status": "completed", "duration_ms": 1453}
+{"timestamp": "2026-06-06T05:35:47.053464+00:00", "execution_id": "sell_20260606_143322", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:35:47.070078+00:00", "execution_id": "sell_20260606_143322", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:35:47.073499+00:00", "execution_id": "sell_20260606_143322", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 1, "total_invested": 17958.0}}
+{"timestamp": "2026-06-06T05:36:09.862793+00:00", "execution_id": "sell_20260606_143322", "step": 10, "status": "completed", "duration_ms": 22796, "data": {"decisions": 1}}
+{"timestamp": "2026-06-06T05:36:09.928504+00:00", "execution_id": "sell_20260606_143322", "step": 11, "status": "completed", "duration_ms": 62}
+{"timestamp": "2026-06-06T05:36:09.933157+00:00", "execution_id": "sell_20260606_143322", "step": 12, "status": "completed", "duration_ms": 0, "data": {"reviewed": 0}}
+{"timestamp": "2026-06-06T05:36:10.570400+00:00", "execution_id": "sell_20260606_143322", "step": 13, "status": "completed", "duration_ms": 625, "data": {"slack_ts": "1780724170.394599"}}
+{"timestamp": "2026-06-06T05:37:56.553031+00:00", "execution_id": "sell_20260606_143738", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:37:57.160883+00:00", "execution_id": "sell_20260606_143738", "step": 0, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:37:57.788410+00:00", "execution_id": "sell_20260606_143738", "step": 0, "status": "completed", "duration_ms": 12282, "data": {"positions": 1, "summary_tickers": 2, "finviz_rows": 74, "earnings": 49, "finviz_detail": 130, "kavout": 41}}
+{"timestamp": "2026-06-06T05:37:57.792866+00:00", "execution_id": "sell_20260606_143738", "step": 1, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:38:00.549962+00:00", "execution_id": "sell_20260606_143738", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-06T05:38:41.808291+00:00", "execution_id": "sell_20260606_143738", "step": 2, "status": "completed", "duration_ms": 44000, "data": {"regime": "unfavorable", "reversed": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:38:41.815066+00:00", "execution_id": "sell_20260606_143738", "step": 3, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 1}}
+{"timestamp": "2026-06-06T05:38:50.564934+00:00", "execution_id": "sell_20260606_143738", "step": 3, "status": "completed", "duration_ms": 8750}
+{"timestamp": "2026-06-06T05:40:16.328269+00:00", "execution_id": "sell_20260606_143738", "step": 4, "status": "completed", "duration_ms": 85764, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:40:39.069372+00:00", "execution_id": "sell_20260606_143738", "step": 5, "status": "completed", "duration_ms": 22735, "data": {"tickers": ["MU_2026-08-21_1090.0"]}}
+{"timestamp": "2026-06-06T05:40:40.750753+00:00", "execution_id": "sell_20260606_143738", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 1}}
+{"timestamp": "2026-06-06T05:40:40.755356+00:00", "execution_id": "sell_20260606_143738", "step": 6, "status": "info", "duration_ms": 0, "data": {"option_flow_recalc": 1}}
+{"timestamp": "2026-06-06T05:40:40.755356+00:00", "execution_id": "sell_20260606_143738", "step": 6, "status": "completed", "duration_ms": 1686}
+{"timestamp": "2026-06-06T05:40:40.758505+00:00", "execution_id": "sell_20260606_143738", "step": 7, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:40:40.761754+00:00", "execution_id": "sell_20260606_143738", "step": 8, "status": "completed", "duration_ms": 0}
+{"timestamp": "2026-06-06T05:40:40.764201+00:00", "execution_id": "sell_20260606_143738", "step": 9, "status": "completed", "duration_ms": 0, "data": {"remaining_positions": 1, "total_invested": 17958.0}}
+{"timestamp": "2026-06-06T05:41:01.995214+00:00", "execution_id": "sell_20260606_143738", "step": 10, "status": "completed", "duration_ms": 21218, "data": {"decisions": 1}}
+{"timestamp": "2026-06-06T05:41:02.054354+00:00", "execution_id": "sell_20260606_143738", "step": 11, "status": "completed", "duration_ms": 47}
+{"timestamp": "2026-06-06T05:41:14.300211+00:00", "execution_id": "sell_20260606_143738", "step": 12, "status": "completed", "duration_ms": 12233, "data": {"reviewed": 1}}
+{"timestamp": "2026-06-06T05:41:14.799785+00:00", "execution_id": "sell_20260606_143738", "step": 13, "status": "completed", "duration_ms": 500, "data": {"slack_ts": "1780724474.618789"}}
+{"timestamp": "2026-06-06T10:02:02.302702+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:03.961537+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 0, "status": "completed", "duration_ms": 1656, "data": {"warnings": []}}
+{"timestamp": "2026-06-06T10:02:03.970335+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:09.066701+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 1, "status": "completed", "duration_ms": 5094, "data": {"watchlist_count": 2}}
+{"timestamp": "2026-06-06T10:02:09.073307+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:17.583365+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-06T10:02:17.588550+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 2, "status": "completed", "duration_ms": 8516, "data": {"regime": "unfavorable", "direction": "none", "regime_confidence": 0.33, "trend_confidence": 0.0, "risk_factor_count": 6}}
+{"timestamp": "2026-06-06T10:02:17.590080+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:18.892125+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 3, "status": "completed", "duration_ms": 1297, "data": {"total": 2, "filter_pass": 1, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-06-06T10:02:18.896605+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:21.020895+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 4, "status": "info", "duration_ms": 0, "data": {"yfinance_refresh": "ok", "refreshed": 2}}
+{"timestamp": "2026-06-06T10:02:22.999510+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 4, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 2}}
+{"timestamp": "2026-06-06T10:02:24.110328+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 4, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 2}}
+{"timestamp": "2026-06-06T10:02:24.112143+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 4, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 2}}
+{"timestamp": "2026-06-06T10:02:24.112143+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 4, "status": "completed", "duration_ms": 5218, "data": {"scored": 2, "trend_confirmed": 2, "continuing": 2}}
+{"timestamp": "2026-06-06T10:02:24.118559+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:42.473668+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 5, "status": "completed", "duration_ms": 18358}
+{"timestamp": "2026-06-06T10:02:42.474729+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:42.476891+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 2, "warned": 0, "surviving": 2, "da_deductions": 2}}
+{"timestamp": "2026-06-06T10:02:42.479233+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:43.588255+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 7, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 2}}
+{"timestamp": "2026-06-06T10:02:43.590300+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 7, "status": "info", "duration_ms": 0, "data": {"option_flow_recalc": 1}}
+{"timestamp": "2026-06-06T10:02:45.340017+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 7, "status": "degraded", "duration_ms": 2860, "error": "1 validation error for OptionValidity\ndirection\n  Input should be 'long_call' or 'long_put' [type=literal_error, input_value='none', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/literal_error"}
+{"timestamp": "2026-06-06T10:02:45.917953+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:45.917953+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 0}}
+{"timestamp": "2026-06-06T10:02:45.922576+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:45.922576+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 9, "status": "completed", "duration_ms": 0, "data": {"invested": 0.0, "cash": 22222.0}}
+{"timestamp": "2026-06-06T10:02:45.922576+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:45.926354+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 2, "aggressive_rankings": 0, "high_downside": []}}
+{"timestamp": "2026-06-06T10:02:45.927497+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:45.946223+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 11, "status": "completed", "duration_ms": 15, "data": {"requeue_added": 1}}
+{"timestamp": "2026-06-06T10:02:45.949239+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:46.339961+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 12, "status": "completed", "duration_ms": 391, "data": {"note_path": "swing-procedure/notes/buy/2026-06-06.md", "watchlist_written": 2}}
+{"timestamp": "2026-06-06T10:02:46.342599+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:02:46.937576+00:00", "execution_id": "buy_MRVL_MU_20260606_190149", "step": 13, "status": "completed", "duration_ms": 594, "data": {"slack_ts": "1780740166.869279"}}
+{"timestamp": "2026-06-06T10:03:41.313530+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:03:41.537368+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 0, "status": "completed", "duration_ms": 218, "data": {"warnings": []}}
+{"timestamp": "2026-06-06T10:03:41.537368+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:03:42.686500+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 1, "status": "completed", "duration_ms": 1156, "data": {"watchlist_count": 2}}
+{"timestamp": "2026-06-06T10:03:42.688057+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:03:47.733836+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 2, "status": "info", "duration_ms": 0, "data": {"macro_realtime": "ok", "fields": ["vix", "vix_ma20", "spy", "spy_ma20", "qqq", "qqq_ma20", "nasdaq", "nasdaq_ma20", "dxy", "dxy_ma20", "gold", "oil_wti", "soxx", "soxx_ma20", "yield_10y", "fear_greed", "fear_greed_label"]}}
+{"timestamp": "2026-06-06T10:03:47.738320+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 2, "status": "completed", "duration_ms": 5046, "data": {"regime": "unfavorable", "direction": "none", "regime_confidence": 0.33, "trend_confidence": 0.0, "risk_factor_count": 6}}
+{"timestamp": "2026-06-06T10:03:47.747177+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:03:53.754742+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 3, "status": "completed", "duration_ms": 6000, "data": {"total": 2, "filter_pass": 1, "filter_fail": 1, "hard_stopped": []}}
+{"timestamp": "2026-06-06T10:03:53.761541+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:03:56.207576+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 4, "status": "info", "duration_ms": 0, "data": {"yfinance_refresh": "ok", "refreshed": 2}}
+{"timestamp": "2026-06-06T10:04:00.054693+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 4, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 2}}
+{"timestamp": "2026-06-06T10:04:02.625203+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 4, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 2}}
+{"timestamp": "2026-06-06T10:04:02.625203+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 4, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 2}}
+{"timestamp": "2026-06-06T10:04:02.630981+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 4, "status": "completed", "duration_ms": 8859, "data": {"scored": 2, "trend_confirmed": 2, "continuing": 2}}
+{"timestamp": "2026-06-06T10:04:02.636099+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:19.404887+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 5, "status": "completed", "duration_ms": 16781}
+{"timestamp": "2026-06-06T10:04:19.407246+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:19.407246+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 2, "warned": 0, "surviving": 2, "da_deductions": 2}}
+{"timestamp": "2026-06-06T10:04:19.407246+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:20.541577+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 7, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 2}}
+{"timestamp": "2026-06-06T10:04:20.541577+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 7, "status": "info", "duration_ms": 0, "data": {"option_flow_recalc": 1}}
+{"timestamp": "2026-06-06T10:04:22.530561+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 7, "status": "degraded", "duration_ms": 0, "ticker": "MRVL", "error": "E400: Spread 6.5% > 5.0% 제한"}
+{"timestamp": "2026-06-06T10:04:22.534006+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 7, "status": "completed", "duration_ms": 3125, "data": {"valid": 1, "continuing": 2}}
+{"timestamp": "2026-06-06T10:04:22.536024+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:22.536024+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 2}}
+{"timestamp": "2026-06-06T10:04:22.544747+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:23.593925+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 9, "status": "completed", "duration_ms": 1045, "data": {"invested": 17586.5, "cash": 4635.5}}
+{"timestamp": "2026-06-06T10:04:23.602100+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:23.603930+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 2, "aggressive_rankings": 2, "high_downside": ["MRVL", "MU"]}}
+{"timestamp": "2026-06-06T10:04:23.603930+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:23.610859+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 11, "status": "completed", "duration_ms": 16, "data": {"requeue_added": 1}}
+{"timestamp": "2026-06-06T10:04:23.612406+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:24.305896+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 12, "status": "completed", "duration_ms": 688, "data": {"note_path": "swing-procedure/notes/buy/2026-06-06.md", "watchlist_written": 2}}
+{"timestamp": "2026-06-06T10:04:24.306619+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-06T10:04:24.681553+00:00", "execution_id": "buy_MRVL_MU_20260606_190339", "step": 13, "status": "completed", "duration_ms": 375, "data": {"slack_ts": "1780740264.648309"}}

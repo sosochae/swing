@@ -1,0 +1,11 @@
+{
+  "execution_id": "verify_fix2",
+  "step": 5,
+  "completed_at": "2026-06-07T16:23:57.880040",
+  "duration_ms": 75156,
+  "data": {
+    "researched": [
+      "MU"
+    ]
+  }
+}

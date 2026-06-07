@@ -1,0 +1,10 @@
+{
+  "execution_id": "verify_report2",
+  "step": 12,
+  "completed_at": "2026-06-07T16:03:38.431806",
+  "duration_ms": 203,
+  "data": {
+    "note_path": "swing-procedure/notes/buy/2026-06-07.md",
+    "watchlist_written": 1
+  }
+}

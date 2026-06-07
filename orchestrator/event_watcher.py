@@ -138,9 +138,9 @@ class EventWatcher:
             self._tasks.append(task)
             return
 
-        # ── 트리거 3: 어닝콜_output/ 신규 파일 → 어닝 분석 ──
+        # ── 트리거 3: K어닝콜_output/ 신규 파일 → 어닝 분석 (Kavout 기반만)
         if (change_type == Change.added
-                and "어닝콜_output" in path_str):
+                and "K어닝콜_output" in path_str):
             log.info("trigger_earnings_analysis", file=path.name)
             task = asyncio.create_task(
                 self._run_earnings_analysis(path),

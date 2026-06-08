@@ -1,0 +1,14 @@
+{
+  "execution_id": "buy_20260608_223911",
+  "step": 3,
+  "completed_at": "2026-06-08T22:39:21.709890",
+  "duration_ms": 1233,
+  "data": {
+    "all_tickers": [
+      "MU"
+    ],
+    "filter_pass": [],
+    "filter_fail_count": 1,
+    "hard_stopped": []
+  }
+}

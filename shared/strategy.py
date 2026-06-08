@@ -75,9 +75,7 @@ HORIZON_SHORT_EARN_DAYS:  int   = 14     # 어닝 후 14일 이내
 HORIZON_MID_ADX_MIN:      float = 20.0   # ADX ≥ 20
 HORIZON_LONG_PEG_MAX:     float = 2.0    # PEG ≤ 2.0
 HORIZON_LONG_REV_MIN:     float = 20.0   # 매출 성장률 ≥ 20%
-HORIZON_LONG_KSCORE_MIN:  float = 7.0    # K-Score ≥ 7
 HORIZON_ULTRA_REV_MIN:    float = 30.0   # 매출 성장률 ≥ 30% (초장기 조건 강화)
-HORIZON_ULTRA_KSCORE_MIN: float = 7.0    # K-Score ≥ 7
 HORIZON_ULTRA_PEG_MAX:    float = 1.5    # PEG ≤ 1.5 (장기 대비 엄격)
 
 # ══════════════════════════════════════════════════════════════════════
@@ -220,12 +218,7 @@ CONVICTION_NEWS_MIXED_BASE:          float = 0.45
 CONVICTION_NEWS_CONFIDENCE_BONUS:    float = 0.1    # 감성 High confidence 보너스
 CONVICTION_NEWS_CONFIDENCE_PENALTY:  float = -0.1   # 감성 Low confidence 패널티
 CONVICTION_SENTIMENT_WEIGHT:         float = 0.50   # 감성 결과 비중
-CONVICTION_KAVOUT_WEIGHT_WITH_SIGNAL: float = 0.20  # Kavout K-Score 비중 (비중립일 때)
-# tech_weight = 1 - sentiment_weight - kavout_weight
-
-# news_confidence — 감성 없을 때
-CONVICTION_KAVOUT_WEIGHT_NO_SENTIMENT: float = 0.30  # Kavout 비중 (비중립일 때)
-CONVICTION_KAVOUT_WEIGHT_NEUTRAL:      float = 0.10  # Kavout 비중 (중립일 때)
+# tech_weight = 1 - sentiment_weight
 
 # thesis_confidence: rr_ratio / RR_NORMALIZATION (최대 1.0)
 CONVICTION_RR_NORMALIZATION: float = 3.0
@@ -329,21 +322,12 @@ HIGH_DOWNSIDE_LOSS_RATIO: float = 0.50   # 베어케이스 손실 > 투자금 50
 
 # ══════════════════════════════════════════════════════════════════════
 # 15. 매수 — Kavout 시그널 보정  (buy_steps.py Step 4)
+# K-Score는 보고서 표시 + 타이브레이커 전용 (신호/점수 조정에는 사용 안 함)
 # ══════════════════════════════════════════════════════════════════════
 
-# K-Score (QMP 모멘텀 위치 신호, 0~10)
-KAVOUT_HIGH_SCORE: float = 7.0
-KAVOUT_LOW_SCORE:  float = 3.0
-KAVOUT_COMBO_SCORE: float = 6.0
-
-KAVOUT_HIGH_SIGNAL_BONUS: int   = 1
-KAVOUT_HIGH_SCORE_BONUS:  float = 3.0   # stock_rank 추가로 합산 균형을 위해 5.0 → 3.0
-KAVOUT_LOW_SIGNAL_PENALTY: int  = -1
-KAVOUT_LOW_SCORE_PENALTY:  float = -10.0
-
-KAVOUT_MOMENTUM_THRESHOLD: float = 30.0
-KAVOUT_COMBO_SIGNAL_BONUS: int   = 1
-KAVOUT_COMBO_SCORE_BONUS:  float = 3.0
+# K-Score (QMP 시총 순위 점수 — display/tiebreaker 참고용)
+KAVOUT_HIGH_SCORE: float = 7.0   # display 이모지 기준
+KAVOUT_LOW_SCORE:  float = 3.0   # display 이모지 기준
 
 # Stock Rank (Kavout AI 종합 점수, 0~100 — k_score와 다른 차원)
 KAVOUT_SR_HIGH_SCORE:         float = 70.0

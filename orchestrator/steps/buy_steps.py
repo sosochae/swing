@@ -551,7 +551,6 @@ class BuySteps:
                 ticker=ticker,
                 direction=direction,
                 summary=ctx.summary_data,
-                kavout_score=(ctx.kavout_data[ticker].k_score or 5.0) if ticker in ctx.kavout_data else 5.0,
             )
             return ticker, score
 
@@ -566,11 +565,10 @@ class BuySteps:
             ctx.technical_scores[ticker] = score
 
         # ── Kavout 시그널 보정 (post-loop) ───────────────────────────────
+        # K-Score(QMP 시총 순위)는 신호 보정 제외 — 보고서 표시·타이브레이커 전용
         for ticker in list(ctx.technical_scores.keys()):
             score = ctx.technical_scores[ticker]
             krow  = ctx.kavout_data.get(ticker)
-            k_score    = float(krow.k_score    or 5.0) if krow else 5.0
-            momentum_1m = float(krow.momentum_1m or 0.0) if krow else 0.0
             sr_score   = float(krow.stock_rank_score or 0.0) if krow else 0.0
             quality    = float(krow.quality_score    or 0.0) if krow else 0.0
             roic       = float(krow.roic             or 0.0) if krow else 0.0
@@ -578,19 +576,6 @@ class BuySteps:
 
             extra_signals = 0
             extra_score = 0.0
-
-            # K-Score (QMP 모멘텀 포지션 신호) — 중복 편향 방지로 보너스 3점으로 축소
-            if k_score >= st.KAVOUT_HIGH_SCORE:
-                extra_signals += st.KAVOUT_HIGH_SIGNAL_BONUS
-                extra_score += st.KAVOUT_HIGH_SCORE_BONUS
-            elif k_score <= st.KAVOUT_LOW_SCORE:
-                extra_signals += st.KAVOUT_LOW_SIGNAL_PENALTY
-                extra_score += st.KAVOUT_LOW_SCORE_PENALTY
-
-            # 1개월 모멘텀 강세 + K-Score 지지
-            if momentum_1m >= st.KAVOUT_MOMENTUM_THRESHOLD and k_score >= st.KAVOUT_COMBO_SCORE:
-                extra_signals += st.KAVOUT_COMBO_SIGNAL_BONUS
-                extra_score += st.KAVOUT_COMBO_SCORE_BONUS
 
             # Stock Rank (Kavout AI 종합 — k_score와 다른 차원)
             if sr_score >= st.KAVOUT_SR_HIGH_SCORE:
@@ -1366,8 +1351,6 @@ class BuySteps:
                 _hz_td = ctx.summary_data.tickers.get(_hz_tk) if ctx.summary_data else None
                 _hz_fv = ctx.stock_data.get(_hz_tk) if ctx.stock_data else None
                 _hz_ts = ctx.technical_scores.get(_hz_tk)
-                _hz_krow = ctx.kavout_data.get(_hz_tk) if ctx.kavout_data else None
-                _hz_kscore = float(_hz_krow.k_score or 5.0) if _hz_krow else 5.0
                 _hz_rsi   = (_hz_fv.rsi14 if _hz_fv and _hz_fv.rsi14 else None) or (_hz_td.technical.rsi14 if _hz_td else None)
                 _hz_adx   = (_hz_fv.adx if _hz_fv and _hz_fv.adx else None) or (_hz_td.technical.adx14 if _hz_td else None)
                 _hz_rvol  = (_hz_fv.rel_volume if _hz_fv else None) or (_hz_td.technical.avg_volume_ratio if _hz_td else None)
@@ -1395,9 +1378,8 @@ class BuySteps:
                     avg_volume_ratio=_hz_rvol,
                     change_pct=_hz_chg,
                     ma_alignment=_hz_ma,
-                    peg_ratio=_hz_fv.peg if _hz_fv else None,             # FinvizDetail.peg
+                    peg_ratio=_hz_fv.peg if _hz_fv else None,
                     revenue_growth_yoy=_hz_fv.revenue_growth_yoy if _hz_fv else None,
-                    k_score=_hz_kscore,
                     days_since_earnings=_hz_earn_days,
                     forward_pe=_hz_fv.forward_pe if _hz_fv else None,
                 )
@@ -1993,7 +1975,6 @@ class BuySteps:
                 scenario=scenario,
                 option_valid=validity,
                 timing_conditions_met=min(4, tech.signal_count // 2),
-                kavout_score=kavout_score,
                 regime_confidence=regime_confidence,
                 sentiment=ctx.sentiment_results.get(ticker),
             )

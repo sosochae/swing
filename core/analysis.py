@@ -1,4 +1,4 @@
-"""
+﻿"""
 core/analysis.py
 ================
 분석 엔진 통합 모듈 (T3 최적화: regime·technical·greeks·scenario·portfolio·devils·confidence → 1개)
@@ -234,7 +234,6 @@ def calculate_technical_score(
     ticker: str,
     direction: str,
     summary: SummaryData,
-    kavout_score: float = 5.0,
 ) -> TechnicalScore:
     """
     종목 기술 분석 점수 산출 (0~100점).
@@ -244,8 +243,6 @@ def calculate_technical_score(
         ticker: 종목 심볼
         direction: long_call | long_put
         summary: SummaryData
-        kavout_score: Kavout AI 점수 (기본 5.0)
-
     Returns:
         TechnicalScore
     """
@@ -729,7 +726,6 @@ def classify_investment_horizon(
     analyst_buy_pct: float | None = None,    # Buy 비율 (0~1)
     peg_ratio: float | None = None,
     revenue_growth_yoy: float | None = None, # %
-    k_score: float | None = None,
     days_since_earnings: int | None = None,  # 어닝 발표 후 경과일
     forward_pe: float | None = None,
 ) -> list[str]:
@@ -778,17 +774,15 @@ def classify_investment_horizon(
     # ── 장기 판정 ──────────────────────────────────────────────
     _peg_ok  = peg_ratio is not None and 0 < peg_ratio <= st.HORIZON_LONG_PEG_MAX
     _rev_ok  = revenue_growth_yoy is not None and revenue_growth_yoy >= st.HORIZON_LONG_REV_MIN
-    _ks_ok   = k_score is not None and k_score >= st.HORIZON_LONG_KSCORE_MIN
     _pe_ok   = forward_pe is not None and 0 < forward_pe <= 80    # 고평가 배제
-    if _peg_ok or (_rev_ok and _ks_ok) or (_rev_ok and _pe_ok):
+    if _peg_ok or (_rev_ok and _pe_ok):
         horizons.append("장기")
 
     # ── 초장기 판정 (DTE 180~365, LEAPS) ───────────────────────
     # 장기보다 조건 강화: 매출 성장 ≥ 30% + K-Score ≥ 7, 또는 PEG ≤ 1.5
     _ultra_rev = revenue_growth_yoy is not None and revenue_growth_yoy >= st.HORIZON_ULTRA_REV_MIN
-    _ultra_ks  = k_score is not None and k_score >= st.HORIZON_ULTRA_KSCORE_MIN
     _ultra_peg = peg_ratio is not None and 0 < peg_ratio <= st.HORIZON_ULTRA_PEG_MAX
-    if (_ultra_rev and _ultra_ks) or _ultra_peg:
+    if _ultra_peg or (_ultra_rev and _pe_ok):
         horizons.append("초장기")
 
     log.debug("horizon_classified", ticker=ticker, horizons=horizons,
@@ -1164,7 +1158,6 @@ def calculate_confidence(
     scenario: Scenario,
     option_valid: OptionValidity,
     timing_conditions_met: int = 2,
-    kavout_score: float = 5.0,        # Kavout K-Score 1~9 (5=중립, 7+=강세, 3-=약세)
     regime_confidence: float = 0.67,  # MarketRegime.regime_confidence (0~1)
     sentiment: dict | None = None,    # Step 5 LLM 감성 분석 결과 (있으면 news_confidence에 반영)
 ) -> ConfidenceScore:
@@ -1176,7 +1169,6 @@ def calculate_confidence(
         scenario: Scenario
         option_valid: OptionValidity
         timing_conditions_met: 타이밍 충족 조건 수 (0~4)
-        kavout_score: Kavout AI K-Score 1~9 (5=중립). 0이면 데이터 없음(중립 처리).
         regime_confidence: MarketRegime.regime_confidence (0~1). 레짐 판정 확신도.
         sentiment: Step 5 LLM 감성 결과 dict (없으면 final_score 기반 근사).
 
@@ -1198,16 +1190,14 @@ def calculate_confidence(
     signal_ratio = min(1.0, technical.signal_count / st.CONVICTION_MAX_SIGNALS)
     trend_confidence = signal_ratio * (st.CONVICTION_TREND_BASE + regime_confidence * st.CONVICTION_TREND_REGIME_MULT)
 
-    # news_confidence: LLM 감성(sentiment) + Kavout K-Score + final_score 3-way 혼합
-    # ① LLM 감성 분석 결과 반영 (Step 5)
-    _kavout = kavout_score if kavout_score > 0 else 5.0
-    kavout_norm = (_kavout - 1.0) / 8.0        # 1→0.0, 5→0.5, 9→1.0
+    # news_confidence: LLM 감성(sentiment) + 기술점수 2-way 혼합
+    # K-Score는 QMP 시총 순위이므로 뉴스 품질 판단에서 제외
     tech_news_base = min(1.0, technical.final_score / 100.0) * 0.5 + 0.25
 
     if sentiment:
-        overall = sentiment.get("overall_sentiment", "MIXED")
-        conf_str = sentiment.get("confidence", "Low")
-        strength = sentiment.get("sentiment_strength", "Moderate")
+        overall   = sentiment.get("overall_sentiment", "MIXED")
+        conf_str  = sentiment.get("confidence", "Low")
+        strength  = sentiment.get("sentiment_strength", "Moderate")
         is_long_dir = technical.direction == "long_call"
         bullish_set = {"BULLISH", "VERY_BULLISH"}
         bearish_set = {"BEARISH", "VERY_BEARISH"}
@@ -1223,20 +1213,11 @@ def calculate_confidence(
             base_sent = min(1.0, base_sent + st.CONVICTION_NEWS_CONFIDENCE_BONUS)
         elif conf_str == "Low" or strength in ("Weak", "Very Weak"):
             base_sent = max(0.0, base_sent + st.CONVICTION_NEWS_CONFIDENCE_PENALTY)
-        kavout_weight = (st.CONVICTION_KAVOUT_WEIGHT_WITH_SIGNAL
-                         if kavout_score > 0 and kavout_score != 5.0 else 0.05)
         sentiment_weight = st.CONVICTION_SENTIMENT_WEIGHT
-        tech_weight = 1.0 - sentiment_weight - kavout_weight
-        news_confidence = (
-            base_sent * sentiment_weight
-            + kavout_norm * kavout_weight
-            + tech_news_base * tech_weight
-        )
+        tech_weight      = 1.0 - sentiment_weight
+        news_confidence  = base_sent * sentiment_weight + tech_news_base * tech_weight
     else:
-        kavout_weight = (st.CONVICTION_KAVOUT_WEIGHT_NO_SENTIMENT
-                         if kavout_score > 0 and kavout_score != 5.0
-                         else st.CONVICTION_KAVOUT_WEIGHT_NEUTRAL)
-        news_confidence = tech_news_base * (1.0 - kavout_weight) + kavout_norm * kavout_weight
+        news_confidence = tech_news_base
 
     thesis_confidence = min(1.0, max(0.0, rr_ratio / st.CONVICTION_RR_NORMALIZATION))
 

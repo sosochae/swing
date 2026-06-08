@@ -753,37 +753,14 @@ class SellSteps:
             direction = "long_call" if pos.option_type == "롱콜" else "long_put"
 
             # ── 기술 점수 계산 ────────────────────────────────────────────
+            # K-Score(QMP 시총 순위)는 신호 보정 제외 — 보고서 표시·타이브레이커 전용
             if ctx.summary_data:
-                _kav_entry = ctx.kavout_data.get(pos.ticker, {})
-                _kavout_score = float(_kav_entry.get("k_score", 5.0)) if _kav_entry else 5.0
                 score = calculate_technical_score(
                     ticker=pos.ticker,
                     direction=direction,
                     summary=ctx.summary_data,
-                    kavout_score=_kavout_score,
                 )
                 ctx.technical_scores[_pos_key(pos)] = score
-
-                # ── ⑧ Kavout post-loop signal_count/score 보정 ───────────
-                _kav_k = float(_kav_entry.get("k_score", 5.0))
-                _kav_m = float(_kav_entry.get("momentum_1m", 0.0))
-                _extra_sig = 0
-                _extra_sc  = 0.0
-                if _kav_k >= st.KAVOUT_HIGH_SCORE:
-                    _extra_sig += st.KAVOUT_HIGH_SIGNAL_BONUS
-                    _extra_sc  += st.KAVOUT_HIGH_SCORE_BONUS
-                elif _kav_k <= st.KAVOUT_LOW_SCORE:
-                    _extra_sig += st.KAVOUT_LOW_SIGNAL_PENALTY
-                    _extra_sc  += st.KAVOUT_LOW_SCORE_PENALTY
-                if _kav_m >= st.KAVOUT_MOMENTUM_THRESHOLD and _kav_k >= st.KAVOUT_COMBO_SCORE:
-                    _extra_sig += st.KAVOUT_COMBO_SIGNAL_BONUS
-                    _extra_sc  += st.KAVOUT_COMBO_SCORE_BONUS
-                if _extra_sig != 0 or _extra_sc != 0:
-                    ctx.technical_scores[_pos_key(pos)] = score.model_copy(update={
-                        "signal_count": max(0, score.signal_count + _extra_sig),
-                        "final_score":  max(0.0, min(100.0, score.final_score + _extra_sc)),
-                    })
-                    score = ctx.technical_scores[_pos_key(pos)]
 
                 # ── ⑨ Finviz 애널리스트 추천 시그널 보정 ─────────────────
                 _fvd_s = ctx.stock_data.get(pos.ticker)

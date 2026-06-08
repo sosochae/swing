@@ -1649,7 +1649,7 @@ def _format_integrated_buy_block(
             elif _hz == "중기":
                 _why = "ADX 추세 + MA 정배열 확인"
             else:
-                _why = "구조적 성장 (PEG 또는 매출성장+K-Score)"
+                _why = "구조적 성장 (PEG 또는 매출성장)"
             lines.append(f"**{_ok} {_hz_labels[_hz]}** — {_why}")
         else:
             lines.append(f"**{_ok} {_hz_labels[_hz]}**")

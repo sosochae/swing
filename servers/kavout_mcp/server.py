@@ -1,4 +1,4 @@
-"""
+﻿"""
 servers/kavout_mcp/server.py
 ============================
 KavoutMCP — Kavout AI 유니버스 기반 펀더멘털 스크리닝 MCP 서버
@@ -67,7 +67,6 @@ _K_EARNINGS_ANALYSIS    = _EARNINGS_DIR / "K어닝 분석.md"
 _K_EARNINGS_TODAY       = _EARNINGS_DIR / "K어닝 분석_today.md"
 _K_EARNINGS_CALL_OUTPUT = _EARNINGS_DIR / "K어닝콜_output"
 _DATA_DIR = Path(cfg.DATA_DIR)          # Y:\내 드라이브\Data
-_FINVIZ_OUTPUT_DIR = _EARNINGS_DIR / "finviz_output"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -157,7 +156,7 @@ async def list_tools() -> list[types.Tool]:
             name="run_kavout_screen",
             description=(
                 "Kavout AI 유니버스 대상 3단계 펀더멘털 스크리닝 파이프라인 실행. "
-                "Step1: kavout_*.csv(최신) 파싱 + finviz_output/*.txt 상세 데이터 → "
+                "Step1: kavout_*.csv(최신) 파싱 → "
                 "Step2: K어닝 분석.md LLM 분석 → "
                 "Step3: 점수화+랭킹(k_score 표시) → Top10 Obsidian 노트 + Slack 요약 전송."
             ),
@@ -211,7 +210,7 @@ async def _run_kavout_screen(args: dict[str, Any]) -> list[types.TextContent]:
     start = time.monotonic()
     log.info("kavout_screener_start", execution_id=execution_id, force_refresh=force_refresh)
 
-    # ── Step 1: Kavout CSV 파싱 + finviz_output 필터링 ─────
+    # ── Step 1: Kavout CSV 파싱 ──────────────────────────────
     kavout_rows = parse_kavout_universe(_DATA_DIR)
     if not kavout_rows:
         return [types.TextContent(type="text", text="Step1 실패: kavout_*.csv 파일을 찾을 수 없습니다.")]
@@ -220,12 +219,11 @@ async def _run_kavout_screen(args: dict[str, Any]) -> list[types.TextContent]:
     kavout_map: dict[str, KavoutRow] = {r.ticker: r for r in kavout_rows}
     log.info("kavout_universe_loaded", count=len(kavout_tickers))
 
-    # finviz_output 제거 → yfinance로 실시간 FinvizDetail 수집
-    from core.api_fetcher import fetch_finviz_details_bulk
+    from core.api_fetcher import fetch_stock_data_bulk
     from shared.schemas import FinvizDetail
     ticker_list = sorted(kavout_tickers)[:60]  # API 과부하 방지 상위 60개
     try:
-        finviz_details = await fetch_finviz_details_bulk(
+        finviz_details = await fetch_stock_data_bulk(
             ticker_list, sleep_sec=0.3, max_concurrency=5
         )
         log.info("step1_yfinance_done", fetched=len(finviz_details))
@@ -363,10 +361,6 @@ async def _kavout_health_check() -> list[types.TextContent]:
         rows = parse_kavout_universe(_DATA_DIR)
         _check("Kavout 유니버스", len(rows) > 0, f"{len(rows)}개 종목")
 
-    # finviz_output 폴더
-    txt_files = list(_FINVIZ_OUTPUT_DIR.glob("*.txt")) if _FINVIZ_OUTPUT_DIR.exists() else []
-    _check("finviz_output 폴더", _FINVIZ_OUTPUT_DIR.exists(),
-           f"{len(txt_files)}개 파일" if _FINVIZ_OUTPUT_DIR.exists() else "없음")
 
     # K어닝 파일
     _check("K어닝 분석.md", _K_EARNINGS_ANALYSIS.exists(),

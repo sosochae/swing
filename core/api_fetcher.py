@@ -451,7 +451,7 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
 
 # ─── 벌크 fetch (비동기) ──────────────────────────────────────────────────
 
-async def fetch_finviz_details_bulk(
+async def fetch_stock_data_bulk(
     tickers: list[str],
     sleep_sec: float = 0.5,
     max_concurrency: int = 5,

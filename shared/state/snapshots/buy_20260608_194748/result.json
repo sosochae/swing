@@ -1,0 +1,37 @@
+{
+  "execution_id": "buy_20260608_194748",
+  "pipeline_type": "buy",
+  "status": "partial",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {
+    "10": "'KavoutRow' object has no attribute 'get'"
+  },
+  "final_rankings": [],
+  "sell_decisions": [],
+  "market_regime": "unfavorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 80.8,
+  "summary": {
+    "filtered_tickers": [
+      "MU"
+    ],
+    "regime": "unfavorable"
+  }
+}

@@ -1,4 +1,4 @@
-"""
+﻿"""
 scripts/run_sell_pipeline.py
 ============================
 Sell Pipeline 실행 스크립트
@@ -33,7 +33,7 @@ def _print_step_result(ctx: Any, step_num: int) -> None:
         print(f"  summary  : {len(ctx.summary_data.tickers) if ctx.summary_data else 0}종목")
         print(f"  finviz   : {len(ctx.finviz_rows)}행")
         print(f"  earnings : {len(ctx.earnings_list)}건")
-        print(f"  detail   : {len(ctx.finviz_detail)}종목")
+        print(f"  detail   : {len(ctx.stock_data)}종목")
         print(f"  kavout   : {len(ctx.kavout_data)}종목")
         print(f"  positions: {len(ctx.positions)}개 → {[p.ticker for p in ctx.positions]}")
 
@@ -130,10 +130,6 @@ async def run(real: bool = False, use_cache: bool = False) -> None:
         summary_dir=Path(cfg.SUMMARY_DIR),
         finviz_file=Path(cfg.FINVIZ_FILE),
         earnings_dir=Path(cfg.EARNINGS_DIR),
-        earnings_analysis=Path(cfg.EARNINGS_DIR) / "어닝 분석.md",
-        earnings_analysis_today=Path(cfg.EARNINGS_DIR) / "어닝 분석_today.md",
-        finviz_output_dir=Path(cfg.EARNINGS_DIR) / "finviz_output",
-        earnings_call_dir=Path(cfg.EARNINGS_DIR) / "어닝콜_output",
         positions_file=Path(cfg.POSITIONS_FILE),
         watchlist_file=Path(cfg.WATCHLIST_FILE),
         data_dir=Path(cfg.DATA_DIR),

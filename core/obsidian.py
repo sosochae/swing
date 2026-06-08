@@ -1,4 +1,4 @@
-"""
+﻿"""
 core/obsidian.py
 ================
 Obsidian Local REST API 클라이언트 (포트 27123)
@@ -26,7 +26,7 @@ from shared.config import get_config
 from shared.logger import get_logger
 from shared import strategy as st
 from shared.schemas import (
-    FinalRanking, FinvizDetail, MarketRegime, OptionValidity, Position,
+    FinalRanking, FinvizDetail, KavoutRow, MarketRegime, OptionValidity, Position,
     PortfolioExposure, Scenario, SellDecision, TechnicalScore,
 )
 
@@ -319,7 +319,12 @@ class ObsidianClient:
                 sc = (scenarios or {}).get(r.ticker) or r.scenario
                 sent = (sentiment_results or {}).get(r.ticker)
                 fv = (finviz_details or {}).get(r.ticker)
-                k_score = float((kavout_data or {}).get(r.ticker, {}).get("k_score", 5.0))
+                _kd = kavout_data or {}
+                _krow = _kd.get(r.ticker)
+                if hasattr(_krow, "k_score"):
+                    k_score = float(_krow.k_score or 5.0)
+                else:
+                    k_score = float((_krow or {}).get("k_score", 5.0)) if isinstance(_krow, dict) else 5.0
                 lines += _format_integrated_buy_block(
                     r, ts, ov, sc, macro_score, macro_label, sent, fv=fv,
                     k_score=k_score, regime=regime,
@@ -327,6 +332,7 @@ class ObsidianClient:
                     horizon_recs=(horizon_recommendations or {}).get(r.ticker),
                     ultra_long_criteria=(ultra_long_criteria or {}).get(r.ticker),
                     opt_analytics=(options_analytics or {}).get(r.ticker),
+                    krow=_krow if hasattr(_krow, "k_score") else None,
                 )
 
         # ── 필터 탈락 요약 ──────────────────────────────────────
@@ -389,7 +395,7 @@ class ObsidianClient:
         sell_thesis: dict[str, dict] | None = None,
         sell_devils: dict[str, dict] | None = None,
         sell_regime_flags: dict[str, str] | None = None,
-        finviz_detail: dict[str, FinvizDetail] | None = None,
+        stock_data: dict[str, FinvizDetail] | None = None,
         kavout_data: dict | None = None,
         regime_infer: dict | None = None,
     ) -> str:
@@ -479,8 +485,8 @@ class ObsidianClient:
                     thesis=(sell_thesis       or {}).get(_pk),
                     devils=(sell_devils       or {}).get(_pk),
                     regime_flag=(sell_regime_flags or {}).get(_pk, ""),
-                    fvd=(finviz_detail or {}).get(d.ticker),
-                    k_score_entry=(kavout_data or {}).get(d.ticker, {}).get("k_score") if kavout_data else None,
+                    fvd=(stock_data or {}).get(d.ticker),
+                    k_score_entry=(lambda _kr: float(_kr.k_score or 5.0) if hasattr(_kr, "k_score") else float((_kr or {}).get("k_score", 5.0)))((kavout_data or {}).get(d.ticker)) if kavout_data else None,
                     regime_infer=(regime_infer or {}).get(_pk),
                 )
 
@@ -1358,6 +1364,7 @@ def _format_integrated_buy_block(
     horizon_recs: "dict[str, OptionValidity] | None" = None,
     ultra_long_criteria: "dict | None" = None,
     opt_analytics: "dict | None" = None,
+    krow: "KavoutRow | None" = None,
 ) -> list[str]:
     """종목 1개에 대한 TYPE 1~5 통합 매수 보고서 블록 생성 (환각 방지)"""
 
@@ -1437,10 +1444,32 @@ def _format_integrated_buy_block(
     if len((r.rationale or "").replace("|", "/")) > 80:
         _core_rationale += "…"
 
-    # Kavout K-Score 표현
-    k_emoji = "🟢" if k_score >= 7 else ("🔴" if k_score <= 3 else "🟡")
-    k_label = "강세" if k_score >= 7 else ("약세" if k_score <= 3 else "중립")
-    k_str = f"{k_score:.0f}/9 {k_emoji} ({k_label})" if k_score != 5.0 else f"{k_score:.0f}/9 🟡 (중립)"
+    # Kavout K-Score 표현 — QMP 내 시가총액 순위 점수 (rank 1=9.0 → rank 30=1.0, NTW=0)
+    if k_score == 0.0:
+        k_emoji, k_label = "⚪", "QMP 미포함 (NTW)"
+    elif k_score >= 8.0:
+        k_emoji, k_label = "🟢", "QMP 최상위 (시총 1~4위권)"
+    elif k_score >= 6.0:
+        k_emoji, k_label = "🟢", "QMP 상위 (시총 상위 30%)"
+    elif k_score >= 4.0:
+        k_emoji, k_label = "🟡", "QMP 중위"
+    else:
+        k_emoji, k_label = "🔴", "QMP 하위 (시총 하위권)"
+    k_str = f"{k_score:.1f}/9 {k_emoji} ({k_label})"
+
+    # Kavout 확장 정보 (KavoutRow)
+    def _kv(v, fmt=".0f", suffix=""):
+        return f"{v:{fmt}}{suffix}" if v is not None else "-"
+    sr    = krow.stock_rank_score if krow else None
+    qual  = krow.quality_score    if krow else None
+    roic_ = krow.roic             if krow else None
+    r12m  = krow.return_12m       if krow else None
+    r3m   = krow.return_3m        if krow else None
+    sr_emoji  = "🟢" if (sr or 0) >= 70 else ("🔴" if (sr or 100) <= 30 else "🟡")
+    qual_emoji = "🟢" if (qual or 0) >= 80 else ("🟡" if (qual or 0) >= 60 else "🔴")
+    roic_emoji = "🟢" if (roic_ or 0) >= 15 else ("🟡" if (roic_ or 0) >= 8 else "🔴")
+    r12m_emoji = "🟢" if (r12m or 0) >= 50 else ("🔴" if (r12m or 0) < 0 else "🟡")
+    ntw_tag = " ★ New This Week" if krow and krow.section == "new_this_week" else ""
 
     lines: list[str] = [
         "---",
@@ -1454,7 +1483,9 @@ def _format_integrated_buy_block(
         f"| **최종 행동** | **{r.action}** |",
         f"| **확신도** | {conviction_num}/10 ({r.conviction.level.upper() if r.conviction else 'N/A'}) |",
         f"| **신호 수** | {ts.signal_count if ts else 'N/A'}/8 기반, 복합 신뢰도 {confidence_pct}% |",
-        f"| **Kavout K-Score** | {k_str} |",
+        f"| **Kavout K-Score** | {k_str}{ntw_tag} |",
+        f"| **Stock Rank / Quality** | {_kv(sr)} {sr_emoji} / {_kv(qual)} {qual_emoji} |",
+        f"| **ROIC** | {_kv(roic_,'.1f','%')} {roic_emoji} |",
         f"| **최적 진입 방식** | {_entry_method} |",
         f"| **핵심 근거** | {_core_rationale} |",
         f"| **스윙 무효화 조건** | {_invalidation_price} 일봉 종가 하회 시 판정 무효 |",
@@ -1468,7 +1499,8 @@ def _format_integrated_buy_block(
         f"| **행동** | **{r.action}** |",
         f"| **확신도** | {conviction_num}/10 ({r.conviction.level.upper()}) |",
         f"| **호라이즌 신뢰도** | {confidence_pct}% (신호 {ts.signal_count if ts else 'N/A'}/8 기반) |",
-        f"| **Kavout K-Score** | {k_str} |",
+        f"| **Kavout K-Score** | {k_str}{ntw_tag} |",
+        f"| **Stock Rank** | {_kv(sr)} {sr_emoji} |",
         f"| **투자 방향** | {direction_label} |",
         f"| **목표 보유기간** | {_hold_period} |",
         f"| **리스크 프로필** | 제한적 손실 / 레버리지 수익 (롱옵션) |",
@@ -1492,6 +1524,104 @@ def _format_integrated_buy_block(
             f"> **총 차감: -{_da_total}pt**",
             "",
             *[f"> - {reason}" for reason in r.da_reasons],
+            "",
+        ]
+
+    # ── Kavout 종합 분석 (krow 있을 때만) ────────────────────────────────
+    if krow:
+        def _kpct(v):
+            return f"{v:+.1f}%" if v is not None else "-"
+        def _knum(v, fmt=".0f"):
+            return f"{v:{fmt}}" if v is not None else "-"
+        def _sig_icon(s):
+            if not s: return "-"
+            return {"Bullish": "🟢 Bullish", "Bearish": "🔴 Bearish", "Neutral": "🟡 Neutral"}.get(s, s)
+        def _gauge_emoji(v):
+            if v is None: return ""
+            return "🟢" if v >= 70 else ("🔴" if v <= 30 else "🟡")
+        def _ret_emoji(v):
+            if v is None: return ""
+            return "🟢" if v >= 20 else ("🔴" if v < 0 else "🟡")
+
+        gr   = krow.growth_score
+        mom_ = krow.momentum_score
+        val  = krow.value_score
+        ma_s = krow.ma_score_num
+        os_s = krow.oscillator_score_num
+        tr_s = krow.technical_rating_num
+        r1m  = krow.return_1m
+        r3m  = krow.return_3m
+        r6m  = krow.return_6m
+
+        # SMA % 거리 (yfinance)
+        def _sma_dist(pct):
+            if pct is None: return ""
+            return f" ({pct:+.1f}%)"
+
+        sma20_d  = _sma_dist(fv.sma20_pct  if fv else None)
+        sma50_d  = _sma_dist(fv.sma50_pct  if fv else None)
+        sma200_d = _sma_dist(fv.sma200_pct if fv else None)
+
+        # MA 패턴 자동 해석
+        e10_bull  = krow.ema10  == "Bullish"
+        s20_bull  = krow.sma20  == "Bullish"
+        s50_bull  = krow.sma50  == "Bullish"
+        s200_bull = krow.sma200 == "Bullish"
+
+        if e10_bull and s20_bull and s50_bull and s200_bull:
+            _ma_interp = "✅ 전체 MA 정배열 — 강한 상승추세, 즉시 진입 가능"
+        elif not s200_bull:
+            _ma_interp = "⚠️ SMA200 하회 — 장기 하락추세, 롱콜 진입 신중"
+        elif not s50_bull:
+            _ma_interp = "⚠️ SMA50 하회 — 중기 추세 미회복, 추세 전환 확인 필요"
+        elif not e10_bull and s50_bull and s200_bull:
+            _ma_interp = "⏳ 단기 조정 중 (EMA10 하락), 중장기 추세 유효 — 눌림목 진입 또는 EMA10 회복 후 진입"
+        elif e10_bull and not s20_bull:
+            _ma_interp = "⚠️ SMA20 하회 — 단기 추세 약세, 반등 확인 필요"
+        else:
+            _ma_interp = "🟡 혼재된 MA 신호 — 추가 확인 필요"
+
+        lines += [
+            "## ━━━ Kavout 종합 분석 ━━━",
+            "",
+            "**📊 레이더 점수 (0~100)**",
+            "",
+            "| Stock Rank | Quality | Growth | Momentum | Value |",
+            "|-----------|---------|--------|----------|-------|",
+            f"| {_knum(sr)} {sr_emoji} | {_knum(qual)} {qual_emoji} | {_knum(gr)} {_gauge_emoji(gr)} "
+            f"| {_knum(mom_)} {_gauge_emoji(mom_)} | {_knum(val)} {_gauge_emoji(val)} |",
+            "",
+            "**📡 기술 신호**",
+            "",
+            "| MA Score | Oscillator Score | Technical Rating |",
+            "|---------|-----------------|-----------------|",
+            f"| {_knum(ma_s)} {_gauge_emoji(ma_s)} | {_knum(os_s)} {_gauge_emoji(os_s)} | {_knum(tr_s)} {_gauge_emoji(tr_s)} |",
+            "",
+            f"| EMA10 | SMA20{sma20_d} | SMA50{sma50_d} | SMA200{sma200_d} |",
+            "|-------|-------|-------|--------|",
+            f"| {_sig_icon(krow.ema10)} | {_sig_icon(krow.sma20)} | {_sig_icon(krow.sma50)} | {_sig_icon(krow.sma200)} |",
+            "",
+            f"> {_ma_interp}",
+            "",
+            "| RSI | Stochastic | MACD | CCI |",
+            "|-----|-----------|------|-----|",
+            f"| {_sig_icon(krow.rsi)} | {_sig_icon(krow.stochastic)} | {_sig_icon(krow.macd)} | {_sig_icon(krow.cci)} |",
+            "",
+            "**📈 수익률 (모멘텀 추세)**",
+            "",
+            "| 1개월 | 3개월 | 6개월 | 12개월 |",
+            "|------|------|------|-------|",
+            f"| {_kpct(r1m)} {_ret_emoji(r1m)} | {_kpct(r3m)} {_ret_emoji(r3m)} "
+            f"| {_kpct(r6m)} {_ret_emoji(r6m)} | {_kpct(r12m)} {r12m_emoji} |",
+            "",
+            "**💼 핵심 펀더멘털**",
+            "",
+            "| ROA | EV/EBITDA | Op Margin | Rev Growth 1Y | EPS Growth 1Y |",
+            "|-----|-----------|-----------|--------------|--------------|",
+            f"| {_kpct(krow.roa)} | {_knum(krow.ev_ebitda, '.1f')}x | {_kpct(krow.op_margin)} "
+            f"| {_kpct(krow.rev_growth_1y)} | {_kpct(krow.eps_growth_1y)} |",
+            "",
+            "---",
             "",
         ]
 
@@ -1673,30 +1803,34 @@ def _format_integrated_buy_block(
         t2_val = sc.target_premium_2nd if sc.target_premium_2nd > 0 else round(t1_val * 1.5, 2)
         t3_val = sc.target_premium_3rd if sc.target_premium_3rd > 0 else round(t1_val * 2.0, 2)
 
-        # Near-Term: tighter stop (80% of standard), T1 only
-        nt_stop = round(stop_prem * 0.80, 2) if stop_prem > 0 else None
-        nt_t1 = t1_val if t1_val > 0 else None
-        if nt_stop and nt_t1 and stop_prem > 0:
-            # 진입 프리미엄 역산: stop = entry × STOP_RATIO(0.5) → entry = stop / 0.5
-            _entry_prem_nt = round(stop_prem / 0.5, 2)
-            _nt_risk = _entry_prem_nt - nt_stop          # 리스크 = 진입 - 손절
-            _nt_reward = nt_t1 - _entry_prem_nt          # 보상 = T1 - 진입
-            nt_rr = round(_nt_reward / _nt_risk, 1) if _nt_risk > 0 else "N/A"
-        else:
-            nt_rr = "N/A"
+        # 현재 주가 역산: base 시나리오 목표가 ÷ (1 + move%)
+        _cur_stk: float | None = None
+        if sc.base and sc.base.target_stock_price and sc.base.stock_move_pct is not None:
+            _mv = sc.base.stock_move_pct / 100
+            if _mv != -1:
+                _cur_stk = sc.base.target_stock_price / (1 + _mv)
+        _cur_stk = _cur_stk or (fv.price if fv and fv.price else None)
 
-        # Swing: standard stop, T1+T2+T3 targets
-        sw_stop = stop_prem if stop_prem > 0 else None
-        sw_t1 = t1_val if t1_val > 0 else None
-        sw_t3 = t3_val if t3_val > 0 else None
-        if sw_t3 and stop_prem and stop_prem > 0:
-            # 진입 프리미엄 역산: stop = entry × STOP_RATIO(0.5) → entry = stop / 0.5
-            _entry_prem_rr = round(stop_prem / 0.5, 2)
-            _risk = _entry_prem_rr - stop_prem          # 리스크 = 진입 - 손절
-            _reward = sw_t3 - _entry_prem_rr            # 보상 = T3 - 진입
-            sw_rr = round(_reward / _risk, 1) if _risk > 0 else "N/A"
+        # 주가 기준 손절/목표 (4-1 표용) ─────────────────────────
+        # 손절: bear case 목표주가 (이 아래면 논리 무효)
+        # T1  : base case 목표주가 (1차 익절)
+        # T2  : base↔bull 중간 (2차 익절)
+        # T3  : bull case 목표주가 (최종 목표)
+        _stk_stop = sc.bearish.target_stock_price if sc.bearish and sc.bearish.target_stock_price else None
+        _stk_t1   = sc.base.target_stock_price    if sc.base    and sc.base.target_stock_price    else None
+        _stk_t3   = sc.bullish.target_stock_price if sc.bullish and sc.bullish.target_stock_price else None
+        _stk_t2   = round((_stk_t1 + _stk_t3) / 2, 2) if _stk_t1 and _stk_t3 else None
+
+        def _sfmt(v: float | None) -> str:
+            return f"${v:.2f}" if v else "N/A"
+
+        # 주가 기준 R/R
+        if _cur_stk and _stk_stop and _stk_t1 and _cur_stk > _stk_stop:
+            _stk_risk   = _cur_stk - _stk_stop
+            nt_rr = round((_stk_t1 - _cur_stk) / _stk_risk, 1) if _stk_t1 > _cur_stk else "N/A"
+            sw_rr = round((_stk_t3 - _cur_stk) / _stk_risk, 1) if _stk_t3 and _stk_t3 > _cur_stk else "N/A"
         else:
-            sw_rr = "N/A"
+            nt_rr = sw_rr = "N/A"
 
         # DTE-based time stops
         dte_val = max(7, min(45, signal_count * 5))
@@ -1708,20 +1842,29 @@ def _format_integrated_buy_block(
         def _fmt(v: float | None) -> str:
             return f"${v:.2f}" if v else "N/A"
 
-        nt_t2_str = "N/A"
-        nt_t3_str = "N/A"
-        # 진입 프리미엄: stop = entry × 0.5 → entry = stop / 0.5
-        _entry_prem_nt_disp = _fmt(round(stop_prem / 0.5, 2)) if stop_prem > 0 else "N/A"
-        _entry_prem_sw_disp = _fmt(round(stop_prem / 0.5, 2)) if stop_prem > 0 else "N/A"
+        # 프리미엄 값 (4-3·4-4·4-5용) ─────────────────────────
+        nt_stop = round(stop_prem * 0.80, 2) if stop_prem > 0 else None   # NT 손절 프리미엄 (타이트)
+        nt_t1_p = t1_val if t1_val > 0 else None
+        sw_stop = stop_prem if stop_prem > 0 else None                     # Swing 손절 프리미엄
+        sw_t3_p = t3_val if t3_val > 0 else None
 
-        nt_row = f"| Near-Term (1-5일) | 프리미엄 {_entry_prem_nt_disp} | {_fmt(nt_stop)} | {_fmt(nt_t1)} / {nt_t2_str} / {nt_t3_str} | {nt_rr} | {nt_time_stop}일 |"
-        sw_row = f"| Swing (5-15일) | 프리미엄 {_entry_prem_sw_disp} | {_fmt(sw_stop)} | {_fmt(sw_t1)} / {_fmt(t2_val)} / {_fmt(sw_t3)} | {sw_rr} | {sw_time_stop}일 |"
+        nt_row = f"| Near-Term (1-5일) | Current market | {_sfmt(_stk_stop)} | {_sfmt(_stk_t1)} / N/A / N/A | {nt_rr} | {nt_time_stop}일 |"
+        sw_row = f"| Swing (5-15일) | Current market | {_sfmt(_stk_stop)} | {_sfmt(_stk_t1)} / {_sfmt(_stk_t2)} / {_sfmt(_stk_t3)} | {sw_rr} | {sw_time_stop}일 |"
     else:
+        _cur_stk = fv.price if fv and fv.price else None
+        _stk_stop = _stk_t1 = _stk_t2 = _stk_t3 = None
+        nt_stop = sw_stop = nt_t1_p = sw_t3_p = None
+        t1_val = t2_val = t3_val = 0.0
         dte_val = max(7, signal_count * 5)
         nt_time_stop = min(dte_val // 3, 5)
         sw_time_stop = min(dte_val // 2, 15)
-        nt_row = f"| Near-Term (1-5일) | 프리미엄 N/A | N/A | N/A / N/A / N/A | N/A | {nt_time_stop}일 |"
-        sw_row = f"| Swing (5-15일) | 프리미엄 N/A | N/A | N/A / N/A / N/A | N/A | {sw_time_stop}일 |"
+        nt_rr = sw_rr = "N/A"
+        def _fmt(v: float | None) -> str:
+            return f"${v:.2f}" if v else "N/A"
+        def _sfmt(v: float | None) -> str:
+            return f"${v:.2f}" if v else "N/A"
+        nt_row = f"| Near-Term (1-5일) | Current market | N/A | N/A / N/A / N/A | N/A | {nt_time_stop}일 |"
+        sw_row = f"| Swing (5-15일) | Current market | N/A | N/A / N/A / N/A | N/A | {sw_time_stop}일 |"
 
     # DI 변수를 preferred 계산 전에 선언 (Timeframe Alignment 섹션보다 앞에 필요)
     _t4_di_p = (fv.di_plus  if fv and fv.di_plus  and fv.di_plus  > 0 else None)
@@ -1780,10 +1923,10 @@ def _format_integrated_buy_block(
         "",
         "#### 듀얼 호라이즌 (Near-Term / Swing)",
         "",
-        "> ⚠️ **아래 수치는 옵션 프리미엄 기준입니다.** 주가(Stock Price)가 아닙니다.",
+        "> 손절·목표는 **주가(Stock Price)** 기준. 옵션 프리미엄 기준은 4-3·4-5 참조.",
         "",
-        "| 항목 | 진입(프리미엄) | 손절(프리미엄) | T1/T2/T3 목표(프리미엄) | R/R | Time Stop |",
-        "|------|--------------|--------------|------------------------|-----|-----------|",
+        "| 항목 | 진입 | 손절 | T1 / T2 / T3 목표 | R/R | Time Stop |",
+        "|------|------|------|-------------------|-----|-----------|",
         nt_row,
         sw_row,
         "",
@@ -1892,11 +2035,12 @@ def _format_integrated_buy_block(
     nt_dec = r.action if preferred in ("NEAR-TERM", "BOTH") else "보류"
     sw_dec = r.action if preferred in ("SWING", "BOTH") else "보류"
 
-    # 주가 레벨 (LLM → fv pivot 폴백)
-    _sk_entry = _sp(kl_entry)  if kl_entry else (_sp(fv.pivot)    if fv and fv.pivot    else "N/A")
-    _sk_stop  = _sp(kl_stop)   if kl_stop  else (_sp(fv.pivot_s1) if fv and fv.pivot_s1 else "N/A")
-    _sk_t1    = _sp(kl_t1)     if kl_t1    else (_sp(fv.pivot_r1) if fv and fv.pivot_r1 else "N/A")
-    _sk_t2    = _sp(kl_t2)     if kl_t2    else "N/A"
+    # 주가 레벨 — 시나리오 계산값 우선 (LLM key_level은 참고용으로만 사용)
+    # _cur_stk / _stk_stop / _stk_t1 / _stk_t2 / _stk_t3 은 위 if sc: 블록에서 계산됨
+    _sk_entry = _sfmt(_cur_stk)    # 현재 주가 (Entry 레벨)
+    _sk_stop  = _sfmt(_stk_stop)   # Bear case 목표가 = 손절 기준
+    _sk_t1    = _sfmt(_stk_t1)     # Base case 목표가 = 1차 목표
+    _sk_t2    = _sfmt(_stk_t2)     # (Base+Bull)/2 = 2차 목표
 
     lines += ["", "---", ""]
 
@@ -2949,7 +3093,7 @@ def _format_sell_position_block(
     else:
         lines += ["> 기술 점수 데이터 없음", ""]
 
-    # 지지/저항 레벨 (from finviz_detail)
+    # 지지/저항 레벨
     if fvd:
         s1  = getattr(fvd, "pivot_s1",   None)
         s2  = getattr(fvd, "pivot_s2",   None)

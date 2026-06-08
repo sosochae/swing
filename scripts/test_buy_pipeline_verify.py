@@ -1,4 +1,4 @@
-"""
+﻿"""
 test_buy_pipeline_verify.py
 ============================
 수정 사항 검증 스크립트 — LLM 호출 없이 Steps 0-4 + 7 실행 후 핵심 데이터 출력.
@@ -131,7 +131,7 @@ async def main():
     print(f"  {'티커':6s}  {'RSI':>7}  {'ADX':>7}  {'목표주가':>10}  {'FwdPE':>7}  {'PEG':>7}")
     print(f"  {'-'*6}  {'-'*7}  {'-'*7}  {'-'*10}  {'-'*7}  {'-'*7}")
     for tk in ctx.filtered_tickers:
-        fv = ctx.finviz_detail.get(tk)
+        fv = ctx.stock_data.get(tk)
         if not fv:
             print(f"  {tk:6s}  FinvizDetail 없음")
             continue

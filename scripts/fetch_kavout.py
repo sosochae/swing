@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 import time
 from datetime import datetime
@@ -86,6 +87,185 @@ def _calc_k_score(rank_1based: int, total: int) -> float:
     if total <= 1:
         return 9.0
     return round(9.0 - (rank_1based - 1) * 8.0 / (total - 1), 2)
+
+
+# ── 종목 상세 페이지 헬퍼 ─────────────────────────────────────
+
+def _company_to_slug(company: str) -> str:
+    """회사명 → Kavout URL slug 변환. 예) 'Micron Technology, Inc.' → 'micron-technology-inc'"""
+    import re
+    s = company.lower()
+    s = re.sub(r"[',\.]", "", s)          # 따옴표·점 제거
+    s = re.sub(r"[^a-z0-9]+", "-", s)     # 그 외 특수문자 → 하이픈
+    return s.strip("-")
+
+
+# stock-analysis: 펀더멘털 지표(label:value) + SVG 레이더 차트 점수 추출
+_DETAIL_ANALYSIS_JS = """
+() => {
+    const LABEL_MAP = {
+        'ROA': 'roa', 'ROIC': 'roic', 'Debt/Equity': 'debt_equity',
+        'Current Ratio': 'current_ratio', 'Operating Margin': 'op_margin',
+        'Price/Book': 'pb_ratio', 'Earnings Yield': 'earnings_yield',
+        'EV/EBITDA': 'ev_ebitda', 'Price/Sales': 'ps_ratio',
+        'Dividend Yield': 'div_yield',
+        'Asset 1-Year Growth': 'asset_growth_1y',
+        'EPS 1-Year Growth': 'eps_growth_1y',
+        'Revenue Average Growth (3-Year)': 'rev_growth_3y',
+        'Revenue 1-Year Growth': 'rev_growth_1y',
+        'EBITDA Average Growth (3-Year)': 'ebitda_growth_3y',
+        '1-Week Return': 'return_1w', '1-Month Return': 'return_1m',
+        '3-Month Return': 'return_3m', '6-Month Return': 'return_6m',
+        '12-Month Return': 'return_12m',
+    };
+    const result = {};
+
+    // ── label:value 텍스트 기반 추출 ──────────────────────────
+    document.querySelectorAll('*').forEach(el => {
+        if (el.children.length > 0) return;
+        const t = (el.innerText || '').trim();
+        if (!t || t.length > 60) return;
+        if (!/^-?[\\d,.]+%?$/.test(t)) return;
+        const prev = (
+            el.previousElementSibling?.innerText?.trim() ||
+            el.parentElement?.previousElementSibling?.innerText?.trim() || ''
+        ).replace(/:$/, '').trim();
+        const key = LABEL_MAP[prev];
+        if (!key) return;
+        const val = parseFloat(t.replace('%', '').replace(/,/g, ''));
+        if (!isNaN(val)) result[key] = val;
+    });
+
+    // ── SVG 레이더 차트: Quality/Growth/Momentum/Value 점수 + 전체 Stock Rank ──
+    // 레이더 축 라벨 위치 수집
+    const axisLabels = {};
+    document.querySelectorAll('svg text.recharts-text').forEach(el => {
+        const t = (el.textContent || '').trim();
+        if (['Quality','Growth','Momentum','Value'].includes(t)) {
+            axisLabels[t] = {
+                x: parseFloat(el.getAttribute('x') || 0),
+                y: parseFloat(el.getAttribute('y') || 0),
+            };
+        }
+    });
+    // 각 축 근처의 숫자 점수 매핑 (거리 기반)
+    document.querySelectorAll('svg text.text-xs.font-medium').forEach(el => {
+        const v = parseInt((el.textContent || '').trim());
+        if (isNaN(v)) return;
+        const ex = parseFloat(el.getAttribute('x') || 0);
+        const ey = parseFloat(el.getAttribute('y') || 0);
+        let closest = null, minDist = Infinity;
+        for (const [label, pos] of Object.entries(axisLabels)) {
+            const d = Math.hypot(ex - pos.x, ey - pos.y);
+            if (d < minDist) { minDist = d; closest = label; }
+        }
+        if (closest) result[closest.toLowerCase() + '_score'] = v;
+    });
+    // Stock Rank 전체 점수 (레이더 중앙, fill='#fff', class='text-base')
+    document.querySelectorAll('svg text.text-base').forEach(el => {
+        if (el.getAttribute('fill') === '#fff') {
+            const v = parseInt((el.textContent || '').trim());
+            if (!isNaN(v)) result['stock_rank_score'] = v;
+        }
+    });
+
+    return JSON.stringify(result);
+}
+"""
+
+# technical-analysis: MA / 오실레이터 개별 신호 + SVG 게이지 수치 점수 추출
+_DETAIL_TECHNICAL_JS = """
+() => {
+    const maLabels   = ['EMA10', 'SMA20', 'SMA50', 'SMA200'];
+    const oscLabels  = ['RSI', 'Stochastic', 'MACD', 'CCI'];
+    const signalVals = ['Bullish', 'Bearish', 'Neutral'];
+    const result = {};
+
+    // ── 카드별 MA / 오실레이터 신호 추출 ──────────────────────
+    document.querySelectorAll('[class*="rounded-lg"][class*="border"][class*="px-4"]').forEach(card => {
+        const texts = Array.from(card.querySelectorAll('*'))
+            .filter(el => el.children.length === 0)
+            .map(el => (el.innerText || '').trim())
+            .filter(t => t.length > 0);
+        const label  = texts.find(t => [...maLabels, ...oscLabels].includes(t));
+        const signal = texts.find(t => signalVals.includes(t));
+        if (!label || !signal) return;
+        result[label.toLowerCase()] = signal;
+    });
+
+    // ── SVG 게이지 중앙 수치: MA Score / Oscillator Score / Technical Rating ──
+    // 3개 반원 게이지 각각의 중앙값 (fill='#fff', class='text-sm'), DOM 순서 유지
+    const gaugeNames = ['ma_score_num', 'oscillator_score_num', 'technical_rating_num'];
+    const centerVals = [];
+    document.querySelectorAll('svg text.text-sm').forEach(el => {
+        if (el.getAttribute('fill') === '#fff') {
+            const v = parseInt((el.textContent || '').trim());
+            if (!isNaN(v)) centerVals.push(v);
+        }
+    });
+    gaugeNames.forEach((name, i) => {
+        if (i < centerVals.length) result[name] = centerVals[i];
+    });
+
+    return JSON.stringify(result);
+}
+"""
+
+_DETAIL_EXCHANGES = ["nasdaq", "nyse", "nysearca"]
+_KAVOUT_STOCKS_BASE = "https://www.kavout.com/stocks"
+
+
+def _fetch_stock_details(page, rows: list, log_) -> dict:
+    """
+    QMP + NTW 전 종목의 /stock-analysis, /technical-analysis 페이지에서
+    펀더멘털 지표와 MA/오실레이터 신호를 수집.
+
+    Returns:
+        {ticker: {roa: ..., ema10: ..., ...}}  — 수집 실패 종목은 빈 dict
+    """
+    details: dict = {}
+    total = len(rows)
+
+    for idx, row in enumerate(rows, 1):
+        ticker  = row["symbol"].upper()
+        company = row.get("company", "")
+        slug    = _company_to_slug(company) if company else ticker.lower()
+        row_detail: dict = {}
+
+        log_.info("kavout_detail_start", ticker=ticker, n=idx, total=total)
+
+        for page_type, js in [
+            ("stock-analysis",   _DETAIL_ANALYSIS_JS),
+            ("technical-analysis", _DETAIL_TECHNICAL_JS),
+        ]:
+            fetched = False
+            for exchange in _DETAIL_EXCHANGES:
+                url = f"{_KAVOUT_STOCKS_BASE}/{exchange}-{ticker.lower()}/{slug}/{page_type}"
+                try:
+                    page.goto(url, timeout=20_000)
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=10_000)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(2_000)
+                    # URL이 크게 달라졌으면(로그인 리다이렉트 등) skip
+                    if ticker.lower() not in page.url.lower():
+                        continue
+                    data = json.loads(page.evaluate(js))
+                    if data:
+                        row_detail.update(data)
+                        fetched = True
+                        break
+                except Exception as exc:
+                    log_.warning("kavout_detail_error",
+                                 ticker=ticker, url=url, error=str(exc))
+            if not fetched:
+                log_.warning("kavout_detail_skip", ticker=ticker, page=page_type)
+
+        details[ticker] = row_detail
+        log_.info("kavout_detail_done", ticker=ticker, fields=len(row_detail))
+
+    return details
 
 
 # ── DOM 추출 JS ───────────────────────────────────────────────
@@ -477,6 +657,14 @@ def fetch_kavout(universe: str = "all-caps") -> Path:
             ntw_rows = result.get("ntw", [])
             log.info("kavout_rows_raw", qmp=len(qmp_rows), ntw=len(ntw_rows))
 
+            # ── 종목 상세 정보 수집 (QMP + NTW 전체) ──────────────
+            all_rows_for_detail = qmp_rows + ntw_rows
+            if all_rows_for_detail:
+                print(f"\n▶ 종목 상세 정보 수집 중... ({len(all_rows_for_detail)}개)")
+                detail_map = _fetch_stock_details(page, all_rows_for_detail, log)
+            else:
+                detail_map = {}
+
         finally:
             page.close()
             ctx.close()
@@ -505,11 +693,31 @@ def fetch_kavout(universe: str = "all-caps") -> Path:
 
     all_rows = qmp_rows + ntw_rows
 
+    # ── 상세 데이터 병합 ─────────────────────────────────────────
+    for r in all_rows:
+        r.update(detail_map.get(r["symbol"], {}))
+
     # ── CSV 저장 ─────────────────────────────────────────────────
     today    = datetime.now().strftime("%Y%m%d")
     out_file = data_dir / f"kavout_{today}.csv"
-    fields   = ["symbol", "company", "price", "market_cap", "market_cap_raw",
-                "momentum_1m", "roe", "k_score", "universe", "section", "entry_date"]
+    fields   = [
+        # 기존 컬럼
+        "symbol", "company", "price", "market_cap", "market_cap_raw",
+        "momentum_1m", "roe", "k_score", "universe", "section", "entry_date",
+        # stock-analysis 펀더멘털
+        "roa", "roic", "debt_equity", "current_ratio", "op_margin",
+        "pb_ratio", "earnings_yield", "ev_ebitda", "ps_ratio", "div_yield",
+        "asset_growth_1y", "eps_growth_1y", "rev_growth_3y", "rev_growth_1y",
+        "ebitda_growth_3y",
+        "return_1w", "return_1m", "return_3m", "return_6m", "return_12m",
+        # technical-analysis 신호
+        "ema10", "sma20", "sma50", "sma200",
+        "rsi", "stochastic", "macd", "cci",
+        # SVG 게이지 수치 점수
+        "stock_rank_score",
+        "quality_score", "growth_score", "momentum_score", "value_score",
+        "ma_score_num", "oscillator_score_num", "technical_rating_num",
+    ]
 
     with out_file.open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")

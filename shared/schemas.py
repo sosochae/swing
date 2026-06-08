@@ -171,7 +171,7 @@ class SummaryData(BaseModel):
 # ─────────────────────────────────────────────────────────────
 
 class FinvizDetail(BaseModel):
-    """finviz_output/<TICKER>.txt 상세 스냅샷 (종목별 Finviz 파일)"""
+    """yfinance API 실시간 주식 스냅샷 (가격·기술지표·밸류에이션·애널리스트)"""
     ticker: str
     forward_pe: float | None = None
     peg: float | None = None
@@ -607,13 +607,9 @@ class SellResult(BaseModel):
 class PipelinePaths(BaseModel):
     """파이프라인에서 사용하는 파일 경로"""
     summary_dir: Path = Path(r"R:\내 드라이브\마켓 수치")
-    # ── Finviz 파일 (screener_mcp 전용, buy/sell 파이프라인에서 직접 사용 안 함) ──
     finviz_file: Path = Path(r"Y:\내 드라이브\어닝\finviz_all_rows.txt")
     earnings_dir: Path = Path(r"Y:\내 드라이브\어닝")
-    # ── 어닝 분석 (Finviz 기반) — buy/sell 파이프라인에서 삭제됨 ──
-    # earnings_analysis / earnings_analysis_today / finviz_output_dir / earnings_call_dir 제거
-    # ── Kavout 어닝 분석 (K어닝) — buy pipeline Step 5에서 LLM 컨텍스트로 사용 ──
-    k_earnings_analysis: Path = Path(r"Y:\내 드라이브\어닝\K어닝 분석.md")
+    k_earnings_analysis: Path = Path(r"Y:\내 드라이브\어닝\K어닝 분析.md")
     k_earnings_analysis_today: Path = Path(r"Y:\내 드라이브\어닝\K어닝 분석_today.md")
     k_earnings_call_dir: Path = Path(r"Y:\내 드라이브\어닝\K어닝콜_output")
     positions_file: Path = Path(r"C:\lian\watchlist.md")
@@ -642,10 +638,8 @@ class PipelineContext(BaseModel):
     earnings_list: list[EarningsAnalysis] = Field(default_factory=list)
     positions: list[Position] = Field(default_factory=list)
     watchlist: list[str] = Field(default_factory=list)
-    # {ticker: {"k_score": float, "momentum_1m": float, "roe": float}}
-    kavout_data: dict[str, dict[str, float]] = Field(default_factory=dict)
-    # finviz_output/*.txt 상세 파싱 결과
-    finviz_detail: dict[str, "FinvizDetail"] = Field(default_factory=dict)
+    kavout_data: dict[str, "KavoutRow"] = Field(default_factory=dict)
+    stock_data: dict[str, "FinvizDetail"] = Field(default_factory=dict)
     # Step 6 DA 차감 이유 {ticker: ["이유1", "이유2"]}
     da_log: dict[str, list[str]] = Field(default_factory=dict)
     # Step 3 필터 탈락 수치 근거 {ticker: "RVOL 0.8 < 1.5 기준 | 가격 $3.2 < $5.0 기준"}
@@ -800,16 +794,17 @@ class FundamentalScoreResult(BaseModel):
     key_risks: list[str] = Field(default_factory=list)
 
     # Kavout 전용 (kavout_mcp에서만 채움, 나머지는 None)
-    k_score: float | None = None        # Kavout AI 점수 (0~10)
-    momentum_1m: float | None = None    # 1개월 가격 모멘텀 %
-    roe: float | None = None            # Return on Equity %
+    k_score: float | None = None            # Kavout QMP 순위 점수 (0~10, QMP 종목만)
+    kavout_rank_score: float | None = None  # Kavout AI Stock Rank (0~100, 전 종목)
+    momentum_1m: float | None = None        # 1개월 가격 모멘텀 %
+    roe: float | None = None                # Return on Equity %
 
 
 class ScreenerResult(BaseModel):
     """펀더멘털 스크리닝 전체 실행 결과"""
     execution_id: str
     timestamp: datetime = Field(default_factory=datetime.now)
-    total_universe: int = 0       # finviz_output 파싱 종목 수
+    total_universe: int = 0       # 유니버스 종목 수
     with_earnings: int = 0        # 어닝콜 분석 보유 종목 수
     top10: list[FundamentalScoreResult] = Field(default_factory=list)
     all_results: list[FundamentalScoreResult] = Field(default_factory=list)
@@ -852,3 +847,51 @@ class KavoutRow(BaseModel):
     roe: float | None = None            # Return on Equity %
     k_score: float | None = None        # Kavout AI 점수 (0~10)
     section: str = ""                   # "quantitative_momentum_plus" | "new_this_week"
+
+    # ── Kavout AI 종합 점수 (stock-analysis radar) ────────────
+    stock_rank_score:    float | None = None   # 0–100 종합 Stock Rank
+    quality_score:       float | None = None
+    growth_score:        float | None = None
+    momentum_score:      float | None = None   # Kavout radar momentum (0–100)
+    value_score:         float | None = None
+
+    # ── Kavout 기술 분석 게이지 점수 (technical-analysis) ─────
+    ma_score_num:           float | None = None
+    oscillator_score_num:   float | None = None
+    technical_rating_num:   float | None = None
+
+    # ── MA / Oscillator 신호 (Bullish | Bearish | Neutral) ───
+    ema10:      str | None = None
+    sma20:      str | None = None
+    sma50:      str | None = None
+    sma200:     str | None = None
+    rsi:        str | None = None
+    stochastic: str | None = None
+    macd:       str | None = None
+    cci:        str | None = None
+
+    # ── Kavout 펀더멘털 (stock-analysis) ─────────────────────
+    roa:           float | None = None
+    roic:          float | None = None
+    debt_equity:   float | None = None
+    current_ratio: float | None = None
+    op_margin:     float | None = None
+    pb_ratio:      float | None = None
+    earnings_yield:float | None = None
+    ev_ebitda:     float | None = None
+    ps_ratio:      float | None = None
+    div_yield:     float | None = None
+
+    # ── 성장률 ────────────────────────────────────────────────
+    asset_growth_1y:  float | None = None
+    eps_growth_1y:    float | None = None
+    rev_growth_3y:    float | None = None
+    rev_growth_1y:    float | None = None
+    ebitda_growth_3y: float | None = None
+
+    # ── 수익률 ────────────────────────────────────────────────
+    return_1w:  float | None = None
+    return_1m:  float | None = None
+    return_3m:  float | None = None
+    return_6m:  float | None = None
+    return_12m: float | None = None

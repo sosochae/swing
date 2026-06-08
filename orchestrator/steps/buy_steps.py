@@ -1,4 +1,4 @@
-"""
+﻿"""
 orchestrator/steps/buy_steps.py
 ================================
 Buy Pipeline Step 0~13 — 클래스 메서드 방식 (T1 최적화)
@@ -39,7 +39,7 @@ from core.analysis import (
     check_portfolio_exposure,
     validate_option,
 )
-from core.api_fetcher import fetch_finviz_details_bulk
+from core.api_fetcher import fetch_stock_data_bulk
 from core.llm import analyze_with_llm, call_ddg_search, _collect_rss_feeds
 from core.parsers import load_latest_summary
 from core.state import (
@@ -187,24 +187,17 @@ class BuySteps:
                 from shared.schemas import SummaryData
                 ctx.summary_data = SummaryData(snapshot_timestamp=datetime.now())
 
-        # 어닝 분석: Finviz 파일(어닝 분석.md) 제거 → K어닝 분석은 Step 5에서 LLM 컨텍스트로 사용
-        # (ctx.earnings_list는 Step 3 Finnhub 어닝 캘린더 전용으로만 사용)
         ctx.earnings_list = []
 
-        # finviz_output/*.txt 제거 → Step 4 yfinance(fetch_finviz_details_bulk)가 완전 대체
-        ctx.finviz_detail = {}
+        ctx.stock_data = {}
 
-        # Kavout AI 점수 파싱 (DATA_DIR 내 kavout_*.csv)
+        # Kavout 데이터 로드 (KavoutRow 전체 필드)
         try:
-            from core.parsers import parse_kavout
+            from core.parsers import parse_kavout_universe
             from pathlib import Path as _Path
-            data_dir = _Path(cfg.DATA_DIR)
-            kavout_files = sorted(data_dir.glob("kavout_*.csv"), key=lambda f: f.stat().st_mtime, reverse=True)
-            if kavout_files:
-                ctx.kavout_data = parse_kavout(kavout_files[0])
-                log.info("kavout_loaded", file=kavout_files[0].name, tickers=len(ctx.kavout_data))
-            else:
-                ctx.kavout_data = {}
+            _kav_rows = parse_kavout_universe(_Path(cfg.DATA_DIR))
+            ctx.kavout_data = {r.ticker: r for r in _kav_rows}
+            log.info("kavout_loaded", tickers=len(ctx.kavout_data))
         except Exception as exc:
             log.warning("kavout_parse_warn", error=str(exc))
             ctx.kavout_data = {}
@@ -410,22 +403,18 @@ class BuySteps:
             save_snapshot(ctx.execution_id, 4, {}, duration_ms)
             return
 
-        # ── yfinance 신선 데이터 수집 (filtered_tickers 대상) ────────────
-        # finviz_output/*.txt의 오래된 펀더멘털 데이터를 실시간 값으로 교체
-        # 교체 대상: price, target_price, recom, peg, forward_pe, beta,
-        #            eps_surprise_pct, revenue_growth_yoy, op_margin_pct 등
-        # insider_trans_pct: yfinance 미지원 → 기존 파일 값 보존
+        # ── yfinance 실시간 데이터 수집 (filtered_tickers 대상) ─────────
         try:
-            fresh_fv_map = await fetch_finviz_details_bulk(ctx.filtered_tickers)
+            fresh_fv_map = await fetch_stock_data_bulk(ctx.filtered_tickers)
             refreshed, failed = 0, 0
             for ticker, fresh_fv in fresh_fv_map.items():
-                old_fv = ctx.finviz_detail.get(ticker)
+                old_fv = ctx.stock_data.get(ticker)
                 # insider_trans_pct 보존 (yfinance에서 직접 계산 불가)
                 if old_fv and old_fv.insider_trans_pct is not None:
                     fresh_fv = fresh_fv.model_copy(
                         update={"insider_trans_pct": old_fv.insider_trans_pct}
                     )
-                ctx.finviz_detail[ticker] = fresh_fv
+                ctx.stock_data[ticker] = fresh_fv
                 refreshed += 1
             append_audit(ctx.execution_id, 4, "info",
                          data={"yfinance_refresh": "ok", "refreshed": refreshed})
@@ -440,7 +429,7 @@ class BuySteps:
         # summary_data의 [VALUATION] 섹션(Finnhub 기반)으로 우선 교체
         if ctx.summary_data:
             for ticker in ctx.filtered_tickers:
-                fv = ctx.finviz_detail.get(ticker)
+                fv = ctx.stock_data.get(ticker)
                 val = ctx.summary_data.tickers.get(ticker)
                 if not fv or not val:
                     continue
@@ -450,7 +439,7 @@ class BuySteps:
                 if val.valuation.peg is not None:
                     overrides["peg"] = val.valuation.peg
                 if overrides:
-                    ctx.finviz_detail[ticker] = fv.model_copy(update=overrides)
+                    ctx.stock_data[ticker] = fv.model_copy(update=overrides)
 
         # ── Finnhub 목표주가 실시간 오버라이드 ──────────────────────────
         # yfinance targetMeanPrice는 구식 — Finnhub /stock/price-target 으로 교체
@@ -458,9 +447,9 @@ class BuySteps:
             from core.api_fetcher import fetch_finnhub_price_targets_bulk
             pt_map = await fetch_finnhub_price_targets_bulk(ctx.filtered_tickers)
             for ticker, pt in pt_map.items():
-                fv = ctx.finviz_detail.get(ticker)
+                fv = ctx.stock_data.get(ticker)
                 if fv and pt > 0:
-                    ctx.finviz_detail[ticker] = fv.model_copy(update={"target_price": pt})
+                    ctx.stock_data[ticker] = fv.model_copy(update={"target_price": pt})
             if pt_map:
                 append_audit(ctx.execution_id, 4, "info",
                              data={"finnhub_price_target": "ok", "updated": len(pt_map)})
@@ -473,9 +462,9 @@ class BuySteps:
             from core.api_fetcher import fetch_finnhub_insider_bulk
             insider_map = await fetch_finnhub_insider_bulk(ctx.filtered_tickers)
             for ticker, pct in insider_map.items():
-                fv = ctx.finviz_detail.get(ticker)
+                fv = ctx.stock_data.get(ticker)
                 if fv:
-                    ctx.finviz_detail[ticker] = fv.model_copy(
+                    ctx.stock_data[ticker] = fv.model_copy(
                         update={"insider_trans_pct": pct}
                     )
             if insider_map:
@@ -492,7 +481,7 @@ class BuySteps:
         if ctx.summary_data:
             _bridge_count = 0
             for _tk in ctx.filtered_tickers:
-                _fv = ctx.finviz_detail.get(_tk)
+                _fv = ctx.stock_data.get(_tk)
                 if not _fv or _tk not in ctx.summary_data.tickers:
                     continue
                 _td = ctx.summary_data.tickers[_tk]
@@ -562,7 +551,7 @@ class BuySteps:
                 ticker=ticker,
                 direction=direction,
                 summary=ctx.summary_data,
-                kavout_score=ctx.kavout_data.get(ticker, {}).get("k_score", 5.0),
+                kavout_score=(ctx.kavout_data[ticker].k_score or 5.0) if ticker in ctx.kavout_data else 5.0,
             )
             return ticker, score
 
@@ -576,18 +565,21 @@ class BuySteps:
             ticker, score = r
             ctx.technical_scores[ticker] = score
 
-        # ── Kavout AI 시그널 보정 (post-loop) ────────────────────────────
-        # calculate_technical_score()에서 final_score만 ±4pt 반영됨;
-        # 여기서는 signal_count까지 조정하고 momentum_1m 확인까지 수행
+        # ── Kavout 시그널 보정 (post-loop) ───────────────────────────────
         for ticker in list(ctx.technical_scores.keys()):
             score = ctx.technical_scores[ticker]
-            kavout_entry = ctx.kavout_data.get(ticker, {})
-            k_score = float(kavout_entry.get("k_score", 5.0))
-            momentum_1m = float(kavout_entry.get("momentum_1m", 0.0))
+            krow  = ctx.kavout_data.get(ticker)
+            k_score    = float(krow.k_score    or 5.0) if krow else 5.0
+            momentum_1m = float(krow.momentum_1m or 0.0) if krow else 0.0
+            sr_score   = float(krow.stock_rank_score or 0.0) if krow else 0.0
+            quality    = float(krow.quality_score    or 0.0) if krow else 0.0
+            roic       = float(krow.roic             or 0.0) if krow else 0.0
+            ret_12m    = float(krow.return_12m       or 0.0) if krow else 0.0
 
             extra_signals = 0
             extra_score = 0.0
 
+            # K-Score (QMP 모멘텀 포지션 신호) — 중복 편향 방지로 보너스 3점으로 축소
             if k_score >= st.KAVOUT_HIGH_SCORE:
                 extra_signals += st.KAVOUT_HIGH_SIGNAL_BONUS
                 extra_score += st.KAVOUT_HIGH_SCORE_BONUS
@@ -595,39 +587,33 @@ class BuySteps:
                 extra_signals += st.KAVOUT_LOW_SIGNAL_PENALTY
                 extra_score += st.KAVOUT_LOW_SCORE_PENALTY
 
-            # 1개월 모멘텀 강세 + K-Score 지지 = 추가 모멘텀 확인
+            # 1개월 모멘텀 강세 + K-Score 지지
             if momentum_1m >= st.KAVOUT_MOMENTUM_THRESHOLD and k_score >= st.KAVOUT_COMBO_SCORE:
                 extra_signals += st.KAVOUT_COMBO_SIGNAL_BONUS
                 extra_score += st.KAVOUT_COMBO_SCORE_BONUS
 
-            if extra_signals != 0 or extra_score != 0:
-                ctx.technical_scores[ticker] = score.model_copy(update={
-                    "signal_count": max(0, score.signal_count + extra_signals),
-                    "final_score": max(0.0, min(100.0, score.final_score + extra_score)),
-                })
+            # Stock Rank (Kavout AI 종합 — k_score와 다른 차원)
+            if sr_score >= st.KAVOUT_SR_HIGH_SCORE:
+                extra_signals += st.KAVOUT_SR_HIGH_SIGNAL_BONUS
+                extra_score += st.KAVOUT_SR_HIGH_SCORE_BONUS
+            elif sr_score > 0 and sr_score <= st.KAVOUT_SR_LOW_SCORE:
+                extra_signals += st.KAVOUT_SR_LOW_SIGNAL_PENALTY
+                extra_score += st.KAVOUT_SR_LOW_SCORE_PENALTY
 
-        # ── Finviz 애널리스트 추천 시그널 보정 ──────────────────────────
-        for ticker in list(ctx.technical_scores.keys()):
-            fvd = ctx.finviz_detail.get(ticker)
-            if not fvd:
-                continue
-            score = ctx.technical_scores[ticker]
-            extra_signals = 0
-            extra_score = 0.0
+            # Quality Score (파이프라인에 없던 품질 신호)
+            if quality >= st.KAVOUT_QUALITY_THRESHOLD:
+                extra_signals += st.KAVOUT_QUALITY_SIGNAL_BONUS
+                extra_score += st.KAVOUT_QUALITY_SCORE_BONUS
 
-            # 애널리스트 추천 (Recom: 1.0=Strong Buy ~ 5.0=Sell)
-            if fvd.recom is not None:
-                if fvd.recom <= st.ANALYST_BUY_THRESHOLD:     # Strong Buy / Buy
-                    extra_signals += 1
-                elif fvd.recom >= st.ANALYST_SELL_THRESHOLD:   # Underperform / Sell
-                    extra_signals -= 1
-                    extra_score += st.ANALYST_SELL_SCORE_PENALTY
+            # ROIC (자본효율 — 완전 새 신호)
+            if roic >= st.KAVOUT_ROIC_THRESHOLD:
+                extra_signals += st.KAVOUT_ROIC_SIGNAL_BONUS
+                extra_score += st.KAVOUT_ROIC_SCORE_BONUS
 
-            # 숏 스퀴즈 가능성: Short Float ≥ 임계값 + long_call
-            if (direction == "long_call"
-                    and fvd.short_float_pct is not None
-                    and fvd.short_float_pct >= st.SHORT_FLOAT_SQUEEZE_THRESHOLD):
-                extra_signals += 1  # 숏 커버링 상방 압력
+            # 12개월 수익률 (장기 추세 지속성 — 52W 위치와 다른 관점)
+            if ret_12m >= st.KAVOUT_RETURN_12M_THRESHOLD:
+                extra_signals += st.KAVOUT_RETURN_SIGNAL_BONUS
+                extra_score += st.KAVOUT_RETURN_SCORE_BONUS
 
             if extra_signals != 0 or extra_score != 0:
                 ctx.technical_scores[ticker] = score.model_copy(update={
@@ -1045,7 +1031,7 @@ class BuySteps:
 
             # ── Finviz 내부자 거래 / EPS 서프라이즈 차감 (보완 소스) ────
             # summary에서 이미 차감한 경우에는 Finviz 소스로 중복 차감하지 않음
-            fvd = ctx.finviz_detail.get(ticker)
+            fvd = ctx.stock_data.get(ticker)
             if fvd:
                 if (not insider_deducted
                         and fvd.insider_trans_pct is not None
@@ -1378,9 +1364,10 @@ class BuySteps:
             from core.analysis import classify_investment_horizon as _clz_hz
             for _hz_tk in ctx.filtered_tickers:
                 _hz_td = ctx.summary_data.tickers.get(_hz_tk) if ctx.summary_data else None
-                _hz_fv = ctx.finviz_detail.get(_hz_tk) if ctx.finviz_detail else None
+                _hz_fv = ctx.stock_data.get(_hz_tk) if ctx.stock_data else None
                 _hz_ts = ctx.technical_scores.get(_hz_tk)
-                _hz_kscore = float((ctx.kavout_data or {}).get(_hz_tk, {}).get("k_score", 5.0))
+                _hz_krow = ctx.kavout_data.get(_hz_tk) if ctx.kavout_data else None
+                _hz_kscore = float(_hz_krow.k_score or 5.0) if _hz_krow else 5.0
                 _hz_rsi   = (_hz_fv.rsi14 if _hz_fv and _hz_fv.rsi14 else None) or (_hz_td.technical.rsi14 if _hz_td else None)
                 _hz_adx   = (_hz_fv.adx if _hz_fv and _hz_fv.adx else None) or (_hz_td.technical.adx14 if _hz_td else None)
                 _hz_rvol  = (_hz_fv.rel_volume if _hz_fv else None) or (_hz_td.technical.avg_volume_ratio if _hz_td else None)
@@ -1797,7 +1784,7 @@ class BuySteps:
             # 기준 제시 방식: 기술 데이터로 strike 범위 추정
             _ult_td = ctx.summary_data.tickers.get(_ult_tk) if ctx.summary_data else None
             _ult_spot = _ult_td.technical.price if _ult_td else 0.0
-            _ult_fv = ctx.finviz_detail.get(_ult_tk)
+            _ult_fv = ctx.stock_data.get(_ult_tk)
             # IV 추정: Finviz RSI 기반 (없으면 40%)
             _ult_iv = 0.40
             if _ult_fv and _ult_fv.rsi14:
@@ -1863,7 +1850,7 @@ class BuySteps:
                 rp = ctx.summary_data.risk_params if ctx.summary_data else None
 
                 # Finviz 애널리스트 목표주가 (long_call bull case 오버라이드용)
-                fvd = ctx.finviz_detail.get(ticker)
+                fvd = ctx.stock_data.get(ticker)
                 bull_tp = fvd.target_price if fvd and fvd.target_price else None
 
                 # DI 방향 + 레짐 — 시나리오 확률 현실화 (ADX 강도만으로 낙관적 왜곡 방지)
@@ -1995,7 +1982,8 @@ class BuySteps:
                 continue
 
             # Kavout K-Score 조회 (없으면 중립 5.0)
-            kavout_score = float(ctx.kavout_data.get(ticker, {}).get("k_score", 5.0))
+            _krow_rank = ctx.kavout_data.get(ticker)
+            kavout_score = float(_krow_rank.k_score or 5.0) if _krow_rank else 5.0
 
             # MarketRegime 확신도 전달 (Step 10 확신도에 레짐 불확실성 반영)
             regime_confidence = ctx.regime.regime_confidence if ctx.regime else 0.67
@@ -2301,13 +2289,11 @@ class BuySteps:
                     pos.entry_vix = entry_vix
 
         try:
-            # FinvizDetail 맵 구성:
-            # 1) ctx.finviz_detail (finviz_output/*.txt 파싱) 기본값
-            # 2) ctx.summary_data.tickers[].technical (TickerTechnical) 기술지표로 보강
+            # FinvizDetail 맵 구성: ctx.stock_data + TickerTechnical 기술지표 보강
             from shared.schemas import FinvizDetail as _FD
 
             def _merge_finviz(ticker: str) -> "_FD | None":
-                base: "_FD | None" = ctx.finviz_detail.get(ticker)
+                base: "_FD | None" = ctx.stock_data.get(ticker)
                 tt = (ctx.summary_data.tickers.get(ticker).technical
                       if ctx.summary_data and ticker in ctx.summary_data.tickers else None)
                 if base is None and tt is None:

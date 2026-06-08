@@ -1235,91 +1235,14 @@ def _parse_positions_inline(content: str) -> list[Position]:
 # 5. Kavout AI 점수 파서
 # ─────────────────────────────────────────────────────────────
 
-def parse_kavout(file_path: Path) -> dict[str, dict[str, float]]:
+def parse_kavout(file_path: Path) -> "dict[str, KavoutRow]":
     """
-    Kavout AI 스코어 CSV 파싱 → {ticker: {"k_score": float, "momentum_1m": float, "roe": float}} 반환
-
-    지원 컬럼명 (대소문자 무시):
-      - 티커: Symbol, Ticker, sym
-      - K-Score: K-Score, KScore, Score, AI_Score, k_score
-      - 1개월 모멘텀: momentum_1m, momentum, mom_1m
-      - ROE: roe, roe_pct
-
-    K-Score 범위: 1~9 (9가 가장 강한 매수 신호)
-    momentum_1m: 1개월 상대 모멘텀 (단위는 데이터소스 의존, 비교에만 사용)
-    roe: Return on Equity (%)
-
-    Args:
-        file_path: kavout_*.csv 파일 경로
-
-    Returns:
-        {티커: {"k_score": float, "momentum_1m": float, "roe": float}} 딕셔너리
+    kavout_*.csv → {ticker: KavoutRow} 반환.
+    parse_kavout_universe() 기반으로 전체 필드를 로드한다.
     """
-    import csv
-
-    if not file_path.exists():
-        log.warning("kavout_file_not_found", path=str(file_path))
-        return {}
-
-    result: dict[str, dict[str, float]] = {}
-    ticker_cols   = {"symbol", "ticker", "sym"}
-    score_cols    = {"k-score", "kscore", "score", "ai_score", "k_score", "kavout_score"}
-    momentum_cols = {"momentum_1m", "momentum", "mom_1m", "momentum_1month"}
-    roe_cols      = {"roe", "roe_pct", "return_on_equity"}
-
-    try:
-        with file_path.open(encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            if not reader.fieldnames:
-                return {}
-
-            # 컬럼명 매핑 (소문자 변환)
-            col_map = {c.lower().strip(): c for c in reader.fieldnames}
-            ticker_col   = next((col_map[k] for k in col_map if k in ticker_cols),   None)
-            score_col    = next((col_map[k] for k in col_map if k in score_cols),    None)
-            momentum_col = next((col_map[k] for k in col_map if k in momentum_cols), None)
-            roe_col      = next((col_map[k] for k in col_map if k in roe_cols),      None)
-
-            if not ticker_col or not score_col:
-                log.warning("kavout_columns_not_found",
-                            available=list(reader.fieldnames),
-                            expected_ticker=list(ticker_cols),
-                            expected_score=list(score_cols))
-                return {}
-
-            for row in reader:
-                ticker = row.get(ticker_col, "").strip().upper()
-                raw_score = row.get(score_col, "").strip()
-                if not ticker or not raw_score:
-                    continue
-                try:
-                    k_score = float(raw_score)
-                except ValueError:
-                    continue
-
-                entry: dict[str, float] = {"k_score": k_score}
-
-                if momentum_col:
-                    try:
-                        entry["momentum_1m"] = float(row.get(momentum_col, "").strip() or "0")
-                    except ValueError:
-                        entry["momentum_1m"] = 0.0
-
-                if roe_col:
-                    try:
-                        entry["roe"] = float(row.get(roe_col, "").strip() or "0")
-                    except ValueError:
-                        entry["roe"] = 0.0
-
-                result[ticker] = entry
-
-    except Exception as exc:
-        log.warning("kavout_parse_error", path=str(file_path), error=str(exc))
-        return {}
-
-    log.info("kavout_parsed", count=len(result), file=file_path.name,
-             has_momentum=momentum_col is not None, has_roe=roe_col is not None)
-    return result
+    from pathlib import Path as _Path
+    rows = parse_kavout_universe(_Path(file_path).parent)
+    return {r.ticker: r for r in rows}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1432,8 +1355,8 @@ def parse_finviz_detail(ticker_dir: Path) -> dict[str, FinvizDetail]:
     """
     [DEPRECATED] finviz_output/ 디렉토리 내 모든 <TICKER>.txt 파싱
 
-    ⚠️ buy/sell 파이프라인에서 제거됨 — yfinance fetch_finviz_details_bulk() 사용.
-    screener_mcp (Finviz 기반) 전용으로만 남겨둠.
+    ⚠️ buy/sell 파이프라인에서 제거됨 — yfinance fetch_stock_data_bulk() 사용.
+    screener_mcp 전용으로만 남겨둠.
 
     Args:
         ticker_dir: finviz_output 디렉토리 경로
@@ -1528,6 +1451,16 @@ def parse_kavout_universe(data_dir: Path) -> list[KavoutRow]:
                     except ValueError:
                         return None
 
+                def _s(key: str) -> str | None:
+                    v = raw.get(key, "").strip()
+                    return v if v else None
+
+                section = raw.get("section", "").strip()
+                k_score_raw = _f("k_score")
+                # NTW 전용 종목은 k_score=0.0이 의미없음 (QMP 미진입) → None
+                if section == "new_this_week" and (k_score_raw is None or k_score_raw == 0.0):
+                    k_score_raw = None
+
                 row = KavoutRow(
                     ticker=ticker,
                     company=raw.get("company", "").strip(),
@@ -1535,8 +1468,50 @@ def parse_kavout_universe(data_dir: Path) -> list[KavoutRow]:
                     market_cap_raw=_f("market_cap_raw"),
                     momentum_1m=_f("momentum_1m"),
                     roe=_f("roe"),
-                    k_score=_f("k_score"),
-                    section=raw.get("section", "").strip(),
+                    k_score=k_score_raw,
+                    section=section,
+                    # Kavout AI 종합 점수
+                    stock_rank_score=_f("stock_rank_score"),
+                    quality_score=_f("quality_score"),
+                    growth_score=_f("growth_score"),
+                    momentum_score=_f("momentum_score"),
+                    value_score=_f("value_score"),
+                    # 기술 분석 게이지
+                    ma_score_num=_f("ma_score_num"),
+                    oscillator_score_num=_f("oscillator_score_num"),
+                    technical_rating_num=_f("technical_rating_num"),
+                    # MA / Oscillator 신호
+                    ema10=_s("ema10"),
+                    sma20=_s("sma20"),
+                    sma50=_s("sma50"),
+                    sma200=_s("sma200"),
+                    rsi=_s("rsi"),
+                    stochastic=_s("stochastic"),
+                    macd=_s("macd"),
+                    cci=_s("cci"),
+                    # 펀더멘털
+                    roa=_f("roa"),
+                    roic=_f("roic"),
+                    debt_equity=_f("debt_equity"),
+                    current_ratio=_f("current_ratio"),
+                    op_margin=_f("op_margin"),
+                    pb_ratio=_f("pb_ratio"),
+                    earnings_yield=_f("earnings_yield"),
+                    ev_ebitda=_f("ev_ebitda"),
+                    ps_ratio=_f("ps_ratio"),
+                    div_yield=_f("div_yield"),
+                    # 성장률
+                    asset_growth_1y=_f("asset_growth_1y"),
+                    eps_growth_1y=_f("eps_growth_1y"),
+                    rev_growth_3y=_f("rev_growth_3y"),
+                    rev_growth_1y=_f("rev_growth_1y"),
+                    ebitda_growth_3y=_f("ebitda_growth_3y"),
+                    # 수익률
+                    return_1w=_f("return_1w"),
+                    return_1m=_f("return_1m"),
+                    return_3m=_f("return_3m"),
+                    return_6m=_f("return_6m"),
+                    return_12m=_f("return_12m"),
                 )
 
                 if ticker in seen:

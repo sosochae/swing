@@ -1,4 +1,4 @@
-"""특정 종목 매수 파이프라인 실행
+﻿"""특정 종목 매수 파이프라인 실행
 
 사용법:
     python scripts/run_ticker.py TSLA
@@ -82,7 +82,7 @@ async def run(tickers: list[str], use_cache: bool = False) -> None:
         print(f"실패 단계: {result.failed_steps}")
 
     for ticker in tickers:
-        fv = ctx.finviz_detail.get(ticker) if ctx.finviz_detail else None
+        fv = ctx.stock_data.get(ticker) if ctx.stock_data else None
         tt = (ctx.summary_data.tickers[ticker].technical
               if ctx.summary_data and ticker in ctx.summary_data.tickers else None)
         if fv or tt:

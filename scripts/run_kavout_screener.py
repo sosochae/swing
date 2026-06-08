@@ -1,4 +1,4 @@
-"""
+﻿"""
 scripts/run_kavout_screener.py
 ==============================
 Kavout AI 유니버스 기반 펀더멘털 스크리닝 + K어닝콜 LLM 분석 독립 실행 스크립트
@@ -7,7 +7,6 @@ screener_mcp/run_screener.py와 동일한 3단계 파이프라인이지만
 유니버스 소스와 어닝 데이터 경로가 다릅니다:
 
   Step 1: kavout_*.csv (최신) 파싱 → Kavout 유니버스 구성
-          + finviz_output/*.txt에서 동일 티커 상세 데이터 보강
   Step 2: K어닝 분석.md LLM 분석 (K어닝콜 가이던스 + 경영진 톤)
   Step 3: 모멘텀/펀더멘털/카탈리스트 점수화 + K-Score 표시
 
@@ -55,7 +54,7 @@ sys.path.insert(0, str(_root))
 
 
 async def run(refresh_earnings: bool = False, top_n: int = 10) -> None:
-    from core.api_fetcher import fetch_finviz_details_bulk
+    from core.api_fetcher import fetch_stock_data_bulk
     from core.earnings_analyzer import analyze_earnings
     from core.fundamental_screener import rank_universe
     from core.obsidian import ObsidianClient
@@ -97,7 +96,7 @@ async def run(refresh_earnings: bool = False, top_n: int = 10) -> None:
     print(f"  ✓ Kavout 유니버스: {len(kavout_tickers)}개 종목")
 
     print(f"  ▷ Yahoo Finance API 수집 중... ({len(kavout_tickers)}개 티커)")
-    finviz_details = await fetch_finviz_details_bulk(sorted(kavout_tickers))
+    finviz_details = await fetch_stock_data_bulk(sorted(kavout_tickers))
     fetched_ok = sum(1 for d in finviz_details.values() if d.price is not None)
     print(f"  ✓ API 수집 완료: {fetched_ok}/{len(kavout_tickers)}개 (가격 확인)")
 
@@ -116,7 +115,6 @@ async def run(refresh_earnings: bool = False, top_n: int = 10) -> None:
         for r in kavout_rows
     }
 
-    # kavout_output 펀더멘털 보강 제거 → yfinance API(fetch_finviz_details_bulk)가 완전 대체
     kavout_output_data: dict = {}  # 시가총액 맵에서 참조되는 변수 — 빈 dict로 유지
 
     # ── Step 2: K어닝콜 LLM 분석 ─────────────────────────────
@@ -149,6 +147,7 @@ async def run(refresh_earnings: bool = False, top_n: int = 10) -> None:
             finviz_details=finviz_details,
             earnings_analyses=earnings_analyses,
             finviz_rows_meta=meta,
+            kavout_map=kavout_map,
         )
         print(f"  ✓ {len(ranked)}개 랭킹 완료")
     except Exception as exc:
@@ -157,13 +156,14 @@ async def run(refresh_earnings: bool = False, top_n: int = 10) -> None:
 
     from shared.strategy import MCAP_LARGE_CAP, MCAP_MID_CAP
 
-    # Kavout 고유 필드 채우기 (K-Score, momentum_1m, roe)
+    # Kavout 고유 필드 채우기
     for r in ranked:
         krow = kavout_map.get(r.ticker)
         if krow:
-            r.k_score = krow.k_score
-            r.momentum_1m = getattr(krow, "momentum_1m", None)
-            r.roe = getattr(krow, "roe", None)
+            r.k_score          = krow.k_score          # QMP 점수 (0~10, NTW=None)
+            r.kavout_rank_score = krow.stock_rank_score # AI Stock Rank (0~100)
+            r.momentum_1m      = getattr(krow, "momentum_1m", None)
+            r.roe              = getattr(krow, "roe", None)
 
     # ── 시가총액 맵 구성 ─────────────────────────────────────
     # 우선순위: API(Yahoo Finance) → kavout CSV
@@ -215,7 +215,7 @@ async def run(refresh_earnings: bool = False, top_n: int = 10) -> None:
 
     # ── Obsidian 저장 ────────────────────────────────────────
     print("\n▶ Obsidian 저장...")
-    note_content = _format_obsidian_note(result, tiers, mcap_map, earnings_raw, finviz_details, earnings_analyses)
+    note_content = _format_obsidian_note(result, tiers, mcap_map, earnings_raw, finviz_details, earnings_analyses, kavout_map=kavout_map)
     note_path = f"swing-procedure/screener/kavout/{date.today().isoformat()}.md"
     try:
         await obsidian.write_note(note_path, note_content)
@@ -256,16 +256,17 @@ def _print_report(tiers: dict, mcap_map: dict) -> None:
         if not rows:
             continue
         print(f"\n  ── {tier_name} ({len(rows)}개) ──")
-        print(f"  {'티커':<6} {'점수':>5} {'K':>4} {'시총':>6} {'M':>4} {'F':>4} {'C':>4} {'가격':>8} {'RSI':>5} 가이던스 톤")
-        print(f"  {'-'*75}")
+        print(f"  {'티커':<6} {'점수':>5} {'K':>4} {'SR':>3} {'시총':>6} {'M':>4} {'F':>4} {'C':>4} {'가격':>8} {'RSI':>5} 가이던스 톤")
+        print(f"  {'-'*82}")
         for r in rows:
-            k_str = f"{r.k_score:.1f}" if r.k_score is not None else "  - "
+            k_str  = f"{r.k_score:.1f}" if r.k_score is not None else "  - "
+            sr_str = f"{r.kavout_rank_score:.0f}" if r.kavout_rank_score is not None else " - "
             price_str = f"${r.price:.2f}" if r.price else "  -   "
             rsi_str = f"{r.rsi14:.1f}" if r.rsi14 else "  - "
             guidance = guidance_map.get(r.guidance_direction or "", "-")
             tone = tone_map.get(r.mgmt_tone or "", "-")
             print(
-                f"  {r.rank:>2}. {r.ticker:<5} {r.total_score:>5.1f} {k_str:>4} "
+                f"  {r.rank:>2}. {r.ticker:<5} {r.total_score:>5.1f} {k_str:>4} {sr_str:>3} "
                 f"{_mc_str(r.ticker):>6} "
                 f"{r.momentum_score:>4.0f} {r.fundamental_score:>4.0f} {r.catalyst_score:>4.0f} "
                 f"{price_str:>8} {rsi_str:>5} {guidance:<6} {tone}"
@@ -283,11 +284,13 @@ def _format_obsidian_note(
     earnings_raw: dict | None = None,
     finviz_details: dict | None = None,
     earnings_analyses: dict | None = None,
+    kavout_map: dict | None = None,
 ) -> str:
     today = date.today().isoformat()
     earnings_raw = earnings_raw or {}
     finviz_details = finviz_details or {}
     earnings_analyses = earnings_analyses or {}
+    kavout_map = kavout_map or {}
 
     _guidance_icon = {"up": "↑상향", "flat": "→유지", "down": "↓하향", "unknown": "?", "": "-"}
     _tone_icon     = {"bullish": "🟢 Bullish", "neutral": "🟡 Neutral", "bearish": "🔴 Bearish", "": "-"}
@@ -305,17 +308,25 @@ def _format_obsidian_note(
         if mc >= 1e9:  return f"${mc/1e9:.0f}B"
         return f"${mc/1e6:.0f}M"
 
+    _signal_icon = {"Bullish": "🟢 Bullish", "Bearish": "🔴 Bearish", "Neutral": "🟡 Neutral"}
+
+    def _sig(v: str | None) -> str:
+        if not v: return "-"
+        return _signal_icon.get(v, v)
+
     def _ticker_block(r, tier_rank: int) -> list[str]:
         """종목 한 개 상세 블록 생성"""
         ea = earnings_raw.get(r.ticker)
         fd = finviz_details.get(r.ticker)
-        k_str = f"{r.k_score:.1f}" if r.k_score is not None else "-"
+        krow = kavout_map.get(r.ticker)
+        k_str  = f"{r.k_score:.1f}" if r.k_score is not None else "-"
+        sr_str = f"{r.kavout_rank_score:.0f}" if r.kavout_rank_score is not None else "-"
         guidance_str = _guidance_icon.get(r.guidance_direction or "", "-")
         tone_str     = _tone_icon.get(r.mgmt_tone or "", "-")
 
         blk = [
             f"### {tier_rank}. {r.ticker} — {r.total_score:.1f}점"
-            f"  (K={k_str} | 시총 {_mc(r.ticker)} | {guidance_str} | {tone_str})",
+            f"  (K={k_str} | SR={sr_str} | 시총 {_mc(r.ticker)} | {guidance_str} | {tone_str})",
         ]
         if r.company:
             blk.append(f"*{r.company}*")
@@ -386,6 +397,85 @@ def _format_obsidian_note(
             ]
         else:
             blk += ["*밸류에이션·펀더멘털 데이터 없음*", ""]
+
+        # ── Kavout AI 점수 (radar + stock rank) ──────────────────
+        if krow:
+            sr   = _f(getattr(krow, "stock_rank_score",    None), ".0f")
+            qual = _f(getattr(krow, "quality_score",       None), ".0f")
+            grow = _f(getattr(krow, "growth_score",        None), ".0f")
+            mom  = _f(getattr(krow, "momentum_score",      None), ".0f")
+            val  = _f(getattr(krow, "value_score",         None), ".0f")
+            blk += [
+                "**🤖 Kavout AI 점수**", "",
+                "| Stock Rank | Quality | Growth | Momentum | Value |",
+                "|-----------|---------|--------|----------|-------|",
+                f"| {sr} | {qual} | {grow} | {mom} | {val} |",
+                "",
+            ]
+
+        # ── Kavout 기술 분석 ──────────────────────────────────────
+        if krow:
+            ma_s  = _f(getattr(krow, "ma_score_num",          None), ".0f")
+            osc_s = _f(getattr(krow, "oscillator_score_num",  None), ".0f")
+            tech  = _f(getattr(krow, "technical_rating_num",  None), ".0f")
+            e10   = _sig(getattr(krow, "ema10",       None))
+            s20   = _sig(getattr(krow, "sma20",       None))
+            s50   = _sig(getattr(krow, "sma50",       None))
+            s200  = _sig(getattr(krow, "sma200",      None))
+            rsi_s = _sig(getattr(krow, "rsi",         None))
+            stoch = _sig(getattr(krow, "stochastic",  None))
+            macd  = _sig(getattr(krow, "macd",        None))
+            cci   = _sig(getattr(krow, "cci",         None))
+            blk += [
+                "**📡 Kavout 기술 분석**", "",
+                "| MA Score | Oscillator Score | Technical Rating |",
+                "|---------|-----------------|-----------------|",
+                f"| {ma_s} | {osc_s} | {tech} |",
+                "",
+                "| EMA10 | SMA20 | SMA50 | SMA200 |",
+                "|-------|-------|-------|--------|",
+                f"| {e10} | {s20} | {s50} | {s200} |",
+                "",
+                "| RSI | Stochastic | MACD | CCI |",
+                "|-----|-----------|------|-----|",
+                f"| {rsi_s} | {stoch} | {macd} | {cci} |",
+                "",
+            ]
+
+        # ── Kavout 펀더멘털 상세 ─────────────────────────────────
+        if krow:
+            roa    = _pct(getattr(krow, "roa",           None))
+            roic   = _pct(getattr(krow, "roic",          None))
+            de     = _f(getattr(krow,   "debt_equity",   None), ".2f")
+            cr     = _f(getattr(krow,   "current_ratio", None), ".2f")
+            eveb   = _f(getattr(krow,   "ev_ebitda",     None), ".1f")
+            pb     = _f(getattr(krow,   "pb_ratio",      None), ".2f")
+            ps     = _f(getattr(krow,   "ps_ratio",      None), ".2f")
+            r1y    = _pct(getattr(krow, "rev_growth_1y",     None))
+            r3y    = _pct(getattr(krow, "rev_growth_3y",     None))
+            eps1y  = _pct(getattr(krow, "eps_growth_1y",     None))
+            eb3y   = _pct(getattr(krow, "ebitda_growth_3y",  None))
+            ast1y  = _pct(getattr(krow, "asset_growth_1y",   None))
+            ret1w  = _pct(getattr(krow, "return_1w",   None))
+            ret1m  = _pct(getattr(krow, "return_1m",   None))
+            ret3m  = _pct(getattr(krow, "return_3m",   None))
+            ret6m  = _pct(getattr(krow, "return_6m",   None))
+            ret12m = _pct(getattr(krow, "return_12m",  None))
+            blk += [
+                "**📋 Kavout 펀더멘털 상세**", "",
+                "| ROA | ROIC | D/E | Current Ratio | EV/EBITDA | PB | PS |",
+                "|-----|------|-----|--------------|-----------|----|----|",
+                f"| {roa} | {roic} | {de} | {cr} | {eveb} | {pb} | {ps} |",
+                "",
+                "| Rev 1Y | Rev 3Y평균 | EPS 1Y | EBITDA 3Y평균 | Asset 1Y |",
+                "|--------|-----------|--------|--------------|---------|",
+                f"| {r1y} | {r3y} | {eps1y} | {eb3y} | {ast1y} |",
+                "",
+                "| 1주 | 1개월 | 3개월 | 6개월 | 12개월 |",
+                "|-----|------|------|------|-------|",
+                f"| {ret1w} | {ret1m} | {ret3m} | {ret6m} | {ret12m} |",
+                "",
+            ]
 
         blk += [
             f"**🏆 점수**: 모멘텀 {r.momentum_score:.0f} | "

@@ -1,28 +1,32 @@
 """
 core/fundamental_screener.py
 ============================
-Finviz 상세 데이터 + 어닝콜 분석 → 종목 점수화 + 랭킹
+Finviz 상세 데이터 + 어닝콜 분석 + Kavout KavoutRow → 종목 점수화 + 랭킹
 
 점수 구조 (각 0~100):
-  Momentum Score    = RSI(25%) + Rel Volume(25%) + 52W 위치(25%) + SMA 추세(25%)
+  Momentum Score    = RSI(20%) + Rel Volume(20%) + 52W 위치(20%) + SMA 추세(20%)
+                      + 멀티 기간 수익률(20%)  ← kavout_row 있을 때
   Fundamental Score = 매출성장YoY(40%) + EPS서프라이즈(25%) + 영업이익률(35%)
   Catalyst Score    = 가이던스(60%) + 경영진 톤(40%)
+  Kavout AI Score   = stock_rank_score (0~100) 직접 사용
 
 변경 이력:
   - net_income_growth_yoy 제거: GAAP 기준으로 M&A·스톡옵션 일회성 비용에 왜곡됨
   - eps_surprise_pct 도입: Non-GAAP 컨센서스 대비 서프라이즈 → 실질 이익 품질 반영
   - SMA 추세 추가: SMA20/50/200 위치로 중장기 추세 확인
   - catalyst_strength 제거: 가이던스+톤에서 이미 반영된 내용 중복 집계 방지
+  - 멀티 기간 수익률 추가: Kavout 3M/6M/12M 수익률로 모멘텀 지속성 측정
+  - Kavout AI Score 추가: stock_rank_score를 독립 요소로 반영
 
 최종 점수:
-  - Catalyst 있음: 0.35×M + 0.40×F + 0.25×C
-  - Catalyst 없음: 0.45×M + 0.55×F
+  - Catalyst 있음: 0.50×M + 0.35×C + 0.15×K
+  - Catalyst 없음: 0.85×M + 0.15×K
 """
 
 from __future__ import annotations
 
 from shared.logger import get_logger
-from shared.schemas import EarningsCallAnalysis, FinvizDetail, FundamentalScoreResult
+from shared.schemas import EarningsCallAnalysis, FinvizDetail, FundamentalScoreResult, KavoutRow
 from shared.strategy import (
     FSCORE_CAT_GUIDANCE_WEIGHT,
     FSCORE_CAT_TONE_WEIGHT,
@@ -33,8 +37,10 @@ from shared.strategy import (
     FSCORE_MOM_RSI_WEIGHT,
     FSCORE_MOM_RVOL_WEIGHT,
     FSCORE_MOM_SMA_WEIGHT,
+    FSCORE_MOM_RETURN_WEIGHT,
     FSCORE_NO_CATALYST_FUNDAMENTAL,
     FSCORE_NO_CATALYST_MOMENTUM,
+    FSCORE_NO_CATALYST_KAVOUT,
     FSCORE_RSI_IDEAL_MAX,
     FSCORE_RSI_IDEAL_MIN,
     FSCORE_RSI_OK_MAX,
@@ -45,6 +51,7 @@ from shared.strategy import (
     FSCORE_WEIGHT_CATALYST,
     FSCORE_WEIGHT_FUNDAMENTAL,
     FSCORE_WEIGHT_MOMENTUM,
+    FSCORE_WEIGHT_KAVOUT,
 )
 
 log = get_logger()
@@ -158,21 +165,71 @@ def _sma_score(sma20_pct: float | None, sma50_pct: float | None, sma200_pct: flo
     return round(score, 2)
 
 
-def calc_momentum_score(detail: FinvizDetail) -> float:
+def _multi_return_score(krow: "KavoutRow") -> float:
+    """
+    Kavout 멀티 기간 수익률 → 0~100 점수.
+    12M(40%) + 6M(35%) + 3M(25%) 가중 평균 — 장기 추세에 더 가중.
+    각 기간 수익률은 구간별로 0~100으로 변환.
+    """
+    def _single(ret: float | None) -> float:
+        if ret is None:
+            return 50.0  # 중립
+        if ret >= 50:   return 100.0
+        if ret >= 25:   return 85.0
+        if ret >= 10:   return 70.0
+        if ret >= 0:    return 55.0
+        if ret >= -10:  return 35.0
+        if ret >= -25:  return 20.0
+        return 5.0
+
+    r3m  = _single(krow.return_3m)
+    r6m  = _single(krow.return_6m)
+    r12m = _single(krow.return_12m)
+
+    return round(r12m * 0.40 + r6m * 0.35 + r3m * 0.25, 2)
+
+
+def _kavout_ai_score(krow: "KavoutRow | None") -> float:
+    """
+    Kavout stock_rank_score (0~100) → 그대로 반환.
+    없으면 50 (중립).
+    """
+    if krow is None:
+        return 50.0
+    v = krow.stock_rank_score
+    if v is None:
+        return 50.0
+    return float(v)
+
+
+def calc_momentum_score(detail: FinvizDetail, krow: "KavoutRow | None" = None) -> float:
     """Momentum Score (0~100)
-    RSI(25%) + RVOL(25%) + 52W 위치(25%) + SMA 추세(25%)
+
+    krow 있음: RSI(20%) + RVOL(20%) + 52W(20%) + SMA(20%) + 멀티수익률(20%)
+    krow 없음: RSI(25%) + RVOL(25%) + 52W(25%) + SMA(25%)  ← 기존 동작 유지
     """
     rsi  = _rsi_score(detail.rsi14)
     rvol = _rvol_score(detail.rel_volume)
     w52  = _w52_score(detail.w52_high_pct, detail.w52_low_pct)
     sma  = _sma_score(detail.sma20_pct, detail.sma50_pct, detail.sma200_pct)
 
-    score = (
-        rsi  * FSCORE_MOM_RSI_WEIGHT
-        + rvol * FSCORE_MOM_RVOL_WEIGHT
-        + w52  * FSCORE_MOM_52W_WEIGHT
-        + sma  * FSCORE_MOM_SMA_WEIGHT
-    )
+    if krow is not None:
+        ret = _multi_return_score(krow)
+        score = (
+            rsi  * FSCORE_MOM_RSI_WEIGHT
+            + rvol * FSCORE_MOM_RVOL_WEIGHT
+            + w52  * FSCORE_MOM_52W_WEIGHT
+            + sma  * FSCORE_MOM_SMA_WEIGHT
+            + ret  * FSCORE_MOM_RETURN_WEIGHT
+        )
+    else:
+        # krow 없으면 4요소를 균등 25%씩 (기존 동작)
+        score = (
+            rsi  * 0.25
+            + rvol * 0.25
+            + w52  * 0.25
+            + sma  * 0.25
+        )
     return round(score, 2)
 
 
@@ -283,21 +340,27 @@ def score_ticker(
     analysis: EarningsCallAnalysis | None,
     sector: str = "",
     company: str = "",
+    krow: "KavoutRow | None" = None,
 ) -> FundamentalScoreResult:
     """단일 종목 FundamentalScoreResult 생성"""
-    m_score = calc_momentum_score(detail)
+    m_score = calc_momentum_score(detail, krow)
     f_score = calc_fundamental_score(detail)
 
     has_catalyst = analysis is not None
     c_score = calc_catalyst_score(analysis) if has_catalyst else 0.0
+    k_ai    = _kavout_ai_score(krow)
 
     if has_catalyst:
         total = (
             m_score * FSCORE_WEIGHT_MOMENTUM
             + c_score * FSCORE_WEIGHT_CATALYST
+            + k_ai    * FSCORE_WEIGHT_KAVOUT
         )
     else:
-        total = m_score * FSCORE_NO_CATALYST_MOMENTUM
+        total = (
+            m_score * FSCORE_NO_CATALYST_MOMENTUM
+            + k_ai  * FSCORE_NO_CATALYST_KAVOUT
+        )
 
     return FundamentalScoreResult(
         ticker=detail.ticker,
@@ -329,6 +392,7 @@ def rank_universe(
     finviz_details: dict[str, FinvizDetail],
     earnings_analyses: dict[str, EarningsCallAnalysis],
     finviz_rows_meta: dict[str, dict],  # {ticker: {"sector": ..., "company": ...}}
+    kavout_map: "dict[str, KavoutRow] | None" = None,
 ) -> list[FundamentalScoreResult]:
     """
     전체 종목 점수화 → 내림차순 정렬 → rank 번호 부여
@@ -337,21 +401,25 @@ def rank_universe(
         finviz_details:    parse_finviz_detail() 결과
         earnings_analyses: analyze_earnings() 결과
         finviz_rows_meta:  finviz_all_rows 또는 파일명에서 추출한 섹터/회사 정보
+        kavout_map:        {ticker: KavoutRow} — Kavout AI 점수·멀티수익률 반영용
 
     Returns:
         FundamentalScoreResult 리스트 (rank 1이 최상위)
     """
     results: list[FundamentalScoreResult] = []
+    km = kavout_map or {}
 
     for ticker, detail in finviz_details.items():
         meta = finviz_rows_meta.get(ticker, {})
         analysis = earnings_analyses.get(ticker)
+        krow = km.get(ticker)
 
         result = score_ticker(
             detail=detail,
             analysis=analysis,
             sector=meta.get("sector", ""),
             company=meta.get("company", ""),
+            krow=krow,
         )
         results.append(result)
 

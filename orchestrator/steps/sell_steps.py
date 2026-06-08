@@ -1,4 +1,4 @@
-"""
+﻿"""
 orchestrator/steps/sell_steps.py
 =================================
 Sell Pipeline Step 0~13 — 클래스 메서드 방식
@@ -110,7 +110,7 @@ class SellSteps:
     async def step_0_env(self, ctx: PipelineContext) -> None:
         """
         환경 검증 + positions.md 파싱 + 시장 데이터 5종 로딩
-        (summary, finviz, earnings, finviz_detail, kavout)
+        (summary, finviz, earnings, stock_data, kavout)
 
         스펙: §9.4 Step 0
         """
@@ -168,35 +168,31 @@ class SellSteps:
         # 어닝 분석: Finviz 파일 제거 → sell pipeline은 어닝 이벤트를 summary.events로만 참조
         ctx.earnings_list = []
 
-        # finviz_output/.txt / kavout_output/.txt 제거 → yfinance 실시간 수집이 완전 대체
-        # (아래 yfinance 수집 블록에서 ctx.finviz_detail을 채움)
-        ctx.finviz_detail = {}
+        ctx.stock_data = {}
 
         # ── yfinance 실시간 데이터 수집 (포지션 티커 전체) ─────────────────
-        # fetch_finviz_detail()로 현재 주가·RSI·RVOL·SMA·피벗·애널리스트·EPS 서프라이즈 등
-        # 실시간 수집 → finviz_detail 교체 (insider_trans_pct는 yfinance 미지원이라 보존)
         pos_tickers = list({p.ticker for p in ctx.positions})
         if pos_tickers:
             try:
-                from core.api_fetcher import fetch_finviz_details_bulk as _fetch_bulk
+                from core.api_fetcher import fetch_stock_data_bulk as _fetch_bulk
                 log.info("sell_yfinance_fetch_start", tickers=pos_tickers)
                 _fresh_details = await _fetch_bulk(pos_tickers, sleep_sec=0.3, max_concurrency=3)
                 for _ticker, _fresh_fvd in _fresh_details.items():
                     if _fresh_fvd.price is not None:
                         # ③ insider_trans_pct 보존 (yfinance에서 직접 계산 불가)
-                        _old_fvd = ctx.finviz_detail.get(_ticker)
+                        _old_fvd = ctx.stock_data.get(_ticker)
                         if _old_fvd and _old_fvd.insider_trans_pct is not None:
                             _fresh_fvd = _fresh_fvd.model_copy(
                                 update={"insider_trans_pct": _old_fvd.insider_trans_pct}
                             )
-                        ctx.finviz_detail[_ticker] = _fresh_fvd
+                        ctx.stock_data[_ticker] = _fresh_fvd
                         log.info("sell_yfinance_fresh", ticker=_ticker,
                                  price=_fresh_fvd.price, rsi=_fresh_fvd.rsi14,
                                  target=_fresh_fvd.target_price, recom=_fresh_fvd.recom)
                     else:
                         # yfinance 실패 시 기존 finviz_detail 유지 (fallback)
                         log.warning("sell_yfinance_no_price", ticker=_ticker,
-                                    reason="price=None, 기존 finviz_detail 유지")
+                                    reason="price=None, stock_data 유지")
             except Exception as _yf_exc:
                 log.warning("sell_yfinance_bulk_failed", error=str(_yf_exc))
 
@@ -205,7 +201,7 @@ class SellSteps:
         # summary_data의 [VALUATION] 섹션(Finnhub 기반)으로 우선 교체
         if ctx.summary_data and pos_tickers:
             for _tk in pos_tickers:
-                _fv = ctx.finviz_detail.get(_tk)
+                _fv = ctx.stock_data.get(_tk)
                 _val = ctx.summary_data.tickers.get(_tk)
                 if not _fv or not _val:
                     continue
@@ -215,7 +211,7 @@ class SellSteps:
                 if _val.valuation.peg is not None:
                     _overrides["peg"] = _val.valuation.peg
                 if _overrides:
-                    ctx.finviz_detail[_tk] = _fv.model_copy(update=_overrides)
+                    ctx.stock_data[_tk] = _fv.model_copy(update=_overrides)
 
         # ── ⑤ Finnhub 목표주가 실시간 오버라이드 ──────────────────────────
         # yfinance targetMeanPrice는 구식 — Finnhub /stock/price-target 으로 교체
@@ -224,9 +220,9 @@ class SellSteps:
                 from core.api_fetcher import fetch_finnhub_price_targets_bulk as _fpt_bulk
                 _pt_map = await _fpt_bulk(pos_tickers)
                 for _tk, _pt in _pt_map.items():
-                    _fv = ctx.finviz_detail.get(_tk)
+                    _fv = ctx.stock_data.get(_tk)
                     if _fv and _pt > 0:
-                        ctx.finviz_detail[_tk] = _fv.model_copy(update={"target_price": _pt})
+                        ctx.stock_data[_tk] = _fv.model_copy(update={"target_price": _pt})
                 if _pt_map:
                     append_audit(ctx.execution_id, 0, "info",
                                  data={"finnhub_price_target": "ok", "updated": len(_pt_map)})
@@ -241,9 +237,9 @@ class SellSteps:
                 from core.api_fetcher import fetch_finnhub_insider_bulk as _fi_bulk
                 _insider_map = await _fi_bulk(pos_tickers)
                 for _tk, _pct in _insider_map.items():
-                    _fv = ctx.finviz_detail.get(_tk)
+                    _fv = ctx.stock_data.get(_tk)
                     if _fv:
-                        ctx.finviz_detail[_tk] = _fv.model_copy(
+                        ctx.stock_data[_tk] = _fv.model_copy(
                             update={"insider_trans_pct": _pct}
                         )
                 if _insider_map:
@@ -294,7 +290,7 @@ class SellSteps:
                          "summary_tickers": len(ctx.summary_data.tickers) if ctx.summary_data else 0,
                          "finviz_rows": len(ctx.finviz_rows),
                          "earnings": len(ctx.earnings_list),
-                         "finviz_detail": len(ctx.finviz_detail),
+                         "stock_data": len(ctx.stock_data),
                          "kavout": len(ctx.kavout_data),
                      })
         save_snapshot(ctx.execution_id, 0,
@@ -676,12 +672,12 @@ class SellSteps:
         pos_tickers = list({p.ticker for p in ctx.positions})
 
         # ── ⑦ 기술 데이터 브릿지 (루프 진입 전) ─────────────────────────────
-        # yfinance/Finnhub으로 수집한 finviz_detail → summary_data.technical에 반영.
+        # yfinance/Finnhub 실시간 데이터 → summary_data.technical 반영.
         # calculate_technical_score()가 실시간 기술지표를 사용하게 됨.
         if ctx.summary_data:
             _bridge_count = 0
             for _tk in pos_tickers:
-                _fv = ctx.finviz_detail.get(_tk)
+                _fv = ctx.stock_data.get(_tk)
                 if not _fv or _tk not in ctx.summary_data.tickers:
                     continue
                 _td = ctx.summary_data.tickers[_tk]
@@ -790,7 +786,7 @@ class SellSteps:
                     score = ctx.technical_scores[_pos_key(pos)]
 
                 # ── ⑨ Finviz 애널리스트 추천 시그널 보정 ─────────────────
-                _fvd_s = ctx.finviz_detail.get(pos.ticker)
+                _fvd_s = ctx.stock_data.get(pos.ticker)
                 if _fvd_s:
                     _asig = 0
                     _asc  = 0.0
@@ -1096,7 +1092,7 @@ class SellSteps:
         for pos in ctx.positions:
             # ── ⑭⑮⑯ 결정론적 점수 차감 (LLM 호출 전에 먼저 수행) ─────────────
             _ticker_sd = ctx.summary_data.tickers.get(pos.ticker) if ctx.summary_data else None
-            _fvd_d = ctx.finviz_detail.get(pos.ticker)
+            _fvd_d = ctx.stock_data.get(pos.ticker)
             _da_deduction = 0.0
             _da_reasons: list[str] = []
             _insider_deducted = False
@@ -1606,9 +1602,9 @@ class SellSteps:
                         pnl_pct=round((current_prem / pos.entry_premium - 1) * 100, 1),
                     )
 
-            # ── M1: finviz_detail 플래그 — 애널리스트/EPS/내부자/목표주가 ─────
+            # ── M1: yfinance 데이터 플래그 — 애널리스트/EPS/내부자/목표주가 ─────
             # 매수 DA와 동일 소스를 매도 판단에도 반영
-            fvd = ctx.finviz_detail.get(pos.ticker)
+            fvd = ctx.stock_data.get(pos.ticker)
             if fvd:
                 _stock_price = h.get("current_price", pos.entry_stock_price)
 
@@ -2156,7 +2152,7 @@ class SellSteps:
                 sell_thesis=dict(ctx.sell_thesis) if ctx.sell_thesis else None,
                 sell_devils=dict(ctx.sell_devils) if ctx.sell_devils else None,
                 sell_regime_flags=dict(ctx.sell_regime_flags) if ctx.sell_regime_flags else None,
-                finviz_detail=dict(ctx.finviz_detail) if ctx.finviz_detail else None,
+                stock_data=dict(ctx.stock_data) if ctx.stock_data else None,
                 kavout_data=dict(ctx.kavout_data) if ctx.kavout_data else None,
                 regime_infer=dict(ctx.sell_regime_infer) if getattr(ctx, "sell_regime_infer", None) else None,
             )

@@ -27,7 +27,7 @@ from shared.logger import get_logger
 from shared import strategy as st
 from shared.schemas import (
     FinalRanking, FinvizDetail, KavoutRow, MarketRegime, OptionValidity, Position,
-    PortfolioExposure, Scenario, SellDecision, TechnicalScore,
+    PortfolioExposure, Scenario, SellDecision, SummaryData, TechnicalScore,
 )
 
 log = get_logger()
@@ -236,6 +236,7 @@ class ObsidianClient:
         horizon_recommendations: "dict[str, dict[str, OptionValidity]] | None" = None,
         ultra_long_criteria: "dict[str, dict] | None" = None,
         options_analytics: "dict[str, dict] | None" = None,
+        summary_data: "SummaryData | None" = None,
     ) -> str:
         """
         매수 분석 노트 저장 — TYPE 1~5 통합 보고서 형식 (환각 방지 강화)
@@ -325,6 +326,8 @@ class ObsidianClient:
                     k_score = float(_krow.k_score or 5.0)
                 else:
                     k_score = float((_krow or {}).get("k_score", 5.0)) if isinstance(_krow, dict) else 5.0
+                _td = summary_data.tickers.get(r.ticker) if summary_data else None
+                _evs = list(summary_data.events) if summary_data and summary_data.events else []
                 lines += _format_integrated_buy_block(
                     r, ts, ov, sc, macro_score, macro_label, sent, fv=fv,
                     k_score=k_score, regime=regime,
@@ -333,6 +336,8 @@ class ObsidianClient:
                     ultra_long_criteria=(ultra_long_criteria or {}).get(r.ticker),
                     opt_analytics=(options_analytics or {}).get(r.ticker),
                     krow=_krow if hasattr(_krow, "k_score") else None,
+                    ticker_data=_td,
+                    summary_events=_evs,
                 )
 
         # ── 필터 탈락 요약 ──────────────────────────────────────
@@ -642,7 +647,11 @@ def _fmt_factor(f, positive: bool) -> str:
     return f"{icon} {f}"
 
 
-def _format_type1_section(sent: dict, fv: "FinvizDetail | None" = None) -> str:
+def _format_type1_section(
+    sent: dict,
+    fv: "FinvizDetail | None" = None,
+    earn_str: str = "",
+) -> str:
     """TYPE 1 — News Sentiment 섹션 생성 (7-섹션 구조화 버전)"""
     if not sent:
         return "### 📰 TYPE 1 — News Sentiment\n_데이터 없음_\n"
@@ -693,6 +702,7 @@ def _format_type1_section(sent: dict, fv: "FinvizDetail | None" = None) -> str:
         f"| Information Consensus | {consensus} |",
         f"| Key Drivers | {drivers_str} |",
         f"| Next Catalyst (est.) | {'~' + str(next_cat) + ' days' if next_cat else 'N/A'} |",
+        f"| 실적 발표 예정 | {earn_str if earn_str else 'N/A'} |",
         "",
     ]
 
@@ -1189,13 +1199,24 @@ def _format_type3_section(
     if fv:
         # 현재가: 시나리오 역산 우선 (fv.price는 캐시 기반으로 오래될 수 있음)
         _cur = _cur_price_val or fv.price or 0.0
-        _r2   = fv.pivot_r2 or None
-        _r1   = fv.pivot_r1 or None
-        _s1   = fv.pivot_s1 or None
-        _s2   = fv.pivot_s2 or None
-        _bb_u = fv.bb_upper or None
-        _bb_l = fv.bb_lower or None
-        _s200 = fv.sma200_val or None
+        _r2   = fv.pivot_r2  or None
+        _r1   = fv.pivot_r1  or None
+        _r3   = getattr(fv, "pivot_r3", None) or None
+        _s1   = fv.pivot_s1  or None
+        _s2   = fv.pivot_s2  or None
+        _s3   = getattr(fv, "pivot_s3", None) or None
+        _bb_u = fv.bb_upper  or None
+        _bb_l = fv.bb_lower  or None
+        _s200  = fv.sma200_val or None
+        _s50   = fv.sma50_val  or None
+        _s20   = fv.sma20_val  or None
+        _s10   = getattr(fv, "sma10_val",    None) or None
+        _s5    = fv.sma5_val   or None
+        _ws5   = getattr(fv, "weekly_sma5_val", None) or None   # 주봉 SMA5
+        _wps1  = getattr(fv, "weekly_pivot_s1", None) or None
+        _wps2  = getattr(fv, "weekly_pivot_s2", None) or None
+        _wpr1  = getattr(fv, "weekly_pivot_r1", None) or None
+        _atr_lv = fv.atr if fv.atr and fv.atr > 0 else None
 
         def _pf(v) -> str:
             return f"${v:.2f}" if v else "N/A"
@@ -1209,13 +1230,41 @@ def _format_type3_section(
             "|---|---|---|",
         ]
         # 현재가 기준으로 저항/지지 동적 분류
+        _tbl_is_long = (r.direction == "long_call")
         _price_levels = []
+        if _r3:   _price_levels.append((_r3,   "피봇 R3 / 상승 가속 기준 (T3 참고)"))
         if _r2:   _price_levels.append((_r2,   "피봇 R2 / 주요 매물대 상단"))
-        if _r1:   _price_levels.append((_r1,   "피봇 R1 / 단기 저항"))
+        if _r1:   _price_levels.append((_r1,   "피봇 R1 / 단기 저항 (T1 참고)"))
         if _bb_u: _price_levels.append((_bb_u, "볼린저밴드 상단 (과열 경계)"))
+        if _s5:   _price_levels.append((_s5,   "SMA5 — 단기 추세선 (T3 목표 or 손절)"))
+        if _s10:  _price_levels.append((_s10,  "SMA10 — 중단기 추세선 (T1 목표 참고)"))
         if _bb_l: _price_levels.append((_bb_l, "볼린저밴드 하단 (과매도 경계)"))
-        if _s1:   _price_levels.append((_s1,   "피봇 S1 / 단기 지지"))
+        if _s1:   _price_levels.append((_s1,   "피봇 S1 / 단기 지지 (Put T1 참고)"))
+        _s20_label = "SMA20 — 중기 추세선 / Long 손절 기준" if _tbl_is_long else "SMA20 — 중기 추세선 / Put 손절 기준"
+        if _s20:  _price_levels.append((_s20,  _s20_label))
         if _s2:   _price_levels.append((_s2,   "피봇 S2 / 구조적 지지"))
+        if _s3:   _price_levels.append((_s3,   "피봇 S3 / 진입 구간 하단 (Long 눌림목 기준)"))
+        if _s50:  _price_levels.append((_s50,  "SMA50 — 중장기 추세선 (스윙 손절 참고)"))
+        if _ws5:
+            _ws5_role = ("스윙 T3 목표" if _tbl_is_long and _ws5 > _cur
+                         else "스윙 T3 목표" if not _tbl_is_long and _ws5 < _cur
+                         else "주봉 추세 지지선" if _ws5 < _cur else "주봉 추세 저항선")
+            _price_levels.append((_ws5, f"주봉 SMA5 — {_ws5_role}"))
+        if _wps2: _price_levels.append((_wps2, "주봉 피벗 S2 — 스윙 딥타겟 (Put T3)"))
+        if _wpr1: _price_levels.append((_wpr1, "주봉 피벗 R1 — 스윙 상단 목표 (Call T3)"))
+        # ATR 기반 손절선 — 방향에 따라 위/아래 분기
+        _tbl_is_long = (r.direction == "long_call")
+        if _cur and _atr_lv:
+            if _tbl_is_long:
+                _near_ref  = round(_cur - 0.5 * _atr_lv, 2)
+                _swing_ref = round(_cur - 0.8 * _atr_lv, 2)
+                _price_levels.append((_near_ref,  f"📍단기 손절 기준 (현재가 - 0.5×ATR ${_atr_lv:.2f})"))
+                _price_levels.append((_swing_ref, f"📍스윙 손절 기준 (현재가 - 0.8×ATR ${_atr_lv:.2f})"))
+            else:
+                _near_ref  = round(_cur + 0.5 * _atr_lv, 2)
+                _swing_ref = round(_cur + 0.8 * _atr_lv, 2)
+                _price_levels.append((_near_ref,  f"📍단기 손절 기준 (현재가 + 0.5×ATR ${_atr_lv:.2f})"))
+                _price_levels.append((_swing_ref, f"📍스윙 손절 기준 (현재가 + 0.8×ATR ${_atr_lv:.2f})"))
         _price_levels.sort(key=lambda x: x[0], reverse=True)
         _cur_inserted = False
         for _lv, _desc in _price_levels:
@@ -1365,6 +1414,8 @@ def _format_integrated_buy_block(
     ultra_long_criteria: "dict | None" = None,
     opt_analytics: "dict | None" = None,
     krow: "KavoutRow | None" = None,
+    ticker_data: "Any | None" = None,   # summary_data.tickers[ticker] (TickerData)
+    summary_events: "list | None" = None,  # summary_data.events
 ) -> list[str]:
     """종목 1개에 대한 TYPE 1~5 통합 매수 보고서 블록 생성 (환각 방지)"""
 
@@ -1626,7 +1677,23 @@ def _format_integrated_buy_block(
         ]
 
     # TYPE 1: 뉴스 감성 — 풍부한 형식으로 출력
-    lines += _format_type1_section(sent or {}, fv=fv).splitlines()
+    # 실적 발표 날짜 추출 (summary_events에서 해당 ticker 실적 이벤트 검색)
+    _earn_str = ""
+    if summary_events:
+        for _ev in summary_events:
+            _ev_name = getattr(_ev, "name", "") or ""
+            _ev_type = getattr(_ev, "type", "") or ""
+            if "실적" in _ev_type and r.ticker in _ev_name.upper():
+                _ev_date = getattr(_ev, "date", None)
+                _ev_days = getattr(_ev, "days_until", None)
+                if _ev_date:
+                    try:
+                        _date_str = _ev_date.strftime("%Y-%m-%d") if hasattr(_ev_date, "strftime") else str(_ev_date)[:10]
+                        _earn_str = f"**{_date_str}** ({_ev_days}일 후)" if _ev_days is not None else f"**{_date_str}**"
+                    except Exception:
+                        pass
+                break
+    lines += _format_type1_section(sent or {}, fv=fv, earn_str=_earn_str).splitlines()
     lines += [""]
 
     # TYPE 2: 투자 기간 & 기간별 옵션 추천 ──────────────────────────────────
@@ -1811,26 +1878,96 @@ def _format_integrated_buy_block(
                 _cur_stk = sc.base.target_stock_price / (1 + _mv)
         _cur_stk = _cur_stk or (fv.price if fv and fv.price else None)
 
-        # 주가 기준 손절/목표 (4-1 표용) ─────────────────────────
-        # 손절: bear case 목표주가 (이 아래면 논리 무효)
-        # T1  : base case 목표주가 (1차 익절)
-        # T2  : base↔bull 중간 (2차 익절)
-        # T3  : bull case 목표주가 (최종 목표)
-        _stk_stop = sc.bearish.target_stock_price if sc.bearish and sc.bearish.target_stock_price else None
-        _stk_t1   = sc.base.target_stock_price    if sc.base    and sc.base.target_stock_price    else None
-        _stk_t3   = sc.bullish.target_stock_price if sc.bullish and sc.bullish.target_stock_price else None
-        _stk_t2   = round((_stk_t1 + _stk_t3) / 2, 2) if _stk_t1 and _stk_t3 else None
+        # ── ATR + MA 기반 주가 손절/목표 (방향 분기) ─────────────────────
+        # 방법론: 모범 보고서와 동일 (ATR×N 손절, MA선 목표)
+        # long_call: 손절=현재가 아래, 목표=현재가 위
+        # long_put : 손절=현재가 위,  목표=현재가 아래
+        _is_long = (r.direction == "long_call")
+        _atr = fv.atr if fv and fv.atr and fv.atr > 0 else None
+
+        if _is_long:
+            # ── Long Call ─────────────────────────────────────────────
+            # 손절: 현재가 - N×ATR  vs  SMA (아래) 중 더 높은 것(타이트)
+            _near_stop_atr  = round(_cur_stk - 0.5 * _atr, 2) if _cur_stk and _atr else None
+            _swing_stop_atr = round(_cur_stk - 0.8 * _atr, 2) if _cur_stk and _atr else None
+            _sma20_ref = (fv.sma20_val if fv and fv.sma20_val
+                          and _cur_stk and fv.sma20_val < _cur_stk else None)
+            _sma50_ref = (fv.sma50_val if fv and fv.sma50_val
+                          and _cur_stk and fv.sma50_val < _cur_stk else None)
+            _near_stk_stop  = max((x for x in [_near_stop_atr, _sma20_ref]          if x is not None), default=None)
+            _swing_stk_stop = max((x for x in [_swing_stop_atr, _sma50_ref, _sma20_ref] if x is not None), default=None)
+
+            # 목표: 현재가 위 저항선 — T1(가장 가까운) → T3(더 먼)
+            _r1_cand   = (fv.pivot_r1  if fv and fv.pivot_r1  and _cur_stk and fv.pivot_r1  > _cur_stk else None)
+            _sma10_cand = (getattr(fv, "sma10_val", None) if fv and getattr(fv, "sma10_val", None)
+                           and _cur_stk and getattr(fv, "sma10_val", 0) > _cur_stk else None)
+            _sma5_cand = (fv.sma5_val  if fv and fv.sma5_val  and _cur_stk and fv.sma5_val  > _cur_stk else None)
+            _t1_atr    = round(_cur_stk + 1.0 * _atr, 2) if _cur_stk and _atr else None
+            _t3_atr    = round(_cur_stk + 2.0 * _atr, 2) if _cur_stk and _atr else None
+
+            # T1: 현재가 위 가장 가까운 저항 (SMA10 > R1 > SMA5 > +1ATR 중 최솟값)
+            _t1_cands = [x for x in [_t1_atr, _r1_cand, _sma10_cand, _sma5_cand] if x is not None]
+            _stk_t1   = min(_t1_cands) if _t1_cands else (sc.base.target_stock_price if sc and sc.base else None)
+            # T3: 주봉 SMA5 > 일봉 SMA5 > 2×ATR 순 우선 (현재가 위, T1보다 높은 것)
+            _ws5_cand = (getattr(fv, "weekly_sma5_val", None)
+                         if fv and getattr(fv, "weekly_sma5_val", None)
+                         and _cur_stk and getattr(fv, "weekly_sma5_val", 0) > _cur_stk else None)
+            _t3_cands = [x for x in [_ws5_cand, _sma5_cand, _t3_atr]
+                         if x is not None and (_stk_t1 is None or x > _stk_t1)]
+            _stk_t3   = (max(_t3_cands) if _t3_cands else None) or (sc.bullish.target_stock_price if sc and sc.bullish else None)
+
+            # R/R: 수익=목표-현재가 / 위험=현재가-손절
+            def _rr_long(target, stop):
+                if _cur_stk and target and stop and target > _cur_stk and _cur_stk > stop:
+                    return round((target - _cur_stk) / (_cur_stk - stop), 1)
+                return "N/A"
+            nt_rr = _rr_long(_stk_t1, _near_stk_stop)
+            sw_rr = _rr_long(_stk_t3, _swing_stk_stop)
+
+        else:
+            # ── Long Put ──────────────────────────────────────────────
+            # 손절: 현재가 + N×ATR  vs  SMA (위) 중 더 낮은 것(타이트)
+            _near_stop_atr  = round(_cur_stk + 0.5 * _atr, 2) if _cur_stk and _atr else None
+            _swing_stop_atr = round(_cur_stk + 0.8 * _atr, 2) if _cur_stk and _atr else None
+            _sma20_ref = (fv.sma20_val if fv and fv.sma20_val
+                          and _cur_stk and fv.sma20_val > _cur_stk else None)
+            _sma50_ref = (fv.sma50_val if fv and fv.sma50_val
+                          and _cur_stk and fv.sma50_val > _cur_stk else None)
+            _near_stk_stop  = min((x for x in [_near_stop_atr, _sma20_ref]              if x is not None), default=None)
+            _swing_stk_stop = min((x for x in [_swing_stop_atr, _sma50_ref, _sma20_ref] if x is not None), default=None)
+
+            # 목표: 현재가 아래 지지선 — T1(가장 가까운) → T3(더 먼)
+            _s1_cand    = (fv.pivot_s1 if fv and fv.pivot_s1 and _cur_stk and fv.pivot_s1 < _cur_stk else None)
+            _sma10_cand = (getattr(fv, "sma10_val", None) if fv and getattr(fv, "sma10_val", None)
+                           and _cur_stk and getattr(fv, "sma10_val", 0) < _cur_stk else None)
+            _sma5_cand  = (fv.sma5_val if fv and fv.sma5_val and _cur_stk and fv.sma5_val < _cur_stk else None)
+            _t1_atr     = round(_cur_stk - 1.0 * _atr, 2) if _cur_stk and _atr else None
+            _t3_atr     = round(_cur_stk - 2.0 * _atr, 2) if _cur_stk and _atr else None
+
+            # T1: 현재가 아래 가장 가까운 지지 (최댓값)
+            _t1_cands = [x for x in [_t1_atr, _s1_cand, _sma10_cand, _sma5_cand] if x is not None]
+            _stk_t1   = max(_t1_cands) if _t1_cands else (sc.base.target_stock_price if sc and sc.base else None)
+            # T3: 주봉 SMA5 > 일봉 SMA5 > 2×ATR 순 우선 (현재가 아래, T1보다 낮은 것)
+            _ws5_cand = (getattr(fv, "weekly_sma5_val", None)
+                         if fv and getattr(fv, "weekly_sma5_val", None)
+                         and _cur_stk and getattr(fv, "weekly_sma5_val", 0) < _cur_stk else None)
+            _t3_cands = [x for x in [_ws5_cand, _sma5_cand, _t3_atr]
+                         if x is not None and (_stk_t1 is None or x < _stk_t1)]
+            _stk_t3   = (min(_t3_cands) if _t3_cands else None) or (sc.bearish.target_stock_price if sc and sc.bearish else None)
+
+            # R/R: 수익=현재가-목표 / 위험=손절-현재가
+            def _rr_put(target, stop):
+                if _cur_stk and target and stop and target < _cur_stk and stop > _cur_stk:
+                    return round((_cur_stk - target) / (stop - _cur_stk), 1)
+                return "N/A"
+            nt_rr = _rr_put(_stk_t1, _near_stk_stop)
+            sw_rr = _rr_put(_stk_t3, _swing_stk_stop)
+
+        # T2: T1~T3 중간
+        _stk_t2 = round((_stk_t1 + _stk_t3) / 2, 2) if _stk_t1 and _stk_t3 else None
 
         def _sfmt(v: float | None) -> str:
             return f"${v:.2f}" if v else "N/A"
-
-        # 주가 기준 R/R
-        if _cur_stk and _stk_stop and _stk_t1 and _cur_stk > _stk_stop:
-            _stk_risk   = _cur_stk - _stk_stop
-            nt_rr = round((_stk_t1 - _cur_stk) / _stk_risk, 1) if _stk_t1 > _cur_stk else "N/A"
-            sw_rr = round((_stk_t3 - _cur_stk) / _stk_risk, 1) if _stk_t3 and _stk_t3 > _cur_stk else "N/A"
-        else:
-            nt_rr = sw_rr = "N/A"
 
         # DTE-based time stops
         dte_val = max(7, min(45, signal_count * 5))
@@ -1842,17 +1979,51 @@ def _format_integrated_buy_block(
         def _fmt(v: float | None) -> str:
             return f"${v:.2f}" if v else "N/A"
 
+        # ── 진입 구간 계산 (Pivot S3/R3 + SMA20 기반) ─────────────────
+        # long_call : Pivot S3 (아래) ~ 현재가×0.99  → 눌림목 매수 구간
+        # long_put  : 현재가×1.01 ~ Pivot R3 (위)    → 반등 후 매도 구간
+        _ps3 = getattr(fv, "pivot_s3", None) if fv else None
+        _pr3 = getattr(fv, "pivot_r3", None) if fv else None
+        _sma20_fv = getattr(fv, "sma20_val", None) if fv else None
+
+        if _is_long:
+            # Long Call 진입 구간 하단: max(Pivot S3, SMA20) if below current
+            _ez_candidates = [x for x in [_ps3, _sma20_fv]
+                              if x is not None and _cur_stk and x < _cur_stk]
+            _ez_low  = max(_ez_candidates) if _ez_candidates else None
+            _ez_high = round(_cur_stk * 0.99, 2) if _cur_stk else None
+            if _ez_low and _ez_high:
+                _entry_zone = f"눌림목 {_sfmt(_ez_low)}~{_sfmt(_ez_high)}"
+            elif _ez_low:
+                _entry_zone = f"눌림목 {_sfmt(_ez_low)} 부근"
+            else:
+                _entry_zone = "현재가 진입"
+        else:
+            # Long Put 진입 구간 상단: min(Pivot R3, SMA20) if above current
+            _ez_candidates = [x for x in [_pr3, _sma20_fv]
+                              if x is not None and _cur_stk and x > _cur_stk]
+            _ez_low  = round(_cur_stk * 1.01, 2) if _cur_stk else None
+            _ez_high = min(_ez_candidates) if _ez_candidates else None
+            if _ez_low and _ez_high:
+                _entry_zone = f"반등 후 {_sfmt(_ez_low)}~{_sfmt(_ez_high)}"
+            elif _ez_high:
+                _entry_zone = f"반등 후 {_sfmt(_ez_high)} 부근"
+            else:
+                _entry_zone = "현재가 진입"
+
         # 프리미엄 값 (4-3·4-4·4-5용) ─────────────────────────
         nt_stop = round(stop_prem * 0.80, 2) if stop_prem > 0 else None   # NT 손절 프리미엄 (타이트)
         nt_t1_p = t1_val if t1_val > 0 else None
         sw_stop = stop_prem if stop_prem > 0 else None                     # Swing 손절 프리미엄
         sw_t3_p = t3_val if t3_val > 0 else None
 
-        nt_row = f"| Near-Term (1-5일) | Current market | {_sfmt(_stk_stop)} | {_sfmt(_stk_t1)} / N/A / N/A | {nt_rr} | {nt_time_stop}일 |"
-        sw_row = f"| Swing (5-15일) | Current market | {_sfmt(_stk_stop)} | {_sfmt(_stk_t1)} / {_sfmt(_stk_t2)} / {_sfmt(_stk_t3)} | {sw_rr} | {sw_time_stop}일 |"
+        nt_row = f"| Near-Term (1-5일) | {_entry_zone} | {_sfmt(_near_stk_stop)} | {_sfmt(_stk_t1)} / N/A / N/A | {nt_rr} | {nt_time_stop}일 |"
+        sw_row = f"| Swing (5-15일) | {_entry_zone} | {_sfmt(_swing_stk_stop)} | {_sfmt(_stk_t1)} / {_sfmt(_stk_t2)} / {_sfmt(_stk_t3)} | {sw_rr} | {sw_time_stop}일 |"
     else:
         _cur_stk = fv.price if fv and fv.price else None
-        _stk_stop = _stk_t1 = _stk_t2 = _stk_t3 = None
+        _stk_t1 = _stk_t2 = _stk_t3 = None
+        _near_stk_stop = _swing_stk_stop = None
+        _entry_zone = "현재가 진입"
         nt_stop = sw_stop = nt_t1_p = sw_t3_p = None
         t1_val = t2_val = t3_val = 0.0
         dte_val = max(7, signal_count * 5)
@@ -2035,12 +2206,13 @@ def _format_integrated_buy_block(
     nt_dec = r.action if preferred in ("NEAR-TERM", "BOTH") else "보류"
     sw_dec = r.action if preferred in ("SWING", "BOTH") else "보류"
 
-    # 주가 레벨 — 시나리오 계산값 우선 (LLM key_level은 참고용으로만 사용)
-    # _cur_stk / _stk_stop / _stk_t1 / _stk_t2 / _stk_t3 은 위 if sc: 블록에서 계산됨
-    _sk_entry = _sfmt(_cur_stk)    # 현재 주가 (Entry 레벨)
-    _sk_stop  = _sfmt(_stk_stop)   # Bear case 목표가 = 손절 기준
-    _sk_t1    = _sfmt(_stk_t1)     # Base case 목표가 = 1차 목표
-    _sk_t2    = _sfmt(_stk_t2)     # (Base+Bull)/2 = 2차 목표
+    # 주가 레벨 — ATR+MA 기반 손절·저항선 기반 목표
+    # _near_stk_stop / _swing_stk_stop / _stk_t1 / _stk_t2 / _stk_t3 은 위 블록에서 계산됨
+    _sk_entry      = _sfmt(_cur_stk)          # 현재 주가 (Entry 레벨)
+    _sk_near_stop  = _sfmt(_near_stk_stop)    # ATR 기반 단기 손절
+    _sk_swing_stop = _sfmt(_swing_stk_stop)   # ATR 기반 스윙 손절
+    _sk_t1         = _sfmt(_stk_t1)           # 첫 번째 저항선 = 1차 목표
+    _sk_t2         = _sfmt(_stk_t2)           # T1~T3 중간 = 2차 목표
 
     lines += ["", "---", ""]
 
@@ -2053,8 +2225,8 @@ def _format_integrated_buy_block(
         "|------|-----|",
         f"| 설정 품질 | **{nt_quality}** |",
         f"| 신호 수 | {signal_count}/8 |",
-        f"| 1H RSI 점수 | {rsi_score:.0f}/25 |",
-        f"| 4H MACD 점수 | {macd_score:.0f}/25 |",
+        f"| 일봉 RSI 점수 | {rsi_score:.0f}/25 |",
+        f"| 일봉 MACD 점수 | {macd_score:.0f}/25 |",
         f"| 진입 프리미엄 | {_pp(_ep_v)} |",
         f"| 손절 (Stop) | {_pp(_ns_v)} (진입 대비 -60%) |",
         f"| T1 목표 | {_pp(_nt1_v)} |",
@@ -2109,16 +2281,16 @@ def _format_integrated_buy_block(
         "══════════════════════════════════",
         "NEAR-TERM (1~5일):",
         f"  Signal    : {nt_signal}",
-        f"  Entry     : Current market  (프리미엄 {_pp(_ep_v)})",
-        f"  Stock Ref : Entry {_sk_entry}  |  Stop {_sk_stop}  |  T1 {_sk_t1}",
+        f"  Entry     : {_entry_zone}  (프리미엄 {_pp(_ep_v)})",
+        f"  Stock Ref : Entry {_sk_entry}  |  Stop {_sk_near_stop}  |  T1 {_sk_t1}",
         f"  Premium   : Stop {_pp(_ns_v)}  |  T1 {_pp(_nt1_v)}",
         f"  R/R       : {_nt_rr_v}:1",
         f"  Decision  : {nt_dec}",
         "",
         "SWING (5~15일):",
         f"  Signal    : {sw_signal}",
-        f"  Entry     : Current market  (프리미엄 {_pp(_ep_v)})",
-        f"  Stock Ref : Entry {_sk_entry}  |  Stop {_sk_stop}  |  T2 {_sk_t2}",
+        f"  Entry     : {_entry_zone}  (프리미엄 {_pp(_ep_v)})",
+        f"  Stock Ref : Entry {_sk_entry}  |  Stop {_sk_swing_stop}  |  T2 {_sk_t2}",
         f"  Premium   : Stop {_pp(_ss_v)}  |  T1 {_pp(_st1_v)}  |  T3 {_pp(_st3_v)}",
         f"  R/R       : {_sw_rr_v}:1",
         f"  Decision  : {sw_dec}",
@@ -2405,7 +2577,6 @@ def _format_integrated_buy_block(
     # 기관 & 수급 동향 (fv 있을 때)
     if fv:
         _short_str = f"{fv.short_float_pct:.1f}%" if fv.short_float_pct else "N/A"
-        _insider_str = f"{fv.insider_trans_pct:+.1f}%" if fv.insider_trans_pct else "N/A"
         _beta_str = f"{fv.beta:.2f}" if fv.beta else "N/A"
         # 공매도 해석
         if fv.short_float_pct and fv.short_float_pct > 15:
@@ -2414,15 +2585,34 @@ def _format_integrated_buy_block(
             _short_note = "낮은 공매도 → 수급 안정"
         else:
             _short_note = "보통 수준"
-        # 내부자 거래 해석
-        if fv.insider_trans_pct and fv.insider_trans_pct > 0:
-            _insider_note = "내부자 순매수 → 긍정 시그널"
-        elif fv.insider_trans_pct and fv.insider_trans_pct < -5:
-            _insider_note = "내부자 대량 매도 → 주의"
-        elif not fv.insider_trans_pct:  # None 또는 0
-            _insider_note = "데이터 없음 — Section 0 DA 차감 참조"
-        else:
-            _insider_note = "내부자 거래 중립"
+        # 내부자 거래: yfinance(insider_trans_pct) 우선, None 또는 0.0이면 summary 폴백
+        # yfinance는 데이터 없을 때 None 대신 0.0을 반환하는 경우가 있음
+        _insider_str = "N/A"
+        _insider_note = "데이터 없음"
+        _ins_pct_valid = (fv.insider_trans_pct is not None
+                          and abs(fv.insider_trans_pct) > 0.01)  # 0.0 제거
+        if _ins_pct_valid:
+            _insider_str = f"{fv.insider_trans_pct:+.1f}%"
+            if fv.insider_trans_pct > 0:
+                _insider_note = "내부자 순매수 → 긍정 시그널"
+            elif fv.insider_trans_pct < -5:
+                _insider_note = "내부자 대량 매도 → 주의"
+            else:
+                _insider_note = "내부자 거래 중립"
+        elif ticker_data and getattr(ticker_data, "insider", None):
+            # summary INSIDER 섹션에서 순매도 금액 계산 (Section 0 DA와 동일 로직)
+            _ins_sell = sum((tx.get("total") or 0.0) for tx in ticker_data.insider if tx.get("type") == "매도")
+            _ins_buy  = sum((tx.get("total") or 0.0) for tx in ticker_data.insider if tx.get("type") == "매수")
+            _ins_net  = _ins_sell - _ins_buy
+            if _ins_net > 0:
+                _insider_str = f"순매도 ${_ins_net / 1e6:.1f}M"
+                _insider_note = "내부자 대량 순매도 → Section 0 DA 차감 반영됨"
+            elif _ins_net < 0:
+                _insider_str = f"순매수 ${abs(_ins_net) / 1e6:.1f}M"
+                _insider_note = "내부자 순매수 → 긍정 시그널"
+            else:
+                _insider_str = "거래 없음"
+                _insider_note = "최근 내부자 거래 없음"
         # 베타 해석
         if fv.beta and fv.beta > 1.5:
             _beta_note = "고변동성 — 시장 대비 급격한 움직임 가능"

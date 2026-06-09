@@ -206,6 +206,7 @@ class FinvizDetail(BaseModel):
     net_income_growth_yoy: float | None = None  # 순이익 YoY 성장률 %
     # ── 기술 지표 실제값 (api_fetcher 계산) ───────────────────────────
     sma5_val: float | None = None             # 5일 SMA 달러값
+    sma10_val: float | None = None            # 10일 SMA 달러값
     sma20_val: float | None = None            # 20일 SMA 달러값
     sma50_val: float | None = None            # 50일 SMA 달러값
     sma60_val: float | None = None            # 60일 SMA 달러값 (ma60 브릿지용)
@@ -223,8 +224,15 @@ class FinvizDetail(BaseModel):
     pivot: float | None = None                # 피벗 포인트 (전일 HLC/3)
     pivot_r1: float | None = None             # 저항1
     pivot_r2: float | None = None             # 저항2
+    pivot_r3: float | None = None             # 저항3 = R2 + (R1 - S1)
     pivot_s1: float | None = None             # 지지1
     pivot_s2: float | None = None             # 지지2
+    pivot_s3: float | None = None             # 지지3 = S2 - (R1 - S1)
+    # ── 주봉 지표 ────────────────────────────────────────────────────
+    weekly_sma5_val: float | None = None      # 주봉 5주 SMA
+    weekly_pivot_s1: float | None = None      # 주봉 피벗 S1
+    weekly_pivot_s2: float | None = None      # 주봉 피벗 S2 (스윙 T3 기준)
+    weekly_pivot_r1: float | None = None      # 주봉 피벗 R1 (스윙 T3 기준)
     # ── 애널리스트 의견 집계 ───────────────────────────────────────────
     analyst_buy: int | None = None            # 매수(Strong Buy + Buy) 수
     analyst_hold: int | None = None           # 보유(Hold) 수

@@ -161,14 +161,60 @@ def _calc_atr(highs: list[float], lows: list[float], closes: list[float],
 
 def _calc_pivot(highs: list[float], lows: list[float], closes: list[float]
                 ) -> tuple[Optional[float], ...]:
-    """전일 피벗 포인트 (pivot, r1, r2, s1, s2) 반환"""
+    """전일 피벗 포인트 (pivot, r1, r2, r3, s1, s2, s3) 반환"""
     if len(highs) < 2:
-        return (None,) * 5
+        return (None,) * 7
     h, l, c = highs[-2], lows[-2], closes[-2]   # 전일 데이터
     p = (h + l + c) / 3
-    r1 = 2 * p - l;  r2 = p + (h - l)
-    s1 = 2 * p - h;  s2 = p - (h - l)
-    return (round(p, 2), round(r1, 2), round(r2, 2), round(s1, 2), round(s2, 2))
+    r1 = 2 * p - l;    r2 = p + (h - l);     r3 = h + 2 * (p - l)
+    s1 = 2 * p - h;    s2 = p - (h - l);     s3 = l - 2 * (h - p)
+    return (round(p, 2), round(r1, 2), round(r2, 2), round(r3, 2),
+            round(s1, 2), round(s2, 2), round(s3, 2))
+
+
+# ─── 주봉 지표 계산 ───────────────────────────────────────────────────────
+
+def _calc_weekly_indicators(ticker: str) -> dict:
+    """
+    주봉 SMA5 + 주봉 피벗 포인트 계산.
+    yfinance 주봉 데이터로 계산 (추가 API 호출 1회).
+
+    Returns:
+        dict with: weekly_sma5_val, weekly_pivot_s1, weekly_pivot_s2, weekly_pivot_r1
+        실패 시 모두 None인 dict 반환
+    """
+    result: dict = {
+        "weekly_sma5_val": None,
+        "weekly_pivot_s1": None,
+        "weekly_pivot_s2": None,
+        "weekly_pivot_r1": None,
+    }
+    try:
+        import yfinance as _yf
+        w_hist = _yf.Ticker(ticker).history(period="3mo", interval="1wk")
+        if w_hist.empty or len(w_hist) < 6:
+            return result
+        w_closes = [float(v) for v in w_hist["Close"].dropna().tolist()]
+        w_highs  = [float(v) for v in w_hist["High"].dropna().tolist()]
+        w_lows   = [float(v) for v in w_hist["Low"].dropna().tolist()]
+
+        # 주봉 SMA5
+        if len(w_closes) >= 5:
+            result["weekly_sma5_val"] = round(float(sum(w_closes[-5:]) / 5), 2)
+
+        # 주봉 피벗 (전주 데이터 기준)
+        if len(w_highs) >= 2:
+            wh = w_highs[-2];  wl = w_lows[-2];  wc = w_closes[-2]
+            wp  = (wh + wl + wc) / 3
+            wr1 = 2 * wp - wl
+            ws1 = 2 * wp - wh
+            ws2 = wp - (wh - wl)
+            result["weekly_pivot_r1"] = round(wr1, 2)
+            result["weekly_pivot_s1"] = round(ws1, 2)
+            result["weekly_pivot_s2"] = round(ws2, 2)
+    except Exception:
+        pass
+    return result
 
 
 # ─── 타입 변환 헬퍼 ────────────────────────────────────────────────────────
@@ -229,10 +275,11 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         sma200_pct = _calc_sma_pct(closes, 200)
 
         # ── SMA 달러값 ──
-        sma5_val = _calc_sma_val(closes, 5)
-        sma20_val = _calc_sma_val(closes, 20)
-        sma50_val = _calc_sma_val(closes, 50)
-        sma60_val = _calc_sma_val(closes, 60)
+        sma5_val   = _calc_sma_val(closes, 5)
+        sma10_val  = _calc_sma_val(closes, 10)
+        sma20_val  = _calc_sma_val(closes, 20)
+        sma50_val  = _calc_sma_val(closes, 50)
+        sma60_val  = _calc_sma_val(closes, 60)
         sma200_val = _calc_sma_val(closes, 200)
 
         # ── 볼린저밴드 ──
@@ -248,7 +295,7 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         atr_val = _calc_atr(highs, lows, closes)
 
         # ── 피벗 포인트 ──
-        pivot_val, piv_r1, piv_r2, piv_s1, piv_s2 = _calc_pivot(highs, lows, closes)
+        pivot_val, piv_r1, piv_r2, piv_r3, piv_s1, piv_s2, piv_s3 = _calc_pivot(highs, lows, closes)
 
         # ── 52주 위치 ──
         w52_high = _f(info.get("fiftyTwoWeekHigh"))
@@ -416,6 +463,7 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         net_income_growth_yoy=net_income_growth_yoy,
         # ── 신규 기술지표 실제값 ──
         sma5_val=sma5_val,
+        sma10_val=sma10_val,
         sma20_val=sma20_val,
         sma50_val=sma50_val,
         sma60_val=sma60_val,
@@ -433,8 +481,12 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         pivot=pivot_val,
         pivot_r1=piv_r1,
         pivot_r2=piv_r2,
+        pivot_r3=piv_r3,
         pivot_s1=piv_s1,
         pivot_s2=piv_s2,
+        pivot_s3=piv_s3,
+        # ── 주봉 지표 (weekly SMA5 + pivot) ──
+        **_calc_weekly_indicators(ticker),
         # ── 애널리스트 의견 ──
         analyst_buy=analyst_buy,
         analyst_hold=analyst_hold,

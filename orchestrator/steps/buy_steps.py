@@ -527,6 +527,8 @@ class BuySteps:
                 if _fv.pivot_s2    is not None: _upd["support2"]         = _fv.pivot_s2
                 if _fv.pivot_r1    is not None: _upd["resistance1"]      = _fv.pivot_r1
                 if _fv.pivot_r2    is not None: _upd["resistance2"]      = _fv.pivot_r2
+                # MA10 (sma10_val → ma10 브릿지)
+                if _fv.sma10_val   is not None: _upd["ma10"]             = _fv.sma10_val
 
                 if _upd:
                     ctx.summary_data.tickers[_tk] = _td.model_copy(
@@ -2366,6 +2368,7 @@ class BuySteps:
                 horizon_recommendations=dict(ctx.horizon_recommendations) if ctx.horizon_recommendations else None,
                 ultra_long_criteria=dict(ctx.ultra_long_criteria) if ctx.ultra_long_criteria else None,
                 options_analytics=_opt_analytics or None,
+                summary_data=ctx.summary_data,
             )
 
             # 탈락 종목 개별 노트

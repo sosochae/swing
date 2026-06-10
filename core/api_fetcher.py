@@ -1,7 +1,7 @@
 """
 core/api_fetcher.py
 ===================
-Kavout 유니버스 티커 → yfinance API → FinvizDetail 완전 채우기
+Kavout 유니버스 티커 → yfinance API → StockDetail 완전 채우기
 
 Yahoo Finance(yfinance) 단일 소스:
   - Ticker.info  : PE, margins, growth, analyst target/recom, beta, 52W
@@ -17,7 +17,7 @@ from typing import Optional
 
 import numpy as np
 
-from shared.schemas import FinvizDetail
+from shared.schemas import StockDetail
 
 log = logging.getLogger(__name__)
 
@@ -172,27 +172,329 @@ def _calc_pivot(highs: list[float], lows: list[float], closes: list[float]
             round(s1, 2), round(s2, 2), round(s3, 2))
 
 
+# ─── 가격선 계산 헬퍼 (19개 메서드) ─────────────────────────────────────────
+
+def _calc_fibonacci(swing_high: float, swing_low: float
+                    ) -> dict:
+    """① 피보나치 되돌림 (38.2/50/61.8%) + ② 확장 (100/161.8%)"""
+    rng = swing_high - swing_low
+    if rng <= 0:
+        return {}
+    return {
+        "fib_38_2":    round(swing_high - rng * 0.382, 2),
+        "fib_50_0":    round(swing_high - rng * 0.500, 2),
+        "fib_61_8":    round(swing_high - rng * 0.618, 2),
+        "fib_ext_100": round(swing_low  + rng * 1.000, 2),
+        "fib_ext_162": round(swing_low  + rng * 1.618, 2),
+    }
+
+
+def _calc_camarilla(high: float, low: float, close: float) -> dict:
+    """⑯ Camarilla Pivot — 전일 H/L/C 기준 4레벨"""
+    rng = high - low
+    return {
+        "cam_h4": round(close + rng * 1.1 / 2, 2),
+        "cam_h3": round(close + rng * 1.1 / 4, 2),
+        "cam_l3": round(close - rng * 1.1 / 4, 2),
+        "cam_l4": round(close - rng * 1.1 / 2, 2),
+    }
+
+
+def _calc_parabolic_sar(highs: list[float], lows: list[float],
+                         af_start: float = 0.02, af_max: float = 0.20
+                         ) -> tuple[Optional[float], Optional[str]]:
+    """⑭ Parabolic SAR — 트레일링 스탑 대안"""
+    n = min(len(highs), len(lows))
+    if n < 3:
+        return None, None
+    highs = highs[-n:]; lows = lows[-n:]
+    # 초기 방향: 첫 봉 기준 임시 설정
+    uptrend = highs[-1] > highs[-2]
+    sar = lows[-2] if uptrend else highs[-2]
+    ep  = highs[-1] if uptrend else lows[-1]
+    af  = af_start
+    for i in range(2, n):
+        prev_sar = sar
+        sar = prev_sar + af * (ep - prev_sar)
+        if uptrend:
+            sar = min(sar, lows[i-1], lows[i-2] if i >= 2 else lows[i-1])
+            if lows[i] < sar:
+                uptrend = False; sar = ep; ep = lows[i]; af = af_start
+            else:
+                if highs[i] > ep:
+                    ep = highs[i]; af = min(af + af_start, af_max)
+        else:
+            sar = max(sar, highs[i-1], highs[i-2] if i >= 2 else highs[i-1])
+            if highs[i] > sar:
+                uptrend = True; sar = ep; ep = highs[i]; af = af_start
+            else:
+                if lows[i] < ep:
+                    ep = lows[i]; af = min(af + af_start, af_max)
+    return round(sar, 2), "up" if uptrend else "down"
+
+
+def _detect_candle_pattern(recent_ohlc: list[dict]) -> str:
+    """⑩ 캔들 패턴 감지 — recent_ohlc 최근 3봉 기준"""
+    if not recent_ohlc or len(recent_ohlc) < 1:
+        return "none"
+    def _parse(bar: dict) -> tuple:
+        o = float(bar.get("open", 0) or 0)
+        h = float(bar.get("high", 0) or 0)
+        l = float(bar.get("low", 0) or 0)
+        c = float(bar.get("close", 0) or 0)
+        return o, h, l, c
+
+    o1, h1, l1, c1 = _parse(recent_ohlc[-1])  # 최신 봉
+    body1 = abs(c1 - o1)
+    lower_wick1 = min(o1, c1) - l1
+    upper_wick1 = h1 - max(o1, c1)
+
+    # Hammer (망치형): 아래꼬리 > 2×몸통, 위꼬리 < 몸통/2
+    if body1 > 0 and lower_wick1 > 2 * body1 and upper_wick1 < body1 * 0.5:
+        return "hammer"
+
+    # Bullish Engulfing (양봉이 전봉 완전 포함)
+    if len(recent_ohlc) >= 2:
+        o0, h0, l0, c0 = _parse(recent_ohlc[-2])
+        if c0 < o0 and c1 > o1 and c1 > o0 and o1 < c0:
+            return "engulfing"
+
+    # Morning Star (삼성 반전): [음봉, 작은몸통, 양봉]
+    if len(recent_ohlc) >= 3:
+        o_2, h_2, l_2, c_2 = _parse(recent_ohlc[-3])
+        o_1, h_1, l_1, c_1 = _parse(recent_ohlc[-2])
+        if (c_2 < o_2                             # 첫 봉: 음봉
+                and abs(c_1 - o_1) < abs(c_2 - o_2) * 0.3  # 두 번째: 작은몸통
+                and c1 > o1 and c1 > (o_2 + c_2) / 2):      # 세 번째: 양봉 상반부 회복
+            return "morning_star"
+
+    return "none"
+
+
+def _calc_anchored_vwap(hist_df, anchor_price: float) -> Optional[float]:
+    """⑦ 앵커 VWAP — 최근 스윙 저점 날짜 이후 누적 VWAP"""
+    try:
+        # 스윙 저점에 가장 가까운 날짜 찾기
+        closes = hist_df["Close"].tolist()
+        closest_idx = min(range(len(closes)), key=lambda i: abs(closes[i] - anchor_price))
+        subset = hist_df.iloc[closest_idx:]
+        if subset.empty:
+            return None
+        tp = (subset["High"] + subset["Low"] + subset["Close"]) / 3
+        cum_vol = subset["Volume"].cumsum()
+        cum_tpv = (tp * subset["Volume"]).cumsum()
+        if cum_vol.iloc[-1] <= 0:
+            return None
+        return round(float(cum_tpv.iloc[-1] / cum_vol.iloc[-1]), 2)
+    except Exception:
+        return None
+
+
+# ─── 4H/1H 장중 지표 계산 ────────────────────────────────────────────────
+
+def _calc_intraday_indicators(ticker: str) -> dict:
+    """
+    4H/1H 지표 계산.
+    - yfinance 1H 데이터(5일) → 4H 리샘플링
+    - 4H: RSI, MACD Hist, ADX/DI, VWAP, Pivot S3/R3
+    - 1H: RSI, BB 하단
+
+    주의:
+    - 장외 시간 실행 시 마지막 4H 바가 불완전할 수 있음 → -2 인덱스 사용
+    - yfinance 1H 데이터는 미국 동부시간 기준 (자동 조정)
+
+    Returns:
+        dict with 4H/1H fields (실패 시 모두 None)
+    """
+    result: dict = {
+        "rsi_4h": None, "macd_hist_4h": None,
+        "adx_4h": None, "di_plus_4h": None, "di_minus_4h": None,
+        "vwap_4h": None, "pivot_p_4h": None, "pivot_s3_4h": None, "pivot_r3_4h": None,
+        "rsi_1h": None, "bb_lower_1h": None,
+        "sma5_1h": None, "sma10_1h": None, "sma20_1h": None, "macd_hist_1h": None,
+        "vwap_std1_upper": None, "vwap_std1_lower": None,
+        "vwap_std2_upper": None, "vwap_std2_lower": None,
+    }
+    try:
+        import yfinance as _yf
+
+        # ── A3: Pivot 계산용 최근 5일 1H 데이터 (좁은 범위) ─────────
+        # 버그 수정: 60일 리샘플 4H 바는 대폭락 봉을 잡아 S3/R3가 왜곡됨
+        # → 최근 5일만 써서 현재 시장 상황의 4H 바로 계산
+        h1_recent = _yf.Ticker(ticker).history(period="5d", interval="1h")
+
+        # ── A2: 1H SMA/MACD용 60일 1H 데이터 ────────────────────────
+        h1 = _yf.Ticker(ticker).history(period="60d", interval="1h")
+        if h1.empty or len(h1) < 8:
+            return result
+
+        # ── 1H 지표 ──────────────────────────────────────────────────
+        h1_closes = h1["Close"].dropna().tolist()
+
+        # 1H RSI
+        if len(h1_closes) >= 14:
+            result["rsi_1h"] = _calc_rsi(h1_closes, 14)
+
+        # 1H 볼린저밴드 하단
+        if len(h1_closes) >= 20:
+            _, _, bb_l = _calc_bollinger(h1_closes)
+            result["bb_lower_1h"] = bb_l
+
+        # A2: 1H SMA5/10/20 ($896/$917/$917 → 진입 구간 핵심)
+        if len(h1_closes) >= 5:
+            result["sma5_1h"]  = round(float(sum(h1_closes[-5:])  / 5),  2)
+        if len(h1_closes) >= 10:
+            result["sma10_1h"] = round(float(sum(h1_closes[-10:]) / 10), 2)
+        if len(h1_closes) >= 20:
+            result["sma20_1h"] = round(float(sum(h1_closes[-20:]) / 20), 2)
+
+        # A2: 1H MACD 히스토그램 (단기 반등 조짐 감지) + 전봉 (④ 양전환 감지)
+        if len(h1_closes) >= 27:
+            _h1ml, _h1ms, _h1mh = _calc_macd(h1_closes)
+            result["macd_hist_1h"] = round(_h1mh, 4) if _h1mh is not None else None
+            # 전봉 히스토그램 (h1_closes[:-1] 로 재계산)
+            _, _, _h1mh_prev = _calc_macd(h1_closes[:-1])
+            result["macd_hist_1h_prev"] = round(_h1mh_prev, 4) if _h1mh_prev is not None else None
+
+        # ⑧ 볼린저밴드 %B
+        if len(h1_closes) >= 20:
+            _bb_u, _bb_m, _bb_l = _calc_bollinger(h1_closes)
+            if _bb_u and _bb_l and _bb_u != _bb_l:
+                result["bb_pct_b"] = round((h1_closes[-1] - _bb_l) / (_bb_u - _bb_l), 3)
+
+        # ── 4H 리샘플링 (60일 data → MACD/RSI/ADX) ───────────────────
+        h1_reset = h1.reset_index()
+        h4 = h1_reset.resample("4h", on="Datetime").agg({
+            "Open": "first", "High": "max", "Low": "min",
+            "Close": "last", "Volume": "sum"
+        }).dropna()
+
+        if len(h4) < 10:
+            return result
+
+        h4_closes  = h4["Close"].tolist()
+        h4_highs   = h4["High"].tolist()
+        h4_lows    = h4["Low"].tolist()
+
+        # ── 4H RSI ───────────────────────────────────────────────────
+        if len(h4_closes) >= 14:
+            result["rsi_4h"] = _calc_rsi(h4_closes, 14)
+
+        # ── 4H MACD 히스토그램 ───────────────────────────────────────
+        if len(h4_closes) >= 26:
+            ml, ms, mh = _calc_macd(h4_closes)
+            result["macd_hist_4h"] = round(mh, 4) if mh is not None else None
+
+        # ── 4H ADX + DI+/DI- + ⑤ 전봉값 (꺾임/교차 감지) ────────────
+        if len(h4_closes) >= 28:
+            adx4, di_p4, di_n4 = _calc_adx(h4_highs, h4_lows, h4_closes)
+            result["adx_4h"]      = adx4
+            result["di_plus_4h"]  = di_p4
+            result["di_minus_4h"] = di_n4
+            # 전봉 ADX/DI (h4_closes[:-1]로 재계산)
+            adx4p, dip4p, din4p = _calc_adx(h4_highs[:-1], h4_lows[:-1], h4_closes[:-1])
+            result["adx_prev"]      = adx4p
+            result["di_plus_prev"]  = dip4p
+            result["di_minus_prev"] = din4p
+
+        # ⑥ 4H SMA5/10/20 (멀티TF 클러스터 감지)
+        if len(h4_closes) >= 5:
+            result["sma5_4h"]  = round(float(sum(h4_closes[-5:])  / 5),  2)
+        if len(h4_closes) >= 10:
+            result["sma10_4h"] = round(float(sum(h4_closes[-10:]) / 10), 2)
+        if len(h4_closes) >= 20:
+            result["sma20_4h"] = round(float(sum(h4_closes[-20:]) / 20), 2)
+
+        # ⑭ Parabolic SAR (4H 기준)
+        if len(h4_closes) >= 10:
+            _sar, _sar_dir = _calc_parabolic_sar(h4_highs, h4_lows)
+            result["parabolic_sar"] = _sar
+            result["sar_direction"] = _sar_dir
+
+        # ── 4H VWAP (당일 기준 누적) + D: VWAP 표준편차 밴드 ─────────
+        try:
+            _today_str = h4.index[-1].date() if hasattr(h4.index[-1], "date") else None
+            if _today_str:
+                _today_h4 = h4[h4.index.date == _today_str]
+                if len(_today_h4) >= 1:
+                    _tp = (_today_h4["High"] + _today_h4["Low"] + _today_h4["Close"]) / 3
+                    _cum_vol = _today_h4["Volume"].cumsum()
+                    _cum_tpv = (_tp * _today_h4["Volume"]).cumsum()
+                    _vwap = float(_cum_tpv.iloc[-1] / _cum_vol.iloc[-1]) if _cum_vol.iloc[-1] > 0 else None
+                    result["vwap_4h"] = round(_vwap, 2) if _vwap else None
+                    # D: VWAP 표준편차 밴드 (볼륨 가중 분산)
+                    if _vwap and len(_today_h4) >= 2:
+                        _tp_arr = _tp.tolist()
+                        _vol_arr = _today_h4["Volume"].tolist()
+                        _total_vol = sum(_vol_arr)
+                        if _total_vol > 0:
+                            _vwap_var = sum((_t - _vwap) ** 2 * _v for _t, _v in zip(_tp_arr, _vol_arr)) / _total_vol
+                            _vwap_std = _vwap_var ** 0.5
+                            if _vwap_std > 0:
+                                result["vwap_std1_upper"] = round(_vwap + _vwap_std, 2)
+                                result["vwap_std1_lower"] = round(_vwap - _vwap_std, 2)
+                                result["vwap_std2_upper"] = round(_vwap + 2 * _vwap_std, 2)
+                                result["vwap_std2_lower"] = round(_vwap - 2 * _vwap_std, 2)
+        except Exception:
+            pass
+
+        # ── A3: 4H Pivot P/S3/R3 — 최근 5일 data 사용 (버그 수정) ────
+        # 이유: 60일 리샘플 4H는 대폭락 봉(H=$989, L=$854)으로 S3=$697 왜곡
+        #       최근 5일 좁은 4H 봉 → $850 수준의 정확한 S3 계산
+        if not h1_recent.empty:
+            h1r_reset = h1_recent.reset_index()
+            h4_recent = h1r_reset.resample("4h", on="Datetime").agg({
+                "Open": "first", "High": "max", "Low": "min",
+                "Close": "last", "Volume": "sum"
+            }).dropna()
+            if len(h4_recent) >= 3:
+                _rph = float(h4_recent["High"].tolist()[-2])
+                _rpl = float(h4_recent["Low"].tolist()[-2])
+                _rpc = float(h4_recent["Close"].tolist()[-2])
+                _rpp = (_rph + _rpl + _rpc) / 3
+                _rpr3 = _rph + 2 * (_rpp - _rpl)
+                _rps3 = _rpl - 2 * (_rph - _rpp)
+                result["pivot_p_4h"]  = round(_rpp,  2)
+                result["pivot_s3_4h"] = round(_rps3, 2)
+                result["pivot_r3_4h"] = round(_rpr3, 2)
+
+    except Exception as exc:
+        log.debug("_calc_intraday_indicators 실패 %s: %s", ticker, exc)
+
+    return result
+
+
 # ─── 주봉 지표 계산 ───────────────────────────────────────────────────────
 
 def _calc_weekly_indicators(ticker: str) -> dict:
     """
-    주봉 SMA5 + 주봉 피벗 포인트 계산.
-    yfinance 주봉 데이터로 계산 (추가 API 호출 1회).
+    주봉 종합 지표 계산 (A1 확장).
+    - SMA5, Pivot P/S1/S2/R1/R2
+    - ADX/DI+/DI-, RSI, MACD Hist (장기 추세 판단 핵심)
 
     Returns:
-        dict with: weekly_sma5_val, weekly_pivot_s1, weekly_pivot_s2, weekly_pivot_r1
-        실패 시 모두 None인 dict 반환
+        dict with all weekly fields (실패 시 모두 None)
     """
     result: dict = {
         "weekly_sma5_val": None,
+        "weekly_pivot_p": None,
         "weekly_pivot_s1": None,
         "weekly_pivot_s2": None,
         "weekly_pivot_r1": None,
+        "weekly_pivot_r2": None,
+        "weekly_adx": None,
+        "weekly_di_plus": None,
+        "weekly_di_minus": None,
+        "weekly_rsi": None,
+        "weekly_macd_hist": None,
+        "prev_week_high": None,
+        "prev_week_low": None,
     }
     try:
         import yfinance as _yf
-        w_hist = _yf.Ticker(ticker).history(period="3mo", interval="1wk")
-        if w_hist.empty or len(w_hist) < 6:
+        # RSI(14) + ADX(14) + MACD(26)에 충분한 봉 수 → 최소 40주 필요
+        w_hist = _yf.Ticker(ticker).history(period="12mo", interval="1wk")
+        if w_hist.empty or len(w_hist) < 15:
             return result
         w_closes = [float(v) for v in w_hist["Close"].dropna().tolist()]
         w_highs  = [float(v) for v in w_hist["High"].dropna().tolist()]
@@ -202,16 +504,35 @@ def _calc_weekly_indicators(ticker: str) -> dict:
         if len(w_closes) >= 5:
             result["weekly_sma5_val"] = round(float(sum(w_closes[-5:]) / 5), 2)
 
-        # 주봉 피벗 (전주 데이터 기준)
+        # 주봉 RSI
+        if len(w_closes) >= 14:
+            result["weekly_rsi"] = _calc_rsi(w_closes, 14)
+
+        # 주봉 MACD 히스토그램
+        if len(w_closes) >= 26:
+            _wml, _wms, _wmh = _calc_macd(w_closes)
+            result["weekly_macd_hist"] = round(_wmh, 4) if _wmh is not None else None
+
+        # 주봉 ADX + DI (장기 추세 강도 핵심)
+        if len(w_closes) >= 28:
+            _wadx, _wdip, _wdin = _calc_adx(w_highs, w_lows, w_closes)
+            result["weekly_adx"]      = _wadx
+            result["weekly_di_plus"]  = _wdip
+            result["weekly_di_minus"] = _wdin
+
+        # 주봉 피벗 + E: 전주 고점/저점 (전주 데이터 기준)
         if len(w_highs) >= 2:
             wh = w_highs[-2];  wl = w_lows[-2];  wc = w_closes[-2]
             wp  = (wh + wl + wc) / 3
-            wr1 = 2 * wp - wl
-            ws1 = 2 * wp - wh
-            ws2 = wp - (wh - wl)
+            wr1 = 2 * wp - wl;   wr2 = wp + (wh - wl)
+            ws1 = 2 * wp - wh;   ws2 = wp - (wh - wl)
+            result["weekly_pivot_p"]  = round(wp,  2)
             result["weekly_pivot_r1"] = round(wr1, 2)
+            result["weekly_pivot_r2"] = round(wr2, 2)
             result["weekly_pivot_s1"] = round(ws1, 2)
             result["weekly_pivot_s2"] = round(ws2, 2)
+            result["prev_week_high"]  = round(float(wh), 2)
+            result["prev_week_low"]   = round(float(wl),  2)
     except Exception:
         pass
     return result
@@ -240,8 +561,8 @@ def _million(v) -> Optional[float]:
 
 # ─── 단일 티커 fetch (동기) ───────────────────────────────────────────────
 
-def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
-    """yfinance로 단일 티커 FinvizDetail 완전 채우기 (동기, thread-safe)"""
+def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
+    """yfinance로 단일 티커 StockDetail 완전 채우기 (동기, thread-safe)"""
     import yfinance as yf
 
     try:
@@ -296,6 +617,116 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
 
         # ── 피벗 포인트 ──
         pivot_val, piv_r1, piv_r2, piv_r3, piv_s1, piv_s2, piv_s3 = _calc_pivot(highs, lows, closes)
+
+        # ──① 피보나치 되돌림/확장 (30일 스윙 고점/저점 기준) ───────────
+        _fib_fields: dict = {}
+        _swing_high_30d: Optional[float] = None
+        _swing_low_30d:  Optional[float] = None
+        if len(highs) >= 20 and len(lows) >= 20:
+            _swing_high_30d = round(float(max(highs[-30:])), 2) if len(highs) >= 30 else round(float(max(highs)), 2)
+            _swing_low_30d  = round(float(min(lows[-30:])),  2) if len(lows)  >= 30 else round(float(min(lows)),  2)
+            _fib_fields = _calc_fibonacci(_swing_high_30d, _swing_low_30d)
+
+        # ──⑯ Camarilla Pivot (전일 H/L/C) ───────────────────────────────
+        _cam_fields: dict = {}
+        _prev_day_high: Optional[float] = None
+        _prev_day_low:  Optional[float] = None
+        if len(highs) >= 2 and len(lows) >= 2 and len(closes) >= 2:
+            _cam_fields = _calc_camarilla(highs[-2], lows[-2], closes[-2])
+            # E: 전일 고점/저점
+            _prev_day_high = round(float(highs[-2]), 2)
+            _prev_day_low  = round(float(lows[-2]),  2)
+
+        # ── A-1: EMA 9/21 ─────────────────────────────────────────────────
+        _ema9_val:  Optional[float] = None
+        _ema21_val: Optional[float] = None
+        if len(closes) >= 9:
+            _e9 = _ema(closes, 9)
+            if _e9:
+                _ema9_val = round(_e9[-1], 2)
+        if len(closes) >= 21:
+            _e21 = _ema(closes, 21)
+            if _e21:
+                _ema21_val = round(_e21[-1], 2)
+
+        # ── A-2: Keltner Channel (EMA20 ± 2×ATR) ─────────────────────────
+        _keltner_upper: Optional[float] = None
+        _keltner_lower: Optional[float] = None
+        if len(closes) >= 20 and atr_val:
+            _e20 = _ema(closes, 20)
+            if _e20:
+                _ema20_k = _e20[-1]
+                _keltner_upper = round(_ema20_k + 2.0 * atr_val, 2)
+                _keltner_lower = round(_ema20_k - 2.0 * atr_val, 2)
+
+        # ── A-3: Donchian Channel 20일 ────────────────────────────────────
+        _donchian_20_upper: Optional[float] = None
+        _donchian_20_lower: Optional[float] = None
+        if len(highs) >= 20 and len(lows) >= 20:
+            _donchian_20_upper = round(float(max(highs[-20:])), 2)
+            _donchian_20_lower = round(float(min(lows[-20:])),  2)
+
+        # ── A-4/5: HV30 + 기대이동폭 (5d / 15d) ─────────────────────────
+        _hv30:      Optional[float] = None
+        _hv_move_5d:  Optional[float] = None
+        _hv_move_15d: Optional[float] = None
+        if len(closes) >= 31:
+            import math as _math
+            _log_rets = [_math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes))]
+            _hv30_raw = _math.sqrt(252) * float(np.std(_log_rets[-30:])) * 100
+            _hv30 = round(_hv30_raw, 2)
+            if price and _hv30 > 0:
+                _daily_sigma = price * (_hv30 / 100) / _math.sqrt(252)
+                _hv_move_5d  = round(_daily_sigma * _math.sqrt(5),  2)
+                _hv_move_15d = round(_daily_sigma * _math.sqrt(15), 2)
+
+        # ── A-6: Monthly Pivot (전월 OHLC) ───────────────────────────────
+        _monthly_pivot:    Optional[float] = None
+        _monthly_pivot_r1: Optional[float] = None
+        _monthly_pivot_r2: Optional[float] = None
+        _monthly_pivot_s1: Optional[float] = None
+        _monthly_pivot_s2: Optional[float] = None
+        try:
+            import datetime as _dt
+            _today = _dt.date.today()
+            # 전월의 마지막 거래일 데이터 → yfinance monthly 1봉
+            _mh = t.history(period="3mo", interval="1mo", auto_adjust=True)
+            if _mh is not None and len(_mh) >= 2:
+                _pm = _mh.iloc[-2]  # 완성된 전월봉
+                _mH = float(_pm["High"])
+                _mL = float(_pm["Low"])
+                _mC = float(_pm["Close"])
+                _mP = round((_mH + _mL + _mC) / 3, 2)
+                _monthly_pivot    = _mP
+                _monthly_pivot_r1 = round(2 * _mP - _mL, 2)
+                _monthly_pivot_r2 = round(_mP + (_mH - _mL), 2)
+                _monthly_pivot_s1 = round(2 * _mP - _mH, 2)
+                _monthly_pivot_s2 = round(_mP - (_mH - _mL), 2)
+        except Exception:
+            pass
+
+        # ──⑦ 앵커 VWAP (스윙 저점 기준) ─────────────────────────────────
+        _vwap_anchored: Optional[float] = None
+        if _swing_low_30d is not None:
+            try:
+                _hist_df = t.history(period="30d", auto_adjust=True)
+                if not _hist_df.empty:
+                    _vwap_anchored = _calc_anchored_vwap(_hist_df, _swing_low_30d)
+            except Exception:
+                pass
+
+        # ──⑩ 캔들 패턴 감지 (최근 OHLC 3봉) ────────────────────────────
+        _candle_pattern: str = "none"
+        try:
+            _recent_bars = hist.tail(3)
+            _ohlc_list = [
+                {"open": row["Open"], "high": row["High"],
+                 "low": row["Low"],   "close": row["Close"]}
+                for _, row in _recent_bars.iterrows()
+            ]
+            _candle_pattern = _detect_candle_pattern(_ohlc_list)
+        except Exception:
+            pass
 
         # ── 52주 위치 ──
         w52_high = _f(info.get("fiftyTwoWeekHigh"))
@@ -429,11 +860,11 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
 
     except Exception as exc:
         log.warning("yfinance fetch 실패 %s: %s", ticker, exc)
-        return FinvizDetail(ticker=ticker)
+        return StockDetail(ticker=ticker)
     finally:
         time.sleep(sleep_sec)
 
-    return FinvizDetail(
+    return StockDetail(
         ticker=ticker,
         price=price,
         change_pct=change_pct,
@@ -487,6 +918,31 @@ def fetch_finviz_detail(ticker: str, sleep_sec: float = 0.5) -> FinvizDetail:
         pivot_s3=piv_s3,
         # ── 주봉 지표 (weekly SMA5 + pivot) ──
         **_calc_weekly_indicators(ticker),
+        # ── 4H/1H 장중 지표 ──
+        **_calc_intraday_indicators(ticker),
+        # ── 가격선 계산 (①②⑦⑩⑯ + A-1~A-6) ──
+        swing_high_30d=_swing_high_30d,
+        swing_low_30d=_swing_low_30d,
+        **_fib_fields,
+        **_cam_fields,
+        prev_day_high=_prev_day_high,
+        prev_day_low=_prev_day_low,
+        ema9=_ema9_val,
+        ema21=_ema21_val,
+        keltner_upper=_keltner_upper,
+        keltner_lower=_keltner_lower,
+        donchian_20_upper=_donchian_20_upper,
+        donchian_20_lower=_donchian_20_lower,
+        hv30=_hv30,
+        hv_move_5d=_hv_move_5d,
+        hv_move_15d=_hv_move_15d,
+        monthly_pivot=_monthly_pivot,
+        monthly_pivot_r1=_monthly_pivot_r1,
+        monthly_pivot_r2=_monthly_pivot_r2,
+        monthly_pivot_s1=_monthly_pivot_s1,
+        monthly_pivot_s2=_monthly_pivot_s2,
+        vwap_anchored=_vwap_anchored,
+        candle_signal=_candle_pattern,
         # ── 애널리스트 의견 ──
         analyst_buy=analyst_buy,
         analyst_hold=analyst_hold,
@@ -507,17 +963,17 @@ async def fetch_stock_data_bulk(
     tickers: list[str],
     sleep_sec: float = 0.5,
     max_concurrency: int = 5,
-) -> dict[str, FinvizDetail]:
+) -> dict[str, StockDetail]:
     """
     여러 티커를 asyncio.to_thread 로 병렬 처리.
     max_concurrency: 동시 실행 스레드 수 (Yahoo Finance 차단 방지)
     """
     sem = asyncio.Semaphore(max_concurrency)
-    results: dict[str, FinvizDetail] = {}
+    results: dict[str, StockDetail] = {}
 
     async def _one(ticker: str) -> None:
         async with sem:
-            detail = await asyncio.to_thread(fetch_finviz_detail, ticker, sleep_sec)
+            detail = await asyncio.to_thread(fetch_stock_detail, ticker, sleep_sec)
             results[ticker] = detail
             ok = "✓" if detail.price is not None else "△"
             log.info("%s %s  price=%s  rsi=%s  rev_growth=%s",
@@ -1057,12 +1513,19 @@ def fetch_earnings_calendar(ticker: str, days_ahead: int = 14) -> list:
                 continue
             timing = e.get("hour", "")
             timing_str = " (AMC)" if timing == "amc" else " (BMO)" if timing == "bmo" else ""
+            # EPS / 매출 예상치 파싱
+            _eps_est = e.get("epsEstimate")
+            _rev_est = e.get("revenueEstimate")
+            _eps_f   = round(float(_eps_est), 2) if _eps_est is not None else None
+            _rev_b   = round(float(_rev_est) / 1e9, 2) if _rev_est is not None else None
             events.append(_SE(
                 date=_dt.fromisoformat(d_str),
                 type="실적",
                 name=f"{ticker} 실적 발표{timing_str}",
                 importance="HIGH",
                 days_until=days_until,
+                eps_estimate=_eps_f,
+                revenue_estimate_b=_rev_b,
             ))
         log.debug("fetch_earnings_calendar: %s → %d events", ticker, len(events))
         return events
@@ -1178,3 +1641,78 @@ def _calc_max_pain(chain: list[dict]) -> Optional[float]:
     log.debug("_calc_max_pain: max_pain=%.2f  min_total_pain=%.0f",
               max_pain_strike or 0, min_pain)
     return max_pain_strike
+
+
+def _calc_gex_levels(
+    chain: list[dict], spot: float
+) -> dict[str, Optional[float]]:
+    """B: 옵션 체인에서 GEX 기반 가격선 계산.
+
+    Returns:
+        call_wall  : 콜 OI 최대 strike (단기 상단 저항 자석)
+        put_wall   : 풋 OI 최대 strike (단기 하단 지지 자석)
+        gex_flip   : Net GEX 부호 전환 strike (딜러 헤지 방향 전환 레벨)
+                     None이면 해당 만기 내 전환 없음
+    """
+    import math as _math
+
+    result: dict[str, Optional[float]] = {
+        "call_wall": None, "put_wall": None, "gex_flip": None
+    }
+    if not chain or spot <= 0:
+        return result
+
+    calls = [e for e in chain if e.get("option_type") == "call"]
+    puts  = [e for e in chain if e.get("option_type") == "put"]
+
+    # Call Wall / Put Wall — OI 최대 strike
+    if calls:
+        result["call_wall"] = float(max(calls, key=lambda e: int(e.get("oi", 0) or 0))["strike"])
+    if puts:
+        result["put_wall"]  = float(max(puts,  key=lambda e: int(e.get("oi", 0) or 0))["strike"])
+
+    # GEX per strike — gamma * OI * 100 * spot²
+    # gamma = N'(d1) / (spot * iv * sqrt(T))
+    def _gamma_bs(strike: float, iv_pct: float, dte: int) -> float:
+        if iv_pct <= 0 or dte <= 0:
+            return 0.0
+        try:
+            T  = dte / 365.0
+            iv = iv_pct / 100.0
+            d1 = (_math.log(spot / strike) + 0.5 * iv ** 2 * T) / (iv * _math.sqrt(T))
+            nd1 = _math.exp(-0.5 * d1 * d1) / _math.sqrt(2 * _math.pi)
+            return nd1 / (spot * iv * _math.sqrt(T))
+        except (ValueError, ZeroDivisionError):
+            return 0.0
+
+    # strike별 net GEX = (call_gamma - put_gamma) * OI * 100 * spot²
+    strike_gex: dict[float, float] = {}
+    for e in chain:
+        s    = float(e.get("strike", 0) or 0)
+        oi   = int(e.get("oi", 0) or 0)
+        iv   = float(e.get("iv", 0) or 0)
+        dte  = int(e.get("dte", 0) or 0)
+        if s <= 0 or oi == 0:
+            continue
+        g = _gamma_bs(s, iv, dte) * oi * 100 * spot ** 2
+        if e.get("option_type") == "call":
+            strike_gex[s] = strike_gex.get(s, 0.0) + g
+        else:
+            strike_gex[s] = strike_gex.get(s, 0.0) - g
+
+    # GEX Flip: strikes 정렬 후 누적 net GEX 부호 전환 지점
+    if len(strike_gex) >= 2:
+        sorted_strikes = sorted(strike_gex.keys())
+        cumulative = 0.0
+        prev_sign: Optional[int] = None
+        for s in sorted_strikes:
+            cumulative += strike_gex[s]
+            cur_sign = 1 if cumulative >= 0 else -1
+            if prev_sign is not None and cur_sign != prev_sign:
+                result["gex_flip"] = s
+                break
+            prev_sign = cur_sign
+
+    log.debug("_calc_gex_levels: call_wall=%.2f  put_wall=%.2f  gex_flip=%s",
+              result["call_wall"] or 0, result["put_wall"] or 0, result["gex_flip"])
+    return result

@@ -220,7 +220,7 @@ async def _run_kavout_screen(args: dict[str, Any]) -> list[types.TextContent]:
     log.info("kavout_universe_loaded", count=len(kavout_tickers))
 
     from core.api_fetcher import fetch_stock_data_bulk
-    from shared.schemas import FinvizDetail
+    from shared.schemas import StockDetail
     ticker_list = sorted(kavout_tickers)[:60]  # API 과부하 방지 상위 60개
     try:
         finviz_details = await fetch_stock_data_bulk(
@@ -231,10 +231,10 @@ async def _run_kavout_screen(args: dict[str, Any]) -> list[types.TextContent]:
         log.warning("step1_yfinance_failed", error=str(exc))
         finviz_details = {}
 
-    # yfinance에서 누락된 티커 → kavout CSV price로 최소 FinvizDetail 생성
+    # yfinance에서 누락된 티커 → kavout CSV price로 최소 StockDetail 생성
     for row in kavout_rows:
         if row.ticker not in finviz_details:
-            finviz_details[row.ticker] = FinvizDetail(
+            finviz_details[row.ticker] = StockDetail(
                 ticker=row.ticker,
                 price=row.price,
             )

@@ -327,6 +327,17 @@ Devil's Advocate 차감:
 - 피벗: ${{ pivot }} | R1 ${{ pivot_r1 }} / R2 ${{ pivot_r2 }} | S1 ${{ pivot_s1 }} / S2 ${{ pivot_s2 }}
 - 52주 고점 대비: {{ w52_high_pct }}%  |  저점 대비: {{ w52_low_pct }}%
 
+## 고급 가격 레벨 (피보나치 / Camarilla / SAR / EMA / Keltner / HV / Monthly Pivot / GEX)
+- 피보나치 50%: ${{ fib_50 }}  |  61.8%: ${{ fib_61_8 }}
+- 피보나치 확장 100%: ${{ fib_ext_100 }}  |  161.8%: ${{ fib_ext_162 }}
+- Camarilla H3/H4: ${{ cam_h3 }} / ${{ cam_h4 }}  |  L3/L4: ${{ cam_l3 }} / ${{ cam_l4 }}
+- Parabolic SAR: ${{ psar }}  (방향: {{ sar_dir }})  (⚠️ sar_dir=down이면 하락추세 SAR)
+- EMA 9: ${{ ema9 }}  |  EMA 21: ${{ ema21 }}
+- Keltner 상단: ${{ keltner_upper }}  |  하단: ${{ keltner_lower }}
+- HV(30일): {{ hv30 }}%  |  HV 5일 기대이동폭: ${{ hv_move_5d }}  |  15일: ${{ hv_move_15d }}
+- Monthly Pivot: ${{ monthly_pivot }}  |  R1 ${{ monthly_pivot_r1 }} / R2 ${{ monthly_pivot_r2 }}  |  S1 ${{ monthly_pivot_s1 }} / S2 ${{ monthly_pivot_s2 }}
+- Call Wall (OI 자석): ${{ call_wall }}  |  Put Wall: ${{ put_wall }}  |  GEX Flip: ${{ gex_flip }}
+
 ## 기술 점수 요약
 - MA 정배열: {{ ma_alignment }}
 - ADX 점수: {{ adx_score }}/25  |  RSI 점수: {{ rsi_score }}/25
@@ -345,9 +356,9 @@ Devil's Advocate 차감:
 1. **추세 분석**: SMA 배열, 현재가 위치(SMA20 위/아래 포함), 상승/하락 추세의 구조적 근거를 3~5문장으로 서술. 단기(SMA5/20)와 중기(SMA50/200) 이격 수준, 정배열/역배열 의미 포함. 현재가가 SMA20 아래이면 이를 명시할 것.
 2. **모멘텀 분석**: RSI 현재 수준(과매수/중립/과매도 구간 해석), MACD 선과 시그널 관계, 히스토그램 방향을 3~5문장으로 서술. 모멘텀의 강화/약화 추세 판단 포함.
 3. **추세 강도 및 방향성 (ADX/DI)**: ADX 수준(25 미만/이상 기준), **DI+와 DI- 수치를 반드시 인용하며** 추세 방향을 판정. DI->DI+이면 "강한 하락추세"로 명시. ATR 기반 일간 변동폭 포함.
-4. **지지/저항 레벨**: 피벗 포인트(S1/S2/R1/R2)와 볼린저밴드 상/하단의 구체적 가격($XXX)을 언급하며 3~5문장으로 서술. 현재가와의 거리, 중요도 순위 포함.
-5. **진입 타이밍 근거**: 지금 {{ direction }} 진입이 유리/불리한 이유를 기술적 근거로 3~4문장 서술. regime_status가 unfavorable이면 진입 근거가 약함을 반드시 포함.
-6. **리스크 시나리오**: 기술적으로 이 설정이 무너지는 조건(어떤 가격 하향 돌파 시 추세 전환인지)을 3~4문장으로 서술. 단기(1~5일) 리스크와 스윙(5~15일) 리스크 구분.
+4. **지지/저항 레벨**: 피벗(S1/S2/R1/R2), 볼린저밴드, **피보나치 50%(${{ fib_50 }})/61.8%(${{ fib_61_8 }})**, **Camarilla L3(${{ cam_l3 }})/L4(${{ cam_l4 }})**, **EMA 9(${{ ema9 }})/21(${{ ema21 }})**, **Keltner(${{ keltner_lower }}~${{ keltner_upper }})**, **Monthly Pivot S1(${{ monthly_pivot_s1 }})/R1(${{ monthly_pivot_r1 }})**, **Call Wall(${{ call_wall }})/Put Wall(${{ put_wall }})** 등 구체적 가격($XXX)을 언급하며 3~5문장으로 서술. 현재가와의 거리, 중요도 순위 포함. "N/A"인 레벨은 제외.
+5. **진입 타이밍 근거**: 지금 {{ direction }} 진입이 유리/불리한 이유를 기술적 근거로 3~4문장 서술. regime_status가 unfavorable이면 진입 근거가 약함을 반드시 포함. EMA 9/21이 유효하면 현재가와의 위치 관계를 언급.
+6. **리스크 시나리오**: 기술적으로 이 설정이 무너지는 조건을 3~4문장으로 서술. **Fib 61.8% ${{ fib_61_8 }} 하향 돌파**, **SAR ${{ psar }} 방향 전환(현재 {{ sar_dir }})**, **Keltner 하단 ${{ keltner_lower }} 이탈**, **GEX Flip ${{ gex_flip }} 돌파**가 유효한 레벨이면 무효화 조건으로 반드시 언급. HV 15일 기대이동폭(${{ hv_move_15d }})을 최대 손실 기준으로 활용. 단기(1~5일) 리스크와 스윙(5~15일) 리스크 구분.
 7. **종합 기술 판단**: 위 6개 섹션을 통합하여 {{ direction }} 진입의 기술적 타당성을 4~5문장으로 종합 평가. 레짐·DI·MA 위치를 종합해 진입 가부를 정직하게 결론 낼 것.
 
 ## 출력 형식 (JSON 엄수 — 마크다운 블록 금지)

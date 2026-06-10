@@ -1121,15 +1121,15 @@ class SellSteps:
             if _fvd_d:
                 if (not _insider_deducted
                         and _fvd_d.insider_trans_pct is not None
-                        and _fvd_d.insider_trans_pct < st.DA_BUY_FINVIZ_INSIDER_PCT):
-                    _da_deduction += abs(st.DA_BUY_FINVIZ_INSIDER_PENALTY)
+                        and _fvd_d.insider_trans_pct < st.DA_BUY_INSIDER_API_PCT):
+                    _da_deduction += abs(st.DA_BUY_INSIDER_API_PENALTY)
                     _da_reasons.append(
                         f"Finviz 내부자 거래 {_fvd_d.insider_trans_pct:.1f}% (대규모 내부자 매도)"
                     )
                 if (not _eps_deducted
                         and _fvd_d.eps_surprise_pct is not None
                         and _fvd_d.eps_surprise_pct < st.DA_BUY_EPS_MISS_PCT):
-                    _da_deduction += abs(st.DA_BUY_FINVIZ_EPS_PENALTY)
+                    _da_deduction += abs(st.DA_BUY_EPS_API_PENALTY)
                     _da_reasons.append(
                         f"Finviz EPS 서프라이즈 {_fvd_d.eps_surprise_pct:.1f}% (미스)"
                     )

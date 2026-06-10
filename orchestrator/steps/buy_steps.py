@@ -162,7 +162,7 @@ class BuySteps:
     async def step_1_data(self, ctx: PipelineContext) -> None:
         """
         
-        Finviz + Summary + 어닝 데이터 수집, Watchlist 통합 생성
+        API + Summary + 어닝 데이터 수집, Watchlist 통합 생성
         
 
         스펙: §9.1 Step 1
@@ -260,6 +260,33 @@ class BuySteps:
                 log.info("macro_realtime_refreshed", fields=len(macro_updates))
         except Exception as _exc:
             log.warning("macro_realtime_failed", error=str(_exc))
+
+        # ── SPY 4H 지표 fetch (방향 판정 정밀화) ──────────────────────────
+        # SPY 4H DI+/DI- + MACD Hist → analyze_market_regime() 단기 신호 강화
+        # 실패해도 기존 일봉 DI 기반 판정으로 graceful fallback
+        try:
+            from core.api_fetcher import _calc_intraday_indicators
+            _spy_4h = await asyncio.to_thread(_calc_intraday_indicators, "SPY")
+            _spy_4h_upd: dict = {}
+            if _spy_4h.get("di_plus_4h") is not None:
+                _spy_4h_upd["spy_di_plus_4h"]   = _spy_4h["di_plus_4h"]
+            if _spy_4h.get("di_minus_4h") is not None:
+                _spy_4h_upd["spy_di_minus_4h"]  = _spy_4h["di_minus_4h"]
+            if _spy_4h.get("macd_hist_4h") is not None:
+                _spy_4h_upd["spy_macd_hist_4h"] = _spy_4h["macd_hist_4h"]
+            if _spy_4h_upd:
+                ctx.summary_data.macro = ctx.summary_data.macro.model_copy(
+                    update=_spy_4h_upd
+                )
+                append_audit(ctx.execution_id, 2, "info",
+                             data={"spy_4h_realtime": "ok",
+                                   "fields": list(_spy_4h_upd.keys())})
+                log.info("spy_4h_refreshed",
+                         di_p=_spy_4h_upd.get("spy_di_plus_4h"),
+                         di_n=_spy_4h_upd.get("spy_di_minus_4h"),
+                         macd_h=_spy_4h_upd.get("spy_macd_hist_4h"))
+        except Exception as _spy4h_exc:
+            log.warning("spy_4h_fetch_failed", error=str(_spy4h_exc))
 
         ctx.regime = analyze_market_regime(ctx.summary_data)
 
@@ -422,7 +449,7 @@ class BuySteps:
             failed = len(ctx.filtered_tickers)
             append_audit(ctx.execution_id, 4, "degraded",
                          data={"yfinance_refresh_failed": str(exc), "tickers": failed})
-            # 실패해도 기존 finviz_detail 유지 → 파이프라인 계속 진행
+            # 실패해도 기존 stock_detail 유지 → 파이프라인 계속 진행
 
         # ── Finnhub 밸류에이션으로 yfinance 구식 값 보정 ────────────────
         # forward_pe, peg는 yfinance가 구식 데이터를 반환하는 경우가 있음
@@ -475,7 +502,7 @@ class BuySteps:
             log.warning("finnhub_insider_failed", error=str(_exc))
 
         # ── 실시간 데이터 → summary.technical 브릿지 ────────────────────────────
-        # yfinance/Finnhub으로 가져온 finviz_detail을 summary_data.technical에 반영.
+        # yfinance/Finnhub으로 가져온 stock_detail을 summary_data.technical에 반영.
         # calculate_technical_score()가 실시간 기술지표를 사용하게 됨.
         # 각 필드는 None이면 스킵 → 실패 시 자동으로 summary 값 유지 (폴백).
         if ctx.summary_data:
@@ -541,17 +568,48 @@ class BuySteps:
             log.info("technical_bridge_done", bridged=_bridge_count,
                      total=len(ctx.filtered_tickers))
 
-        direction = ctx.regime.allowed_direction
-        # both / none 모두 long_call 기본값으로 분석 계속
-        # → 기술 점수는 레짐과 독립적 (RSI/MACD/ADX는 시장 방향 무관)
-        # → none이면 관망 권고지만 종목 기술 상태 기록은 반드시 필요
-        if direction in ("both", "none"):
-            direction = "long_call"
+        macro_direction = ctx.regime.allowed_direction
+        # "both"(혼조) / "none"(방향 불명확) → long_call 기본값으로 점수 계산
+        # "long_put" → 그대로 유지 (확인된 하락 추세 시 analyze_market_regime이 반환)
+        if macro_direction in ("both", "none"):
+            macro_direction = "long_call"
+
+        # ── 개별 종목 주봉 방향 오버라이드 (Category B) ─────────────────
+        # Weekly DI+ >> DI- AND Weekly ADX ≥ 30 → 매크로 방향과 무관하게 long_call
+        # Weekly DI- >> DI+ AND Weekly ADX ≥ 30 → 매크로 방향과 무관하게 long_put
+        # 이를 통해 "매크로 하락 + 개별 종목 장기 강세" 같은 케이스를 정확히 처리
+        def _stock_direction(ticker: str) -> str:
+            fv = ctx.stock_data.get(ticker)
+            if not fv:
+                return macro_direction
+            wdip = getattr(fv, "weekly_di_plus",  None)
+            wdin = getattr(fv, "weekly_di_minus", None)
+            wadx = getattr(fv, "weekly_adx",      None)
+            if wdip is None or wdin is None or wadx is None:
+                return macro_direction
+            if wadx < st.STOCK_DIR_WEEKLY_ADX_MIN:
+                return macro_direction   # 주봉 추세 약함 → 매크로 따름
+            if wdip > wdin * st.STOCK_DIR_WEEKLY_DI_RATIO:
+                # 주봉 강한 상승 추세 → long_call (매크로가 long_put이어도)
+                if macro_direction == "long_put":
+                    log.info("stock_dir_override_call", ticker=ticker,
+                             weekly_di_plus=round(wdip, 1), weekly_di_minus=round(wdin, 1),
+                             weekly_adx=round(wadx, 1), macro=macro_direction)
+                return "long_call"
+            if wdin > wdip * st.STOCK_DIR_WEEKLY_DI_RATIO:
+                # 주봉 강한 하락 추세 → long_put (매크로가 long_call이어도)
+                if macro_direction == "long_call":
+                    log.info("stock_dir_override_put", ticker=ticker,
+                             weekly_di_plus=round(wdip, 1), weekly_di_minus=round(wdin, 1),
+                             weekly_adx=round(wadx, 1), macro=macro_direction)
+                return "long_put"
+            return macro_direction
 
         async def analyze_one(ticker: str) -> tuple[str, TechnicalScore]:
+            stock_dir = _stock_direction(ticker)
             score = calculate_technical_score(
                 ticker=ticker,
-                direction=direction,
+                direction=stock_dir,
                 summary=ctx.summary_data,
             )
             return ticker, score
@@ -644,10 +702,11 @@ class BuySteps:
         log.info("step_5_start", tickers=len(ctx.filtered_tickers))
         start = time.monotonic()
 
-        direction = ctx.regime.allowed_direction if ctx.regime else "long_call"
-        # "none" / "both" → LLM 프롬프트에 명확한 방향 전달 (오작동 방지)
-        if direction in ("none", "both"):
-            direction = "long_call"
+        _macro_dir_s5 = ctx.regime.allowed_direction if ctx.regime else "long_call"
+        if _macro_dir_s5 in ("none", "both"):
+            _macro_dir_s5 = "long_call"
+        # Step 5: 방향은 종목별 technical_score.direction 우선 (stock override 반영)
+        # → per-ticker 루프에서 오버라이드
 
         # ── RSS 피드 로드 (설정 파일) ───────────────────────────
         market_rss_news: list[dict] = []
@@ -673,6 +732,9 @@ class BuySteps:
 
         # ── 종목별 처리 ─────────────────────────────────────────
         for ticker in ctx.filtered_tickers:
+            # 종목별 방향: stock_override가 있으면 우선 (Category B)
+            _ts_dir = ctx.technical_scores.get(ticker)
+            direction = (_ts_dir.direction if _ts_dir and _ts_dir.direction else _macro_dir_s5)
             ticker_news: list[dict] = []
 
             # ① 종목별 RSS 수집 (rss_feeds.json 설정값 우선, 없으면 Yahoo Finance 자동 생성)
@@ -837,69 +899,6 @@ class BuySteps:
                 append_audit(ctx.execution_id, 5, "degraded",
                              ticker=ticker, error=f"E300: LLM 실패: {exc}")
 
-            # ⑦ 기술 분석 내러티브 LLM 생성 (buy_step3b_technical_narrative)
-            try:
-                td = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
-                ts = ctx.technical_scores.get(ticker)
-                fv = td.technical if td else None
-                if fv and ts:
-                    conf_pct = round(ts.signal_count / 8 * 100)
-                    # fv는 TickerTechnical(summary) 또는 FinvizDetail 둘 다 올 수 있으므로
-                    # 두 클래스의 필드명을 모두 시도하는 getattr 방식 사용
-                    def _g(obj, *keys, default="N/A"):
-                        for k in keys:
-                            v = getattr(obj, k, None)
-                            if v is not None and v != 0.0:
-                                return v
-                        return default
-                    tech_vars = {
-                        "ticker": ticker,
-                        "direction": direction,
-                        "price":       _g(fv, 'price', default=0),
-                        "rsi":         _g(fv, 'rsi14'),
-                        "adx":         _g(fv, 'adx14', 'adx'),          # TT=adx14, FD=adx
-                        "rvol":        _g(fv, 'avg_volume_ratio', 'rel_volume'),  # TT=avg_volume_ratio, FD=rel_volume
-                        "sma5_val":    _g(fv, 'ma5', 'sma5_val'),       # TT=ma5, FD=sma5_val
-                        "sma20_val":   _g(fv, 'ma20', 'sma20_val'),
-                        "sma50_val":   _g(fv, 'ma50', 'sma50_val'),
-                        "sma200_val":  _g(fv, 'ma200', 'sma200_val'),
-                        "bb_upper":    _g(fv, 'bb_upper'),
-                        "bb_mid":      _g(fv, 'bb_mid'),
-                        "bb_lower":    _g(fv, 'bb_lower'),
-                        "macd_line":   _g(fv, 'macd_line'),
-                        "macd_signal": _g(fv, 'macd_signal'),
-                        "macd_hist":   _g(fv, 'macd_histogram', 'macd_hist'),  # TT=macd_histogram, FD=macd_hist
-                        "atr":         _g(fv, 'atr'),
-                        "di_plus":     _g(fv, 'di_plus'),
-                        "di_minus":    _g(fv, 'di_minus'),
-                        "pivot":       _g(fv, 'pivot'),
-                        "pivot_r1":    _g(fv, 'resistance1', 'pivot_r1'),  # TT=resistance1, FD=pivot_r1
-                        "pivot_r2":    _g(fv, 'resistance2', 'pivot_r2'),
-                        "pivot_s1":    _g(fv, 'support1', 'pivot_s1'),    # TT=support1, FD=pivot_s1
-                        "pivot_s2":    _g(fv, 'support2', 'pivot_s2'),
-                        "w52_high_pct": _g(fv, 'w52_high_pct'),
-                        "w52_low_pct":  _g(fv, 'w52_low_pct'),
-                        "ma_alignment":    ts.ma_alignment,
-                        "adx_score":       ts.adx_score,
-                        "rsi_score":       ts.rsi_score,
-                        "macd_score":      ts.macd_score,
-                        "rvol_score":      ts.rvol_score,
-                        "signal_count":    ts.signal_count,
-                        "confidence_pct":  conf_pct,
-                        # 레짐 상태 — 내러티브가 강세/약세 편향을 맹목적으로 따르지 않도록
-                        "regime_status":   ctx.regime.regime_status if ctx.regime else "unknown",
-                    }
-                    nar_key = f"{ticker}_{date.today()}_tech_narrative"
-                    nar_result = await analyze_with_llm(
-                        template_name="buy_step3b_technical_narrative",
-                        template_vars=tech_vars,
-                        cache_key=nar_key,
-                        force_refresh=True,
-                    )
-                    ctx.sentiment_results[ticker]["technical_narrative"] = nar_result
-            except Exception as exc:
-                log.debug("tech_narrative_skip", ticker=ticker, error=str(exc))
-
             await asyncio.sleep(0.5)  # Rate limit 방지
 
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -924,11 +923,12 @@ class BuySteps:
         start = time.monotonic()
 
         today = date.today()
-        direction = ctx.regime.allowed_direction if ctx.regime else "long_call"
-        # "none"이면 is_long=False(롱풋 기준)로 오작동 → long_call 기본값
-        if direction in ("both", "none"):
-            direction = "long_call"
-        is_long = direction == "long_call"
+        _macro_dir_s6 = ctx.regime.allowed_direction if ctx.regime else "long_call"
+        if _macro_dir_s6 in ("both", "none"):
+            _macro_dir_s6 = "long_call"
+        # Step 6: is_long은 종목별 direction 기준 (step 7 루프 내에서 결정)
+        # 여기서는 DA 기본 설정에만 사용
+        is_long = (_macro_dir_s6 == "long_call")
 
         # 5일 내 실적 발표 종목 집합
         earnings_near: set[str] = set()
@@ -943,6 +943,8 @@ class BuySteps:
             score = ctx.technical_scores.get(ticker)
             if not score:
                 continue
+            # per-ticker direction (stock override 반영)
+            is_long = (score.direction == "long_call")
 
             deduction = 0.0
             reasons: list[str] = []
@@ -975,7 +977,7 @@ class BuySteps:
                 reasons.append(f"Thesis 반박 — LLM 판결: {verdict} / 전체 감성: {overall}")
 
             # ── 내부자 순매도 차감 (-10점) ─────────────────────────────
-            # 소스 우선순위: summary INSIDER 섹션 (달러 금액) → Finviz insider_trans_pct
+            # 소스 우선순위: summary INSIDER 섹션 (달러 금액) → API insider_trans_pct
             # 두 소스가 모두 해당돼도 최대 -10pt (동일 사건 이중 차감 방지)
             ticker_sd = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
             insider_deducted = False
@@ -1016,24 +1018,24 @@ class BuySteps:
                             f"(분기: {latest_q.get('quarter', '?')})"
                         )
 
-            # ── Finviz 내부자 거래 / EPS 서프라이즈 차감 (보완 소스) ────
-            # summary에서 이미 차감한 경우에는 Finviz 소스로 중복 차감하지 않음
+            # ── API 내부자 거래 / EPS 서프라이즈 차감 (보완 소스) ────
+            # summary에서 이미 차감한 경우에는 API 소스로 중복 차감하지 않음
             fvd = ctx.stock_data.get(ticker)
             if fvd:
                 if (not insider_deducted
                         and fvd.insider_trans_pct is not None
-                        and fvd.insider_trans_pct < st.DA_BUY_FINVIZ_INSIDER_PCT):
-                    deduction += abs(st.DA_BUY_FINVIZ_INSIDER_PENALTY)
+                        and fvd.insider_trans_pct < st.DA_BUY_INSIDER_API_PCT):
+                    deduction += abs(st.DA_BUY_INSIDER_API_PENALTY)
                     reasons.append(
-                        f"Finviz 내부자 거래 {fvd.insider_trans_pct:.1f}% "
+                        f"내부자 거래 {fvd.insider_trans_pct:.1f}% "
                         f"(대규모 내부자 매도)"
                     )
                 if (not eps_deducted
                         and fvd.eps_surprise_pct is not None
                         and fvd.eps_surprise_pct < st.DA_BUY_EPS_MISS_PCT):
-                    deduction += abs(st.DA_BUY_FINVIZ_EPS_PENALTY)
+                    deduction += abs(st.DA_BUY_EPS_API_PENALTY)
                     reasons.append(
-                        f"Finviz EPS 서프라이즈 {fvd.eps_surprise_pct:.1f}% (미스)"
+                        f"EPS 서프라이즈 {fvd.eps_surprise_pct:.1f}% (미스)"
                     )
 
             # ── 점수 조정 적용 ──────────────────────────────
@@ -1155,7 +1157,7 @@ class BuySteps:
         # Step 8 시나리오 계산(atm_straddle_price)에 실시간 값이 반영됨.
         if ctx.summary_data:
             try:
-                from core.api_fetcher import _calc_atm_straddle, _calc_max_pain
+                from core.api_fetcher import _calc_atm_straddle, _calc_max_pain, _calc_gex_levels
                 _analytics_updated = 0
                 for _tk in ctx.filtered_tickers:
                     _opt = ctx.summary_data.options.get(_tk)
@@ -1184,6 +1186,7 @@ class BuySteps:
                         if _spot > 0 and _strad > 0 else _opt.implied_move_near
                     )
                     _mpain = _calc_max_pain(_chain)
+                    _gex   = _calc_gex_levels(_chain, _spot) if _spot > 0 else {}
 
                     ctx.summary_data.options[_tk] = _opt.model_copy(update={
                         "total_call_oi":      _c_oi,
@@ -1192,10 +1195,15 @@ class BuySteps:
                         "implied_move_near":  _impl,
                         "max_pain_near":      float(_mpain) if _mpain else _opt.max_pain_near,
                         "atm_straddle_price": _strad if _strad > 0 else _opt.atm_straddle_price,
+                        "call_wall":          _gex.get("call_wall"),
+                        "put_wall":           _gex.get("put_wall"),
+                        "gex_flip":           _gex.get("gex_flip"),
                     })
                     _analytics_updated += 1
                     log.debug("option_analytics_refreshed", ticker=_tk,
-                              pc_ratio=_pc, implied_move=_impl, max_pain=_mpain)
+                              pc_ratio=_pc, implied_move=_impl, max_pain=_mpain,
+                              call_wall=_gex.get("call_wall"), put_wall=_gex.get("put_wall"),
+                              gex_flip=_gex.get("gex_flip"))
 
                 append_audit(ctx.execution_id, 7, "info",
                              data={"option_analytics_refresh": "ok",
@@ -1418,7 +1426,10 @@ class BuySteps:
             opt_data = ctx.summary_data.options.get(ticker) if ctx.summary_data else None
             ticker_data = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
             spot = ticker_data.technical.price if ticker_data else 0.0
-            direction = ctx.regime.allowed_direction if ctx.regime else "long_call"
+            # per-ticker direction (stock override 반영)
+            _ts_s7 = ctx.technical_scores.get(ticker)
+            direction = (_ts_s7.direction if _ts_s7 and _ts_s7.direction
+                         else (ctx.regime.allowed_direction if ctx.regime else "long_call"))
             if direction in ("both", "none"):
                 direction = "long_call"
             opt_type = "call" if "call" in direction else "put"
@@ -1613,7 +1624,10 @@ class BuySteps:
                 continue
             _hv_td = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
             _hv_spot = _hv_td.technical.price if _hv_td else 0.0
-            _hv_dir = ctx.regime.allowed_direction if ctx.regime else "long_call"
+            # per-ticker direction 사용 (stock override 반영)
+            _hv_ts = ctx.technical_scores.get(ticker)
+            _hv_dir = (_hv_ts.direction if _hv_ts and _hv_ts.direction
+                       else (ctx.regime.allowed_direction if ctx.regime else "long_call"))
             if _hv_dir in ("both", "none"):
                 _hv_dir = "long_call"
             _hv_opt = "call" if "call" in _hv_dir else "put"
@@ -1769,7 +1783,7 @@ class BuySteps:
             _ult_td = ctx.summary_data.tickers.get(_ult_tk) if ctx.summary_data else None
             _ult_spot = _ult_td.technical.price if _ult_td else 0.0
             _ult_fv = ctx.stock_data.get(_ult_tk)
-            # IV 추정: Finviz RSI 기반 (없으면 40%)
+            # IV 추정: API RSI 기반 (없으면 40%)
             _ult_iv = 0.40
             if _ult_fv and _ult_fv.rsi14:
                 _ult_iv = min(0.80, _ult_fv.rsi14 / 100.0 * 0.6 + 0.25)
@@ -1833,7 +1847,7 @@ class BuySteps:
                 # risk_params: summary에서 파싱한 값 우선, 없으면 cfg 기본값
                 rp = ctx.summary_data.risk_params if ctx.summary_data else None
 
-                # Finviz 애널리스트 목표주가 (long_call bull case 오버라이드용)
+                # API 애널리스트 목표주가 (long_call bull case 오버라이드용)
                 fvd = ctx.stock_data.get(ticker)
                 bull_tp = fvd.target_price if fvd and fvd.target_price else None
 
@@ -2272,16 +2286,16 @@ class BuySteps:
                     pos.entry_vix = entry_vix
 
         try:
-            # FinvizDetail 맵 구성: ctx.stock_data + TickerTechnical 기술지표 보강
-            from shared.schemas import FinvizDetail as _FD
+            # StockDetail 맵 구성: ctx.stock_data + TickerTechnical 기술지표 보강
+            from shared.schemas import StockDetail as _FD
 
-            def _merge_finviz(ticker: str) -> "_FD | None":
+            def _merge_stock_detail(ticker: str) -> "_FD | None":
                 base: "_FD | None" = ctx.stock_data.get(ticker)
                 tt = (ctx.summary_data.tickers.get(ticker).technical
                       if ctx.summary_data and ticker in ctx.summary_data.tickers else None)
                 if base is None and tt is None:
                     return None
-                # TickerTechnical 필드 → FinvizDetail 필드 매핑
+                # TickerTechnical 필드 → StockDetail 필드 매핑
                 updates: dict = {}
                 if tt:
                     if tt.price and not (base and base.price):
@@ -2321,8 +2335,8 @@ class BuySteps:
                 [r.ticker for r in ctx.final_rankings] +
                 [r.ticker for r in (ctx.final_rankings_aggressive or [])]
             )
-            finviz_map_raw = {t: _merge_finviz(t) for t in all_ranked_tickers}
-            finviz_map = {k: v for k, v in finviz_map_raw.items() if v is not None} or None
+            stock_detail_map_raw = {t: _merge_stock_detail(t) for t in all_ranked_tickers}
+            stock_detail_map = {k: v for k, v in stock_detail_map_raw.items() if v is not None} or None
 
             # ── options_analytics: Implied Move / Max Pain / P/C Ratio / OI 신호 ──
             # summary_data.options에서 추출 (Step 7에서 실시간 갱신 완료 상태)
@@ -2344,7 +2358,109 @@ class BuySteps:
                         "max_pain":         _oa_opt.max_pain_near or None,
                         "pc_ratio":         _oa_opt.pc_ratio or None,
                         "oi_change_signal": _oa_oi_fired,
+                        "call_wall":        _oa_opt.call_wall,
+                        "put_wall":         _oa_opt.put_wall,
+                        "gex_flip":         _oa_opt.gex_flip,
                     }
+
+            # ── tech_narrative LLM 생성 (GEX 포함 opt_analytics 완성 후 실행) ──
+            _nar_macro_dir = ctx.regime.allowed_direction if ctx.regime else "long_call"
+            if _nar_macro_dir in ("none", "both"):
+                _nar_macro_dir = "long_call"
+            for _nar_tk in all_ranked_tickers:
+                try:
+                    _nar_td = ctx.summary_data.tickers.get(_nar_tk) if ctx.summary_data else None
+                    _nar_ts = ctx.technical_scores.get(_nar_tk)
+                    _nar_fv = _nar_td.technical if _nar_td else None
+                    if not (_nar_fv and _nar_ts):
+                        continue
+                    _nar_dir = (_nar_ts.direction if _nar_ts and _nar_ts.direction else _nar_macro_dir)
+                    _nar_conf_pct = round(_nar_ts.signal_count / 8 * 100)
+                    _nar_fvd = stock_detail_map.get(_nar_tk) if stock_detail_map else None
+                    _nar_oa = _opt_analytics.get(_nar_tk, {})
+                    def _nar_g(obj, *keys, default="N/A"):
+                        for k in keys:
+                            v = getattr(obj, k, None)
+                            if v is not None and v != 0.0:
+                                return v
+                        return default
+                    def _nar_gd(key, default="N/A"):
+                        v = getattr(_nar_fvd, key, None) if _nar_fvd else None
+                        return v if v is not None else default
+                    tech_vars = {
+                        "ticker": _nar_tk,
+                        "direction": _nar_dir,
+                        "price":       _nar_g(_nar_fv, 'price', default=0),
+                        "rsi":         _nar_g(_nar_fv, 'rsi14'),
+                        "adx":         _nar_g(_nar_fv, 'adx14', 'adx'),
+                        "rvol":        _nar_g(_nar_fv, 'avg_volume_ratio', 'rel_volume'),
+                        "sma5_val":    _nar_g(_nar_fv, 'ma5', 'sma5_val'),
+                        "sma20_val":   _nar_g(_nar_fv, 'ma20', 'sma20_val'),
+                        "sma50_val":   _nar_g(_nar_fv, 'ma50', 'sma50_val'),
+                        "sma200_val":  _nar_g(_nar_fv, 'ma200', 'sma200_val'),
+                        "bb_upper":    _nar_g(_nar_fv, 'bb_upper'),
+                        "bb_mid":      _nar_g(_nar_fv, 'bb_mid'),
+                        "bb_lower":    _nar_g(_nar_fv, 'bb_lower'),
+                        "macd_line":   _nar_g(_nar_fv, 'macd_line'),
+                        "macd_signal": _nar_g(_nar_fv, 'macd_signal'),
+                        "macd_hist":   _nar_g(_nar_fv, 'macd_histogram', 'macd_hist'),
+                        "atr":         _nar_g(_nar_fv, 'atr'),
+                        "di_plus":     _nar_g(_nar_fv, 'di_plus'),
+                        "di_minus":    _nar_g(_nar_fv, 'di_minus'),
+                        "pivot":       _nar_g(_nar_fv, 'pivot'),
+                        "pivot_r1":    _nar_g(_nar_fv, 'resistance1', 'pivot_r1'),
+                        "pivot_r2":    _nar_g(_nar_fv, 'resistance2', 'pivot_r2'),
+                        "pivot_s1":    _nar_g(_nar_fv, 'support1', 'pivot_s1'),
+                        "pivot_s2":    _nar_g(_nar_fv, 'support2', 'pivot_s2'),
+                        "w52_high_pct": _nar_g(_nar_fv, 'w52_high_pct'),
+                        "w52_low_pct":  _nar_g(_nar_fv, 'w52_low_pct'),
+                        "ma_alignment":    _nar_ts.ma_alignment,
+                        "adx_score":       _nar_ts.adx_score,
+                        "rsi_score":       _nar_ts.rsi_score,
+                        "macd_score":      _nar_ts.macd_score,
+                        "rvol_score":      _nar_ts.rvol_score,
+                        "signal_count":    _nar_ts.signal_count,
+                        "confidence_pct":  _nar_conf_pct,
+                        "regime_status":   ctx.regime.regime_status if ctx.regime else "unknown",
+                        "fib_50":      _nar_gd("fib_50_0"),
+                        "fib_61_8":    _nar_gd("fib_61_8"),
+                        "fib_ext_100": _nar_gd("fib_ext_100"),
+                        "fib_ext_162": _nar_gd("fib_ext_162"),
+                        "cam_l3":      _nar_gd("cam_l3"),
+                        "cam_l4":      _nar_gd("cam_l4"),
+                        "cam_h3":      _nar_gd("cam_h3"),
+                        "cam_h4":      _nar_gd("cam_h4"),
+                        "psar":        _nar_gd("parabolic_sar"),
+                        "sar_dir":     _nar_gd("sar_direction"),
+                        "ema9":        _nar_gd("ema9"),
+                        "ema21":       _nar_gd("ema21"),
+                        "keltner_upper": _nar_gd("keltner_upper"),
+                        "keltner_lower": _nar_gd("keltner_lower"),
+                        "hv30":        _nar_gd("hv30"),
+                        "hv_move_5d":  _nar_gd("hv_move_5d"),
+                        "hv_move_15d": _nar_gd("hv_move_15d"),
+                        "monthly_pivot":    _nar_gd("monthly_pivot"),
+                        "monthly_pivot_r1": _nar_gd("monthly_pivot_r1"),
+                        "monthly_pivot_r2": _nar_gd("monthly_pivot_r2"),
+                        "monthly_pivot_s1": _nar_gd("monthly_pivot_s1"),
+                        "monthly_pivot_s2": _nar_gd("monthly_pivot_s2"),
+                        "call_wall": _nar_oa.get("call_wall") or "N/A",
+                        "put_wall":  _nar_oa.get("put_wall")  or "N/A",
+                        "gex_flip":  _nar_oa.get("gex_flip")  or "N/A",
+                    }
+                    _nar_key = f"{_nar_tk}_{date.today()}_tech_narrative"
+                    _nar_result = await analyze_with_llm(
+                        template_name="buy_step3b_technical_narrative",
+                        template_vars=tech_vars,
+                        cache_key=_nar_key,
+                        force_refresh=False,
+                    )
+                    if _nar_result:
+                        if _nar_tk not in ctx.sentiment_results:
+                            ctx.sentiment_results[_nar_tk] = {}
+                        ctx.sentiment_results[_nar_tk]["technical_narrative"] = _nar_result
+                except Exception as exc:
+                    log.debug("tech_narrative_skip", ticker=_nar_tk, error=str(exc))
 
             note_path = await self.obsidian.save_buy_note(
                 execution_id=ctx.execution_id,
@@ -2360,7 +2476,7 @@ class BuySteps:
                 sentiment_results=dict(ctx.sentiment_results) if ctx.sentiment_results is not None else None,
                 rankings_aggressive=ctx.final_rankings_aggressive or None,
                 high_downside_tickers=ctx.high_downside_tickers or None,
-                finviz_details=finviz_map or None,
+                finviz_details=stock_detail_map or None,
                 kavout_data=dict(ctx.kavout_data) if ctx.kavout_data else None,
                 portfolio_exposure=ctx.portfolio_exposure,
                 filter_details=dict(ctx.filter_details) if ctx.filter_details else None,

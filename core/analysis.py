@@ -48,14 +48,20 @@ cfg = get_config()
 
 def analyze_market_regime(summary: SummaryData) -> MarketRegime:
     """
-    SPY/QQQ/VIX/ADX 기반 시장 레짐 판정.
+    다중 신호 합산 기반 시장 레짐 및 방향 판정.
     모든 판정은 결정론적이며 LLM을 사용하지 않습니다.
 
-    Args:
-        summary: 파싱된 SummaryData
+    방향 결정 로직:
+      - 7개 신호의 가중 합산 스코어로 방향 결정 (단순 MA 비교 대신)
+      - score ≥ +3 → long_call / score ≤ -3 → long_put 후보
+      - long_put 후보는 VIX·ADX 추가 검증 후 확정
+
+    레짐 결정 로직:
+      - VIX > 30 또는 추세 없음(ADX < 18 + 혼조 MA) → unfavorable
+      - 나머지는 방향 스코어 강도에 따라 favorable/borderline
 
     Returns:
-        MarketRegime (favorable | borderline | unfavorable)
+        MarketRegime
     """
     macro = summary.macro
     vix = macro.vix
@@ -64,15 +70,32 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
     qqq = macro.qqq
     qqq_ma20 = macro.qqq_ma20
 
-    # ADX: SPY 종목 데이터에서 가져오기, 없으면 MA 구조로 대체
+    # ── SPY 기술 데이터 (ADX, DI+/DI-, 4H DI) ──────────────────────
     adx_value: float | None = None
+    spy_di_plus: float | None = None
+    spy_di_minus: float | None = None
+    spy_di_plus_4h: float | None = None   # 4H DI+ (단기 방향 가중치)
+    spy_di_minus_4h: float | None = None
     adx_source = "ma_proxy"
     spy_data = summary.tickers.get("SPY")
     if spy_data and spy_data.technical.adx14 > 0:
         adx_value = spy_data.technical.adx14
         adx_source = "direct"
+        _di_p = getattr(spy_data.technical, "di_plus",  0.0) or 0.0
+        _di_n = getattr(spy_data.technical, "di_minus", 0.0) or 0.0
+        if _di_p > 0 and _di_n > 0:
+            spy_di_plus  = _di_p
+            spy_di_minus = _di_n
+    # SPY의 4H DI: StockDetail이 있으면 가져오기 (summary.tickers["SPY"]는 TickerData)
+    # stock_data(StockDetail)는 여기서 접근 불가 → 방향 스코어에서는 일봉 DI만 사용
+    # (4H DI는 obsidian의 3-layer 신호에서만 활용)
 
-    # ── 추세 강도 판정 ─────────────────────────────────────
+    # ── A. 추세 강도 컴포넌트 ─────────────────────────────────────
+    # "추세 강도"는 방향이 아니라 추세의 존재 여부만 판단.
+    # SPY+QQQ 둘 다 MA 아래여도 하락 추세는 엄연히 존재 → fail 아님 (버그 수정)
+    spy_above = spy > spy_ma20
+    qqq_above = qqq > qqq_ma20
+
     if adx_value is not None:
         if adx_value >= st.REGIME_ADX_STRONG:
             trend_status = "pass"
@@ -82,31 +105,30 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
             trend_reason = f"ADX {adx_value:.1f} 경계선 ({st.REGIME_ADX_WEAK}~{st.REGIME_ADX_STRONG})"
         else:
             trend_status = "fail"
-            trend_reason = f"ADX {adx_value:.1f} < {st.REGIME_ADX_WEAK} (추세 없음)"
+            trend_reason = f"ADX {adx_value:.1f} < {st.REGIME_ADX_WEAK} (추세 없음 — 횡보)"
         trend_val: float | str = adx_value
     else:
-        # MA 구조로 대체
-        spy_above = spy > spy_ma20
-        qqq_above = qqq > qqq_ma20
-        if spy_above and qqq_above:
+        # ADX 없음 → MA 구조로 추세 존재 여부만 판단 (방향 판단 아님)
+        # 둘 다 위 OR 둘 다 아래 = 추세 존재(pass) / 혼조 = 추세 불명확(borderline)
+        if spy_above == qqq_above:   # 둘 다 같은 방향 → 추세 있음
             trend_status = "pass"
-            trend_reason = "ADX 미입력, MA 구조로 대체: SPY·QQQ 모두 20MA 위"
-        elif spy_above or qqq_above:
-            trend_status = "borderline"
-            trend_reason = "ADX 미입력, MA 구조로 대체: 혼조"
+            trend_reason = (
+                "MA 구조: SPY·QQQ 모두 20MA 위 (상승 추세)" if spy_above
+                else "MA 구조: SPY·QQQ 모두 20MA 아래 (하락 추세)"
+            )
         else:
-            trend_status = "fail"
-            trend_reason = "ADX 미입력, MA 구조로 대체: 20MA 아래"
+            trend_status = "borderline"
+            trend_reason = f"MA 구조 혼조: SPY {'위' if spy_above else '아래'}, QQQ {'위' if qqq_above else '아래'}"
         trend_val = "MA 구조 대체"
 
     trend_component = RegimeComponent(
         value=trend_val, status=trend_status, reason=trend_reason  # type: ignore
     )
 
-    # ── 변동성 판정 ────────────────────────────────────────
+    # ── B. 변동성 컴포넌트 ────────────────────────────────────────
     if vix <= st.REGIME_VIX_FAVORABLE:
         vol_status = "pass"
-        vol_reason = f"VIX {vix:.2f} ≤ {st.REGIME_VIX_FAVORABLE} (Long Call 유리)"
+        vol_reason = f"VIX {vix:.2f} ≤ {st.REGIME_VIX_FAVORABLE} (옵션 매수 유리)"
     elif vix <= st.REGIME_VIX_BORDERLINE:
         vol_status = "borderline"
         vol_reason = f"VIX {vix:.2f} {st.REGIME_VIX_FAVORABLE}~{st.REGIME_VIX_BORDERLINE} (개별 IVR 확인 필요)"
@@ -116,32 +138,146 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
 
     vol_component = RegimeComponent(value=vix, status=vol_status, reason=vol_reason)
 
-    # ── 지수 추세 판정 ─────────────────────────────────────
-    spy_above = spy > spy_ma20
-    qqq_above = qqq > qqq_ma20
+    # ── C. 다중 신호 방향 스코어 ──────────────────────────────────
+    # 각 신호는 상승 방향 + / 하락 방향 - 가중치
+    # 최대 ±5.5 (전 신호 일치 시)
+    dir_score: float = 0.0
+    dir_signals: list[str] = []
 
-    # 기울기: 간단히 현재가 vs MA 비율로 추정
-    spy_slope_up = spy > spy_ma20 * st.REGIME_MA20_STRONG_RATIO
-    qqq_slope_up = qqq > qqq_ma20 * st.REGIME_MA20_STRONG_RATIO
+    # 신호 1·2: SPY/QQQ vs SMA20 (각 ±1.0)
+    if spy_ma20 > 0:
+        if spy_above:
+            dir_score += 1.0
+            dir_signals.append(f"SPY > MA20 (+1)")
+        else:
+            dir_score -= 1.0
+            dir_signals.append(f"SPY < MA20 (-1)")
 
-    if spy_above and qqq_above and spy_slope_up and qqq_slope_up:
-        index_status = "pass"
+    if qqq_ma20 > 0:
+        if qqq_above:
+            dir_score += 1.0
+            dir_signals.append(f"QQQ > MA20 (+1)")
+        else:
+            dir_score -= 1.0
+            dir_signals.append(f"QQQ < MA20 (-1)")
+
+    # 신호 3: SPY 일봉 DI+/DI- (±1.0, 데이터 있을 때만)
+    if spy_di_plus is not None and spy_di_minus is not None:
+        if spy_di_plus > spy_di_minus * 1.05:
+            dir_score += 1.0
+            dir_signals.append(f"SPY DI+{spy_di_plus:.1f} > DI-{spy_di_minus:.1f} (+1)")
+        elif spy_di_minus > spy_di_plus * 1.05:
+            dir_score -= 1.0
+            dir_signals.append(f"SPY DI-{spy_di_minus:.1f} > DI+{spy_di_plus:.1f} (-1)")
+
+    # 신호 3-B: SPY 4H DI+/DI- (±0.5 — 단기 방향 보완, 일봉 DI보다 낮은 가중치)
+    # 일봉·4H 같은 방향 → 신호 강화 / 반대 방향 → 전환 감지
+    _spy_dip_4h = getattr(macro, "spy_di_plus_4h",  None)
+    _spy_din_4h = getattr(macro, "spy_di_minus_4h", None)
+    if _spy_dip_4h is not None and _spy_din_4h is not None:
+        if _spy_dip_4h > _spy_din_4h * 1.05:
+            dir_score += 0.5
+            dir_signals.append(f"SPY 4H DI+{_spy_dip_4h:.0f}>DI-{_spy_din_4h:.0f} (+0.5)")
+        elif _spy_din_4h > _spy_dip_4h * 1.05:
+            dir_score -= 0.5
+            dir_signals.append(f"SPY 4H DI-{_spy_din_4h:.0f}>DI+{_spy_dip_4h:.0f} (-0.5)")
+
+    # 신호 3-C: SPY 4H MACD 히스토그램 (±0.5 — 단기 모멘텀 전환 조기 감지)
+    _spy_mh_4h = getattr(macro, "spy_macd_hist_4h", None)
+    if _spy_mh_4h is not None:
+        if _spy_mh_4h > 0:
+            dir_score += 0.5
+            dir_signals.append(f"SPY 4H MACD Hist+{_spy_mh_4h:.2f} (+0.5)")
+        elif _spy_mh_4h < 0:
+            dir_score -= 0.5
+            dir_signals.append(f"SPY 4H MACD Hist{_spy_mh_4h:.2f} (-0.5)")
+
+    # 신호 4: VIX 추세 — VIX가 MA20 대비 상승 중이면 약세 신호 (±1.0)
+    if macro.vix_ma20 > 0:
+        if vix < macro.vix_ma20:
+            dir_score += 1.0
+            dir_signals.append(f"VIX 하락 추세 ({vix:.1f} < MA20 {macro.vix_ma20:.1f}) (+1)")
+        elif vix > macro.vix_ma20 * st.REGIME_VIX_UPTREND_RATIO:
+            dir_score -= 1.0
+            dir_signals.append(f"VIX 상승 추세 ({vix:.1f} > MA20×{st.REGIME_VIX_UPTREND_RATIO}) (-1)")
+
+    # 신호 5: Fear & Greed (±0.5)
+    if macro.fear_greed > 50:
+        dir_score += 0.5
+        dir_signals.append(f"F&G {macro.fear_greed} (낙관 +0.5)")
+    elif macro.fear_greed < st.REGIME_FEAR_GREED_EXTREME_FEAR:
+        dir_score -= 0.5
+        dir_signals.append(f"F&G {macro.fear_greed} (극공포 -0.5)")
+
+    # 신호 6: DXY 달러 강세 → 증시 압박 (±0.5)
+    if macro.dxy > 0 and macro.dxy_ma20 > 0:
+        if macro.dxy > macro.dxy_ma20 * st.REGIME_DXY_STRENGTH_RATIO:
+            dir_score -= 0.5
+            dir_signals.append(f"DXY 강세 ({macro.dxy:.1f} > MA20) (-0.5)")
+        elif macro.dxy < macro.dxy_ma20:
+            dir_score += 0.5
+            dir_signals.append(f"DXY 약세 ({macro.dxy:.1f} < MA20) (+0.5)")
+
+    # 신호 7: SOXX 반도체 지수 (±0.5)
+    if macro.soxx > 0 and macro.soxx_ma20 > 0:
+        if macro.soxx > macro.soxx_ma20:
+            dir_score += 0.5
+            dir_signals.append(f"SOXX 강세 (+0.5)")
+        elif macro.soxx < macro.soxx_ma20 * st.REGIME_SOXX_WEAK_RATIO:
+            dir_score -= 0.5
+            dir_signals.append(f"SOXX 약세 (-0.5)")
+
+    dir_score = round(dir_score, 1)
+
+    # ── D. 방향 확정 ─────────────────────────────────────────────
+    # long_call: score ≥ +3
+    # long_put : score ≤ -3 AND 추가 검증 통과
+    # both     : 혼조 (-3 < score < +3)
+    if dir_score >= st.DIRECTION_SCORE_CALL_MIN:
         index_trend_dir = "long_call"
-        index_reason = "SPY·QQQ 모두 20MA 위 + 기울기 상향 → Long Call 유리"
-    elif not spy_above and not qqq_above and not spy_slope_up and not qqq_slope_up:
+        index_reason = (
+            f"방향 스코어 {dir_score:+.1f} ≥ +{st.DIRECTION_SCORE_CALL_MIN} → Long Call"
+            f" | {', '.join(dir_signals[:3])}"
+        )
         index_status = "pass"
-        index_trend_dir = "long_put"
-        index_reason = "SPY·QQQ 모두 20MA 아래 + 기울기 하향 → Long Put 유리"
+    elif dir_score <= st.DIRECTION_SCORE_PUT_MAX:
+        # long_put 추가 검증: VIX ≤ 30 AND (ADX ≥ 18 OR MA 구조 일치)
+        _put_vix_ok  = vix <= st.DIRECTION_PUT_VIX_MAX
+        _put_adx_ok  = (adx_value is not None and adx_value >= st.DIRECTION_PUT_ADX_MIN)
+        _put_ma_ok   = (not spy_above and not qqq_above)  # MA 구조로 하락 확인
+        _put_viable  = _put_vix_ok and (_put_adx_ok or _put_ma_ok)
+
+        if _put_viable:
+            index_trend_dir = "long_put"
+            index_reason = (
+                f"방향 스코어 {dir_score:+.1f} ≤ {st.DIRECTION_SCORE_PUT_MAX} + "
+                f"풋 검증 통과 (VIX {vix:.1f}, ADX {'있음' if _put_adx_ok else 'MA확인'}) → Long Put"
+                f" | {', '.join(dir_signals[:3])}"
+            )
+            index_status = "pass"
+        else:
+            # 점수는 하락인데 VIX 너무 높거나 추세 확인 불가 → 방향 없음
+            index_trend_dir = "none"
+            _reason_why = ("VIX 과고" if not _put_vix_ok else "추세 미확인")
+            index_reason = (
+                f"방향 스코어 {dir_score:+.1f} (하락) but {_reason_why} → 보류"
+                f" | {', '.join(dir_signals[:3])}"
+            )
+            index_status = "fail"
     else:
-        index_status = "borderline"
+        # 혼조 구간
         index_trend_dir = "both"
-        index_reason = f"SPY {'위' if spy_above else '아래'}, QQQ {'위' if qqq_above else '아래'} (혼조)"
+        index_reason = (
+            f"방향 스코어 {dir_score:+.1f} (혼조 구간 {st.DIRECTION_SCORE_PUT_MAX}~{st.DIRECTION_SCORE_CALL_MIN})"
+            f" | {', '.join(dir_signals[:3])}"
+        )
+        index_status = "borderline"
 
     index_component = RegimeComponent(
-        value=index_reason, status=index_status, reason=index_reason
+        value=dir_score, status=index_status, reason=index_reason  # type: ignore
     )
 
-    # ── 리스크 요인 수집 ───────────────────────────────────
+    # ── E. 리스크 요인 수집 ──────────────────────────────────────
     risk_factors: list[str] = []
     if vix > 20:
         risk_factors.append(f"VIX 상승 ({vix:.1f}) — 옵션 프리미엄 과대")
@@ -153,21 +289,14 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
         risk_factors.append(f"Fear & Greed {macro.fear_greed} ({macro.fear_greed_label}) — 극단적 공포")
     if macro.fear_greed > st.REGIME_FEAR_GREED_EXTREME_GREED:
         risk_factors.append(f"Fear & Greed {macro.fear_greed} ({macro.fear_greed_label}) — 극단적 탐욕")
-
-    # ── 추가 거시 리스크 지표 (기존 dead data 활용) ──────────
-    # VIX 상승 추세: 현재 VIX > MA20의 10% 이상이면 공포 확산 신호
     if macro.vix_ma20 > 0 and vix > macro.vix_ma20 * st.REGIME_VIX_UPTREND_RATIO:
         risk_factors.append(
             f"VIX 상승 추세 ({vix:.1f} > MA20 {macro.vix_ma20:.1f}) — 공포 확산 중"
         )
-
-    # DXY 강세: 달러 강세는 다국적 기업 수익 압박 + 신흥국 자금 이탈 유발
     if macro.dxy > 0 and macro.dxy_ma20 > 0 and macro.dxy > macro.dxy_ma20 * st.REGIME_DXY_STRENGTH_RATIO:
         risk_factors.append(
             f"DXY 강세 ({macro.dxy:.1f} > MA20 {macro.dxy_ma20:.1f}) — 달러 강세, 수익 압박"
         )
-
-    # 10년물 금리: 5% 이상이면 멀티플 압박 강도 높음
     if macro.yield_10y >= st.REGIME_YIELD_CRITICAL:
         risk_factors.append(
             f"10년물 금리 {macro.yield_10y:.2f}% ≥ {st.REGIME_YIELD_CRITICAL}% — 고금리 밸류에이션 압박"
@@ -176,34 +305,53 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
         risk_factors.append(
             f"10년물 금리 {macro.yield_10y:.2f}% — 금리 주의 구간 ({st.REGIME_YIELD_WARNING}~{st.REGIME_YIELD_CRITICAL}%)"
         )
-
-    # SOXX 반도체 지수: 기술주 선행 지표 — MA20 대비 2% 이상 이탈 시 약세 신호
     if macro.soxx > 0 and macro.soxx_ma20 > 0 and macro.soxx < macro.soxx_ma20 * st.REGIME_SOXX_WEAK_RATIO:
         risk_factors.append(
             f"SOXX 약세 ({macro.soxx:.0f} < MA20 {macro.soxx_ma20:.0f}) — 기술주 선행 약세"
         )
 
-    # ── 레짐 최종 판정 ─────────────────────────────────────
-    fail_count = sum(1 for s in [trend_status, vol_status, index_status] if s == "fail")
+    # ── F. 레짐 최종 판정 ────────────────────────────────────────
+    # unfavorable 조건:
+    #   - VIX > 30 (옵션 매수 비효율) — vol_status fail
+    #   - 추세 없음 (ADX < 18 + 혼조 MA) — trend_status fail
+    #   - 방향 스코어 혼조 + 추세 약함 — index_status fail/borderline
+    # 핵심 변경: long_put이 확정된 경우 unfavorable이어도 방향은 long_put 유지
+    fail_count       = sum(1 for s in [trend_status, vol_status, index_status] if s == "fail")
     borderline_count = sum(1 for s in [trend_status, vol_status, index_status] if s == "borderline")
 
-    if fail_count >= 1:
-        regime_status = "unfavorable"
+    if vol_status == "fail":
+        # VIX > 30: 어느 방향이든 옵션 비효율 → 진짜 unfavorable
+        regime_status     = "unfavorable"
         allowed_direction = "none"
-    elif borderline_count >= 2:
-        regime_status = "borderline"
-        allowed_direction = index_trend_dir
-    elif borderline_count == 1:
-        regime_status = "borderline"
-        allowed_direction = index_trend_dir
+    elif index_trend_dir == "none":
+        # 방향 스코어 하락인데 풋 검증 실패 → 불명확 횡보
+        regime_status     = "unfavorable"
+        allowed_direction = "none"
+    elif index_trend_dir == "both":
+        # 혼조: 추세 강도에 따라 borderline or unfavorable
+        if trend_status == "fail":
+            regime_status     = "unfavorable"
+            allowed_direction = "none"
+        else:
+            regime_status     = "borderline"
+            allowed_direction = "both"
     else:
-        regime_status = "favorable"
+        # long_call 또는 long_put 방향 확정
+        if fail_count >= 1:
+            # 추세 fail이지만 방향은 명확 → borderline (약한 추세에서의 거래)
+            regime_status = "borderline"
+        elif borderline_count >= 2:
+            regime_status = "borderline"
+        elif borderline_count == 1:
+            regime_status = "borderline"
+        else:
+            regime_status = "favorable"
         allowed_direction = index_trend_dir
 
     # 확신도 계산
-    pass_count = sum(1 for s in [trend_status, vol_status, index_status] if s == "pass")
+    pass_count       = sum(1 for s in [trend_status, vol_status, index_status] if s == "pass")
     regime_confidence = pass_count / 3.0
-    trend_confidence = 1.0 if trend_status == "pass" else (0.5 if trend_status == "borderline" else 0.0)
+    trend_confidence  = 1.0 if trend_status == "pass" else (0.5 if trend_status == "borderline" else 0.0)
 
     result = MarketRegime(
         regime_status=regime_status,
@@ -221,6 +369,7 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
         "regime_analyzed",
         status=regime_status,
         direction=allowed_direction,
+        dir_score=dir_score,
         confidence=regime_confidence,
     )
     return result

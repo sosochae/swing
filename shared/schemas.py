@@ -27,6 +27,8 @@ class SummaryEvent(BaseModel):
     name: str
     importance: Literal["HIGH", "MED", "LOW"]
     days_until: int
+    eps_estimate: float | None = None        # 예상 EPS (주당)
+    revenue_estimate_b: float | None = None  # 예상 매출 (단위: 십억 달러)
 
 
 class SummaryRiskParams(BaseModel):
@@ -67,6 +69,10 @@ class SummaryMacro(BaseModel):
     cpi_yoy: float = 3.0
     unemployment: float = 4.0
     pce: float = 3.0
+    # ── SPY 4H 지표 (단기 방향 판정 정밀화) ───────────────────────────
+    spy_di_plus_4h: float | None = None    # SPY 4H DI+ (단기 상승 모멘텀)
+    spy_di_minus_4h: float | None = None   # SPY 4H DI- (단기 하락 모멘텀)
+    spy_macd_hist_4h: float | None = None  # SPY 4H MACD 히스토그램
 
 
 class TickerTechnical(BaseModel):
@@ -117,6 +123,9 @@ class TickerOptions(BaseModel):
     max_pain_near: float = 0.0
     max_pain_far: float = 0.0
     atm_straddle_price: float = 0.0
+    call_wall: float | None = None      # 최대 콜 OI strike (단기 상단 저항)
+    put_wall:  float | None = None      # 최대 풋 OI strike (단기 하단 지지)
+    gex_flip:  float | None = None      # GEX 부호 전환 strike (딜러 헤지 방향 전환)
     chain: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -167,10 +176,10 @@ class SummaryData(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────
-# 2. Finviz 파서 스키마
+# 2. 종목 데이터 스키마
 # ─────────────────────────────────────────────────────────────
 
-class FinvizDetail(BaseModel):
+class StockDetail(BaseModel):
     """yfinance API 실시간 주식 스냅샷 (가격·기술지표·밸류에이션·애널리스트)"""
     ticker: str
     forward_pe: float | None = None
@@ -230,9 +239,92 @@ class FinvizDetail(BaseModel):
     pivot_s3: float | None = None             # 지지3 = S2 - (R1 - S1)
     # ── 주봉 지표 ────────────────────────────────────────────────────
     weekly_sma5_val: float | None = None      # 주봉 5주 SMA
+    weekly_pivot_p: float | None = None       # 주봉 피벗 중심 (진입 타이밍 기준)
     weekly_pivot_s1: float | None = None      # 주봉 피벗 S1
     weekly_pivot_s2: float | None = None      # 주봉 피벗 S2 (스윙 T3 기준)
     weekly_pivot_r1: float | None = None      # 주봉 피벗 R1 (스윙 T3 기준)
+    weekly_pivot_r2: float | None = None      # 주봉 피벗 R2 (최대 목표)
+    weekly_adx: float | None = None           # 주봉 ADX (장기 추세 강도)
+    weekly_di_plus: float | None = None       # 주봉 DI+ (장기 상승 모멘텀)
+    weekly_di_minus: float | None = None      # 주봉 DI- (장기 하락 모멘텀)
+    weekly_rsi: float | None = None           # 주봉 RSI
+    weekly_macd_hist: float | None = None     # 주봉 MACD 히스토그램
+    # ── 4시간봉 지표 ─────────────────────────────────────────────────
+    rsi_4h: float | None = None               # 4H RSI(14)
+    macd_hist_4h: float | None = None         # 4H MACD 히스토그램 (모멘텀 방향 핵심)
+    adx_4h: float | None = None               # 4H ADX
+    di_plus_4h: float | None = None           # 4H DI+
+    di_minus_4h: float | None = None          # 4H DI-
+    vwap_4h: float | None = None              # 4H VWAP (진입 구간 상단 기준)
+    pivot_p_4h: float | None = None           # 4H 피벗 중심값 (단기 진입/저항 기준)
+    pivot_s3_4h: float | None = None          # 4H 피벗 S3 (진입 구간 하단 정밀화)
+    pivot_r3_4h: float | None = None          # 4H 피벗 R3
+    # ── 1시간봉 지표 ─────────────────────────────────────────────────
+    rsi_1h: float | None = None               # 1H RSI(14) (극과매도 감지)
+    bb_lower_1h: float | None = None          # 1H 볼린저밴드 하단 (단기 지지)
+    sma5_1h: float | None = None              # 1H SMA5
+    sma10_1h: float | None = None             # 1H SMA10 (진입 구간 계산 핵심)
+    sma20_1h: float | None = None             # 1H SMA20 (진입 구간 계산 핵심)
+    macd_hist_1h: float | None = None         # 1H MACD 히스토그램 (단기 반등 감지)
+    macd_hist_1h_prev: float | None = None    # 1H MACD Hist 전봉 (④ 양전환 감지)
+    bb_pct_b: float | None = None             # ⑧ 볼린저밴드 %B (0~1, <0.2=과매도)
+    # ── 4H SMA (멀티TF 클러스터 ⑥) ──────────────────────────────────
+    sma5_4h: float | None = None              # 4H SMA5
+    sma10_4h: float | None = None             # 4H SMA10
+    sma20_4h: float | None = None             # 4H SMA20
+    # ── 전봉 ADX/DI (⑤ ADX 꺾임 + DI 교차) ──────────────────────────
+    adx_prev: float | None = None             # 전봉 ADX (꺾임 감지용)
+    di_plus_prev: float | None = None         # 전봉 DI+ (교차 감지용)
+    di_minus_prev: float | None = None        # 전봉 DI-
+    # ── 피보나치 레벨 (①② 되돌림 + 확장) ────────────────────────────
+    swing_high_30d: float | None = None       # 최근 30일 스윙 고점 (Fib 기준)
+    swing_low_30d: float | None = None        # 최근 30일 스윙 저점 (Fib 기준)
+    fib_38_2: float | None = None             # 38.2% 되돌림 지지/저항
+    fib_50_0: float | None = None             # 50.0% 되돌림 (진입 핵심)
+    fib_61_8: float | None = None             # 61.8% 되돌림 (강한 지지/저항)
+    fib_ext_100: float | None = None          # 100% 확장 목표 (T1 보조)
+    fib_ext_162: float | None = None          # 161.8% 확장 목표 (T3 보조)
+    # ── 앵커 VWAP (⑦ 스윙 저점 기준) ───────────────────────────────
+    vwap_anchored: float | None = None        # 앵커 VWAP (최근 스윙 저점 기준)
+    # ── 캔들 패턴 (⑩) ───────────────────────────────────────────────
+    candle_signal: str | None = None          # "hammer"|"engulfing"|"morning_star"|"none"
+    # ── Parabolic SAR (⑭) ───────────────────────────────────────────
+    parabolic_sar: float | None = None        # Parabolic SAR 현재값
+    sar_direction: str | None = None          # "up"|"down"
+    # ── Camarilla Pivot (⑯) ─────────────────────────────────────────
+    cam_h3: float | None = None               # Camarilla H3 (타이트 저항)
+    cam_h4: float | None = None               # Camarilla H4 (추세 전환 저항)
+    cam_l3: float | None = None               # Camarilla L3 (타이트 지지)
+    cam_l4: float | None = None               # Camarilla L4 (추세 전환 지지)
+    # ── 전일/전주 고점/저점 (E: Previous Period H/L) ───────────────────
+    prev_day_high: float | None = None        # 전일 고점 (당일 저항)
+    prev_day_low: float | None = None         # 전일 저점 (당일 지지)
+    prev_week_high: float | None = None       # 전주 고점 (주간 저항)
+    prev_week_low: float | None = None        # 전주 저점 (주간 지지)
+    # ── VWAP 표준편차 밴드 (D: VWAP Std Dev Bands) ───────────────────
+    vwap_std1_upper: float | None = None      # VWAP + 1σ (정상 거래 상한)
+    vwap_std1_lower: float | None = None      # VWAP - 1σ (정상 거래 하한)
+    vwap_std2_upper: float | None = None      # VWAP + 2σ (과매수 경계)
+    vwap_std2_lower: float | None = None      # VWAP - 2σ (과매도 경계)
+    # ── EMA 단기선 ────────────────────────────────────────────────────
+    ema9:  float | None = None                # EMA 9일 (초단기 지지/저항)
+    ema21: float | None = None                # EMA 21일 (단기 추세선)
+    # ── Keltner Channel (EMA20 ± 2×ATR) ─────────────────────────────
+    keltner_upper: float | None = None        # Keltner 상단 (과매수/채널 돌파 기준)
+    keltner_lower: float | None = None        # Keltner 하단 (과매도/채널 하향 기준)
+    # ── Donchian Channel 20일 ────────────────────────────────────────
+    donchian_20_upper: float | None = None    # 20일 최고가 (단기 저항)
+    donchian_20_lower: float | None = None    # 20일 최저가 (단기 지지)
+    # ── HV 기반 기대이동폭 ────────────────────────────────────────────
+    hv30: float | None = None                 # 30일 실현 변동성 % (연환산)
+    hv_move_5d:  float | None = None          # HV 기반 5일 기대이동폭 ($)
+    hv_move_15d: float | None = None          # HV 기반 15일 기대이동폭 ($)
+    # ── Monthly Pivot (전월 OHLC) ────────────────────────────────────
+    monthly_pivot:  float | None = None       # 월간 피벗 (P)
+    monthly_pivot_r1: float | None = None     # 월간 R1
+    monthly_pivot_r2: float | None = None     # 월간 R2
+    monthly_pivot_s1: float | None = None     # 월간 S1
+    monthly_pivot_s2: float | None = None     # 월간 S2
     # ── 애널리스트 의견 집계 ───────────────────────────────────────────
     analyst_buy: int | None = None            # 매수(Strong Buy + Buy) 수
     analyst_hold: int | None = None           # 보유(Hold) 수
@@ -647,7 +739,7 @@ class PipelineContext(BaseModel):
     positions: list[Position] = Field(default_factory=list)
     watchlist: list[str] = Field(default_factory=list)
     kavout_data: dict[str, "KavoutRow"] = Field(default_factory=dict)
-    stock_data: dict[str, "FinvizDetail"] = Field(default_factory=dict)
+    stock_data: dict[str, "StockDetail"] = Field(default_factory=dict)
     # Step 6 DA 차감 이유 {ticker: ["이유1", "이유2"]}
     da_log: dict[str, list[str]] = Field(default_factory=dict)
     # Step 3 필터 탈락 수치 근거 {ticker: "RVOL 0.8 < 1.5 기준 | 가격 $3.2 < $5.0 기준"}
@@ -827,7 +919,7 @@ class ScreenerContext(BaseModel):
     paths: PipelinePaths = Field(default_factory=PipelinePaths)
 
     # Step 1 결과
-    finviz_details: dict[str, FinvizDetail] = Field(default_factory=dict)
+    finviz_details: dict[str, StockDetail] = Field(default_factory=dict)
 
     # Step 2 결과
     earnings_analyses: dict[str, EarningsCallAnalysis] = Field(default_factory=dict)

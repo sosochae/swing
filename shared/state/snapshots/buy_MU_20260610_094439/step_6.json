@@ -1,0 +1,17 @@
+{
+  "execution_id": "buy_MU_20260610_094439",
+  "step": 6,
+  "completed_at": "2026-06-10T09:48:33.287534",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "MU"
+    ],
+    "warned": [],
+    "da_deductions": {
+      "MU": [
+        "내부자 순매도 $3010.4M (최근 거래 집계)"
+      ]
+    }
+  }
+}

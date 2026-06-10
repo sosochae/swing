@@ -23,7 +23,7 @@ from typing import Any
 from shared.logger import get_logger
 from shared.schemas import (
     EarningsAnalysis,
-    FinvizDetail,
+    StockDetail,
     FinvizRow,
     KavoutRow,
     OptionChainEntry,
@@ -1249,9 +1249,9 @@ def parse_kavout(file_path: Path) -> "dict[str, KavoutRow]":
 # 6. Finviz Output 상세 파서 (finviz_output/*.txt)
 # ─────────────────────────────────────────────────────────────
 
-def _parse_finviz_detail_file(ticker: str, content: str) -> FinvizDetail:
+def _parse_finviz_detail_file(ticker: str, content: str) -> StockDetail:
     """
-    finviz_output/<TICKER>.txt 단일 파일 파싱 → FinvizDetail
+    finviz_output/<TICKER>.txt 단일 파일 파싱 → StockDetail
 
     SNAPSHOT TABLE 섹션 예시:
       Forward P/E  32.13      Target Price   304.85
@@ -1318,7 +1318,7 @@ def _parse_finviz_detail_file(ticker: str, content: str) -> FinvizDetail:
     price_m      = re.search(r"\bPrice\s+([\d.]+)", content)
     change_m     = re.search(r"\bChange\s+([-\d.]+)%", content)
 
-    return FinvizDetail(
+    return StockDetail(
         ticker=ticker,
         forward_pe    = _flt(r"Forward P/E\s+([\d.]+)"),
         peg           = _flt(r"\bPEG\s+([\d.]+)"),
@@ -1351,7 +1351,7 @@ def _parse_finviz_detail_file(ticker: str, content: str) -> FinvizDetail:
     )
 
 
-def parse_finviz_detail(ticker_dir: Path) -> dict[str, FinvizDetail]:
+def parse_finviz_detail(ticker_dir: Path) -> dict[str, StockDetail]:
     """
     [DEPRECATED] finviz_output/ 디렉토리 내 모든 <TICKER>.txt 파싱
 
@@ -1362,13 +1362,13 @@ def parse_finviz_detail(ticker_dir: Path) -> dict[str, FinvizDetail]:
         ticker_dir: finviz_output 디렉토리 경로
 
     Returns:
-        {ticker: FinvizDetail} 딕셔너리 (파싱 실패 파일 제외)
+        {ticker: StockDetail} 딕셔너리 (파싱 실패 파일 제외)
     """
     if not ticker_dir.exists():
         log.warning("finviz_output_dir_not_found", path=str(ticker_dir))
         return {}
 
-    result: dict[str, FinvizDetail] = {}
+    result: dict[str, StockDetail] = {}
     for txt_file in ticker_dir.glob("*.txt"):
         ticker = txt_file.stem.upper()
         try:
@@ -1535,9 +1535,9 @@ def parse_kavout_universe(data_dir: Path) -> list[KavoutRow]:
 # 8. Kavout Output 파서 (kavout_output/*.txt — 줄바꿈 분리 포맷)
 # ─────────────────────────────────────────────────────────────
 
-def _parse_kavout_output_file(ticker: str, content: str) -> FinvizDetail:
+def _parse_kavout_output_file(ticker: str, content: str) -> StockDetail:
     """
-    kavout_output/<TICKER>.txt 파싱 → FinvizDetail (펀더멘털·밸류에이션만)
+    kavout_output/<TICKER>.txt 파싱 → StockDetail (펀더멘털·밸류에이션만)
 
     포맷: 키와 값이 줄바꿈으로 교대로 나열
       Forward P/E
@@ -1643,7 +1643,7 @@ def _parse_kavout_output_file(ticker: str, content: str) -> FinvizDetail:
                 multiplier = {"T": 1e12, "B": 1e9, "M": 1e6}.get(unit, 1.0)
                 mcap_val = num * multiplier
 
-    return FinvizDetail(
+    return StockDetail(
         ticker            = ticker,
         forward_pe        = _get_flt("Forward P/E"),
         peg               = _get_flt("PEG"),
@@ -1670,9 +1670,9 @@ def _parse_kavout_output_file(ticker: str, content: str) -> FinvizDetail:
     )
 
 
-def parse_kavout_output(kavout_output_dir: Path) -> dict[str, FinvizDetail]:
+def parse_kavout_output(kavout_output_dir: Path) -> dict[str, StockDetail]:
     """
-    [DEPRECATED] kavout_output/ 디렉토리 내 모든 <TICKER>.txt 파싱 → {ticker: FinvizDetail}
+    [DEPRECATED] kavout_output/ 디렉토리 내 모든 <TICKER>.txt 파싱 → {ticker: StockDetail}
 
     ⚠️ buy/sell 파이프라인 및 run_kavout_screener.py에서 제거됨.
     kavout_output 파일은 오래된 스냅샷 기준이므로 yfinance가 완전 대체.
@@ -1681,13 +1681,13 @@ def parse_kavout_output(kavout_output_dir: Path) -> dict[str, FinvizDetail]:
         kavout_output_dir: Y:\\내 드라이브\\어닝\\kavout_output 경로
 
     Returns:
-        {ticker: FinvizDetail} (파싱 실패 파일 제외)
+        {ticker: StockDetail} (파싱 실패 파일 제외)
     """
     if not kavout_output_dir.exists():
         log.warning("kavout_output_dir_not_found", path=str(kavout_output_dir))
         return {}
 
-    result: dict[str, FinvizDetail] = {}
+    result: dict[str, StockDetail] = {}
     for txt_file in kavout_output_dir.glob("*.txt"):
         ticker = txt_file.stem.upper()
         try:

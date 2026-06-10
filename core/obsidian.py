@@ -26,7 +26,7 @@ from shared.config import get_config
 from shared.logger import get_logger
 from shared import strategy as st
 from shared.schemas import (
-    FinalRanking, FinvizDetail, KavoutRow, MarketRegime, OptionValidity, Position,
+    FinalRanking, StockDetail, KavoutRow, MarketRegime, OptionValidity, Position,
     PortfolioExposure, Scenario, SellDecision, SummaryData, TechnicalScore,
 )
 
@@ -228,7 +228,7 @@ class ObsidianClient:
         sentiment_results: dict[str, dict] | None = None,
         rankings_aggressive: list[FinalRanking] | None = None,
         high_downside_tickers: list[str] | None = None,
-        finviz_details: "dict[str, FinvizDetail] | None" = None,
+        finviz_details: "dict[str, StockDetail] | None" = None,
         kavout_data: "dict[str, dict] | None" = None,
         portfolio_exposure: "PortfolioExposure | None" = None,
         filter_details: "dict[str, str] | None" = None,
@@ -400,7 +400,7 @@ class ObsidianClient:
         sell_thesis: dict[str, dict] | None = None,
         sell_devils: dict[str, dict] | None = None,
         sell_regime_flags: dict[str, str] | None = None,
-        stock_data: dict[str, FinvizDetail] | None = None,
+        stock_data: dict[str, StockDetail] | None = None,
         kavout_data: dict | None = None,
         regime_infer: dict | None = None,
     ) -> str:
@@ -649,7 +649,7 @@ def _fmt_factor(f, positive: bool) -> str:
 
 def _format_type1_section(
     sent: dict,
-    fv: "FinvizDetail | None" = None,
+    fv: "StockDetail | None" = None,
     earn_str: str = "",
 ) -> str:
     """TYPE 1 — News Sentiment 섹션 생성 (7-섹션 구조화 버전)"""
@@ -932,8 +932,9 @@ def _format_type3_section(
     ts: "TechnicalScore | None",
     sc: "Scenario | None",
     regime: "MarketRegime | None",
-    fv: "FinvizDetail | None" = None,
+    fv: "StockDetail | None" = None,
     narrative: "dict | None" = None,
+    opt_analytics: "dict | None" = None,
 ) -> str:
     """TYPE 3 — Technical Analysis 섹션 생성 (실제 지표값 + LLM 내러티브 지원)"""
 
@@ -947,7 +948,7 @@ def _format_type3_section(
     trend_confirmed = getattr(ts, 'trend_confirmed', False)
     signal_count = getattr(ts, 'signal_count', 0) or 0
 
-    # DI+/DI- 방향성 (FinvizDetail에서 추출)
+    # DI+/DI- 방향성 (StockDetail에서 추출)
     di_p_fv = (fv.di_plus  if fv and fv.di_plus  and fv.di_plus  > 0 else None)
     di_n_fv = (fv.di_minus if fv and fv.di_minus and fv.di_minus > 0 else None)
     # DI 방향 판정: 5% 이상 차이 시 방향성 인정 (10%는 너무 엄격)
@@ -1059,7 +1060,7 @@ def _format_type3_section(
         outlook_emoji = "🟡"
 
     # 현재가: 시나리오 역산(base 케이스) 우선 → fv.price fallback
-    # 이유: fv.price는 로컬 Finviz 캐시 기반(오래될 수 있음)
+    # 이유: fv.price는 로컬 캐시 기반(오래될 수 있음)
     _price_from_sc: float | None = None
     if sc and sc.base and sc.base.target_stock_price and sc.base.stock_move_pct is not None:
         _mv = sc.base.stock_move_pct / 100
@@ -1092,9 +1093,153 @@ def _format_type3_section(
 
     allowed_dir = getattr(regime, 'allowed_direction', 'N/A') if regime else 'N/A'
 
+    # ── 3-layer 신호 계산 (트렌드와 트레이딩 분리) ──────────────────────
+    # 단기 (1-5일): 4H MACD Hist 부호 + 1H RSI 극값 + 4H DI
+    # 중기 (1-3M) : 일봉 MA 정배열 + 일봉 DI 방향
+    # 장기 (3-6M) : 주봉 MA 정배열 (SMA5 위치)
+    def _layer_icon(sig: str) -> str:
+        return {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(sig, "⚪")
+
+    # 단기 신호 (4H/1H 기반)
+    _rsi1h_v  = getattr(fv, "rsi_1h",             None) if fv else None
+    _mh4h_v   = getattr(fv, "macd_hist_4h",       None) if fv else None
+    _mh1h_v   = getattr(fv, "macd_hist_1h",       None) if fv else None
+    _mh1h_prev = getattr(fv, "macd_hist_1h_prev", None) if fv else None  # ④ 양전환 감지
+    _dip_4h   = getattr(fv, "di_plus_4h",         None) if fv else None
+    _din_4h   = getattr(fv, "di_minus_4h",        None) if fv else None
+    _adx_4h_v = getattr(fv, "adx_4h",             None) if fv else None  # ⑤ ADX 꺾임
+    _adx_prev = getattr(fv, "adx_prev",            None) if fv else None
+    _dip_prev = getattr(fv, "di_plus_prev",        None) if fv else None
+    _din_prev = getattr(fv, "di_minus_prev",       None) if fv else None
+    _bb_pct_b = getattr(fv, "bb_pct_b",            None) if fv else None  # ⑧
+    _rvol_v   = getattr(fv, "rel_volume",          None) if fv else None  # ⑨
+    _pivot_s1_v = fv.pivot_s1 if fv else None
+    _price_v2  = fv.price if fv else None
+    _candle_v = getattr(fv, "candle_signal",       None) if fv else None  # ⑩
+    _short_signals: list[str] = []
+    _short_score = 0
+
+    # 4H MACD Hist (기존)
+    if _mh4h_v is not None:
+        if _mh4h_v > 0:
+            _short_score += 1; _short_signals.append(f"4H MACD Hist+{_mh4h_v:.2f} ↑")
+        elif _mh4h_v < 0:
+            _short_score -= 1; _short_signals.append(f"4H MACD Hist{_mh4h_v:.2f} ↓")
+    # 4H DI+/DI- (기존)
+    if _dip_4h and _din_4h:
+        if _dip_4h > _din_4h * 1.05:
+            _short_score += 1; _short_signals.append(f"4H DI+{_dip_4h:.0f}>DI-{_din_4h:.0f}")
+        elif _din_4h > _dip_4h * 1.05:
+            _short_score -= 1; _short_signals.append(f"4H DI-{_din_4h:.0f}>DI+{_dip_4h:.0f}")
+    # 4H RSI (기존)
+    _rsi4h_v = getattr(fv, "rsi_4h", None) if fv else None
+    if _rsi4h_v is not None:
+        if _rsi4h_v > 60:
+            _short_score += 1; _short_signals.append(f"4H RSI {_rsi4h_v:.0f} ↑")
+        elif _rsi4h_v < 40:
+            _short_score -= 1; _short_signals.append(f"4H RSI {_rsi4h_v:.0f} ↓")
+    # ④ 1H MACD Hist 양전환 감지 (prev→current 부호 전환)
+    if _mh1h_v is not None and _mh1h_prev is not None:
+        if _mh1h_v > 0 and _mh1h_prev <= 0:
+            _short_score += 1; _short_signals.append(f"④1H MACD Hist 양전환 ({_mh1h_prev:.2f}→{_mh1h_v:.2f}) ← 단기 반등 시작!")
+        elif _mh1h_v < 0 and _mh1h_prev >= 0:
+            _short_score -= 1; _short_signals.append(f"④1H MACD Hist 음전환 ({_mh1h_prev:.2f}→{_mh1h_v:.2f}) ← 단기 하락 시작")
+        elif _mh1h_v > 0 and (_mh4h_v is None or _mh4h_v <= 0):
+            _short_signals.append(f"1H MACD Hist+{_mh1h_v:.2f} (단기 반등 조짐)")
+        elif _mh1h_v < 0 and (_mh4h_v is None or _mh4h_v >= 0):
+            _short_signals.append(f"1H MACD Hist{_mh1h_v:.2f} (단기 하락 조짐)")
+    elif _mh1h_v is not None:
+        if _mh1h_v > 0 and (_mh4h_v is None or _mh4h_v <= 0):
+            _short_signals.append(f"1H MACD Hist+{_mh1h_v:.2f} ↑ (단기 반등 조짐)")
+    # ⑤ ADX 꺾임 + DI 교차
+    if _adx_4h_v and _adx_prev and _dip_4h and _din_4h and _dip_prev and _din_prev:
+        _adx_declining = _adx_4h_v < _adx_prev
+        _di_cross_bull  = _dip_4h > _din_4h and _dip_prev <= _din_prev
+        _di_cross_bear  = _din_4h > _dip_4h and _din_prev <= _dip_prev
+        if _adx_declining and _di_cross_bull:
+            _short_score += 1; _short_signals.append(f"⑤ADX꺾임+DI골든크로스 ← 반전신호!")
+        elif _adx_declining and _di_cross_bear:
+            _short_score -= 1; _short_signals.append(f"⑤ADX꺾임+DI데드크로스 ← 반전신호!")
+        elif _adx_declining:
+            _short_signals.append(f"⑤ADX꺾임({_adx_prev:.0f}→{_adx_4h_v:.0f}) ← 추세 약화")
+    # ⑧ 볼린저밴드 %B
+    if _bb_pct_b is not None:
+        if _bb_pct_b < 0.2:
+            _short_score += 0; _short_signals.append(f"⑧BB%B={_bb_pct_b:.2f} (과매도 진입 구간 ←)")
+        elif _bb_pct_b > 0.8:
+            _short_signals.append(f"⑧BB%B={_bb_pct_b:.2f} (과매수 경계 구간)")
+    # ⑨ 거래량 확인 (지지선 근처 RVOL)
+    if _rvol_v and _pivot_s1_v and _price_v2 and _price_v2 > 0:
+        _near_support = abs(_price_v2 - _pivot_s1_v) / _price_v2 < 0.01
+        if _near_support and _rvol_v >= 1.5:
+            _short_score += 1; _short_signals.append(f"⑨S1 근처 RVOL {_rvol_v:.1f}× ← 기관매수 확인")
+    # ⑩ 캔들 패턴
+    if _candle_v and _candle_v != "none":
+        _cp_map = {"hammer": "⑩Hammer ← 저점 거부 반전", "engulfing": "⑩강세장악형 ← 반전 확인",
+                   "morning_star": "⑩삼성반전 ← 강한 바닥 신호"}
+        _short_score += 1; _short_signals.append(_cp_map.get(_candle_v, f"⑩{_candle_v}"))
+    # 1H RSI 극값 (기존)
+    if _rsi1h_v is not None:
+        if _rsi1h_v < 25:
+            _short_signals.append(f"1H RSI {_rsi1h_v:.0f} (극과매도 ← 반등 가능)")
+        elif _rsi1h_v > 75:
+            _short_signals.append(f"1H RSI {_rsi1h_v:.0f} (극과매수 ← 조정 가능)")
+    _short_sig  = "bullish" if _short_score > 0 else ("bearish" if _short_score < 0 else "neutral")
+    _short_txt  = ", ".join(_short_signals[:5]) if _short_signals else "4H 데이터 미수집 — 일봉 기준"
+
+    # 중기 신호 (일봉 MA + DI 기반)
+    _ma_align_v = ts.ma_alignment if ts else "mixed"
+    _adx_v      = getattr(fv, "adx",    0.0) if fv else 0.0
+    _dip_v      = getattr(fv, "di_plus", 0.0) if fv else 0.0
+    _din_v      = getattr(fv, "di_minus",0.0) if fv else 0.0
+    _mid_score  = 0
+    _mid_signals: list[str] = []
+    if _ma_align_v == "bullish":
+        _mid_score += 1; _mid_signals.append("MA 정배열")
+    elif _ma_align_v == "bearish":
+        _mid_score -= 1; _mid_signals.append("MA 역배열")
+    if _dip_v > 0 and _din_v > 0:
+        if _dip_v > _din_v * 1.05:
+            _mid_score += 1; _mid_signals.append(f"DI+{_dip_v:.0f}>DI-{_din_v:.0f}")
+        elif _din_v > _dip_v * 1.05:
+            _mid_score -= 1; _mid_signals.append(f"DI-{_din_v:.0f}>DI+{_dip_v:.0f}")
+    _mid_sig  = "bullish" if _mid_score > 0 else ("bearish" if _mid_score < 0 else "neutral")
+    _mid_txt  = ", ".join(_mid_signals) if _mid_signals else "MA 혼조"
+
+    # 장기 신호 (주봉 SMA5 위치)
+    _ws5_v   = getattr(fv, "weekly_sma5_val", None) if fv else None
+    _price_v = fv.price if fv and fv.price else None
+    if _ws5_v and _price_v:
+        _long_sig = "bullish" if _price_v > _ws5_v else "bearish"
+        _long_txt = f"주봉 SMA5 {'아래' if _price_v < _ws5_v else '위'} (${_ws5_v:.0f})"
+    else:
+        _long_sig = "neutral"
+        _long_txt = "주봉 데이터 없음"
+
+    # 방향 불일치 경고
+    _trade_is_long = (r.direction == "long_call")
+    _divergence_warn = ""
+    if _trade_is_long and _short_sig == "bearish":
+        _divergence_warn = "⚠️ **단기 역방향** — 롱콜 포지션인데 단기 모멘텀은 하락. 눌림목 대기 권장"
+    elif not _trade_is_long and _short_sig == "bullish":
+        _divergence_warn = "⚠️ **단기 역방향** — 롱풋 포지션인데 단기 모멘텀은 상승. 반등 후 진입 대기"
+
     lines = [
         "## ━━━ TYPE 3 · 기술적 분석 ━━━",
         "",
+        "### 3-0. 시계열별 신호 요약 (트렌드 vs 트레이딩)",
+        "",
+        "| 시계열 | 신호 | 근거 |",
+        "|--------|------|------|",
+        f"| 단기 (1~5일) | {_layer_icon(_short_sig)} {'상승' if _short_sig == 'bullish' else ('하락' if _short_sig == 'bearish' else '중립')} | {_short_txt} |",
+        f"| 중기 (1~3개월) | {_layer_icon(_mid_sig)} {'상승' if _mid_sig == 'bullish' else ('하락' if _mid_sig == 'bearish' else '중립')} | {_mid_txt} |",
+        f"| 장기 (3~6개월) | {_layer_icon(_long_sig)} {'상승' if _long_sig == 'bullish' else ('하락' if _long_sig == 'bearish' else '중립')} | {_long_txt} |",
+        "",
+    ]
+    if _divergence_warn:
+        lines += [f"> {_divergence_warn}", ""]
+
+    lines += [
         "### 3-1. 트레이딩 뷰 요약",
         "",
         "| 항목 | 값 |",
@@ -1113,6 +1258,15 @@ def _format_type3_section(
     if fv:
         _di_plus_str  = f"{fv.di_plus:.1f}"  if fv.di_plus  and fv.di_plus  > 0 else "N/A"
         _di_minus_str = f"{fv.di_minus:.1f}" if fv.di_minus and fv.di_minus > 0 else "N/A"
+        # 주봉 지표
+        _wadx_str  = f"{getattr(fv,'weekly_adx',None):.1f}"  if getattr(fv,'weekly_adx',None) else "N/A"
+        _wdip_str  = f"{getattr(fv,'weekly_di_plus',None):.1f}" if getattr(fv,'weekly_di_plus',None) else "N/A"
+        _wdin_str  = f"{getattr(fv,'weekly_di_minus',None):.1f}" if getattr(fv,'weekly_di_minus',None) else "N/A"
+        _wrsi_str  = f"{getattr(fv,'weekly_rsi',None):.1f}" if getattr(fv,'weekly_rsi',None) else "N/A"
+        # 1H 지표
+        _sma10_1h_str = f"${getattr(fv,'sma10_1h',None):.2f}" if getattr(fv,'sma10_1h',None) else "N/A"
+        _sma20_1h_str = f"${getattr(fv,'sma20_1h',None):.2f}" if getattr(fv,'sma20_1h',None) else "N/A"
+        _rsi_1h_str   = f"{getattr(fv,'rsi_1h',None):.1f}" if getattr(fv,'rsi_1h',None) else "N/A"
         lines += [
             "### 3-2. 실제 지표값 (Live Indicators)",
             "",
@@ -1126,6 +1280,10 @@ def _format_type3_section(
             f"| SMA50 | {sma50_str} | ATR(14) | {atr_str} |",
             f"| BB 상단 | {bb_upper_str} | BB 하단 | {bb_lower_str} |",
             f"| Pivot | {pivot_str} | R1 / S1 | {pivot_r1_str} / {pivot_s1_str} |",
+            f"| 주봉 ADX | {_wadx_str} | 주봉 RSI | {_wrsi_str} |",
+            f"| 주봉 DI+ | {_wdip_str} | 주봉 DI- | {_wdin_str} |",
+            f"| 1H SMA10 | {_sma10_1h_str} | 1H SMA20 | {_sma20_1h_str} |",
+            f"| 1H RSI | {_rsi_1h_str} | | |",
             "",
         ]
 
@@ -1194,6 +1352,31 @@ def _format_type3_section(
         f"- 📌 **미진입자:** {flat_plan}",
         "",
     ]
+    # ── 3-5 진입 트리거 (구체적 조건) ──────────────────────────────────
+    _entry_triggers: list[str] = []
+    _is_long_35 = (r.direction == "long_call")
+    if _mh1h_v is not None and _mh1h_prev is not None:
+        if _mh1h_v > 0 and _mh1h_prev <= 0:
+            _entry_triggers.append(f"④ 1H MACD Hist 양전환 확인 ({_mh1h_prev:.2f}→+{_mh1h_v:.2f}) → 즉시 진입 트리거 발동")
+        else:
+            _entry_triggers.append(f"④ 1H MACD Hist 양전환 대기 (현재 {_mh1h_v:.2f}) → 양전환 확인 후 진입 고려")
+    elif _mh1h_v is not None:
+        _entry_triggers.append(f"④ 1H MACD Hist {'+' if _mh1h_v > 0 else ''}{_mh1h_v:.2f} — 양전환 시 진입 트리거")
+    if _candle_v and _candle_v != "none":
+        _cp_bull = {"hammer": "⑩ Hammer 캔들 — 지지선 근처 저점 거부 → 진입 트리거",
+                    "engulfing": "⑩ 강세장악형 — 방향 전환 확인 → 진입 트리거",
+                    "morning_star": "⑩ 삼성반전형 — 강한 바닥 신호 → 즉시 진입 고려"}
+        _cp_bear = {"hammer": "⑩ Hammer 감지 — 하락 일시 정지 가능, 롱풋 진입 신중",
+                    "engulfing": "⑩ 강세장악형 — 롱풋 방향 역풍, 진입 연기 고려"}
+        if _is_long_35:
+            _entry_triggers.append(_cp_bull.get(_candle_v, f"⑩ {_candle_v} 캔들 패턴 — 진입 트리거 확인"))
+        else:
+            _entry_triggers.append(_cp_bear.get(_candle_v, f"⑩ {_candle_v} 패턴 — 방향 재확인 권장"))
+    if _entry_triggers:
+        lines += ["**진입 트리거 (Entry Triggers):**", ""]
+        for _et in _entry_triggers:
+            lines.append(f"- {_et}")
+        lines.append("")
 
     # ── 핵심 가격 레벨 통합 테이블 ─────────────────────────────────
     if fv:
@@ -1212,10 +1395,44 @@ def _format_type3_section(
         _s20   = fv.sma20_val  or None
         _s10   = getattr(fv, "sma10_val",    None) or None
         _s5    = fv.sma5_val   or None
-        _ws5   = getattr(fv, "weekly_sma5_val", None) or None   # 주봉 SMA5
+        _ws5   = getattr(fv, "weekly_sma5_val",  None) or None
+        _wpp   = getattr(fv, "weekly_pivot_p",  None) or None
         _wps1  = getattr(fv, "weekly_pivot_s1", None) or None
         _wps2  = getattr(fv, "weekly_pivot_s2", None) or None
         _wpr1  = getattr(fv, "weekly_pivot_r1", None) or None
+        _wpr2  = getattr(fv, "weekly_pivot_r2", None) or None
+        # 4H 지표
+        _vwap4h    = getattr(fv, "vwap_4h",      None) or None
+        _pp_4h     = getattr(fv, "pivot_p_4h",   None) or None
+        _ps3_4h    = getattr(fv, "pivot_s3_4h",  None) or None
+        _pr3_4h    = getattr(fv, "pivot_r3_4h",  None) or None
+        _rsi_4h    = getattr(fv, "rsi_4h",       None) or None
+        _macd_h4h  = getattr(fv, "macd_hist_4h", None)
+        _di_p_4h   = getattr(fv, "di_plus_4h",   None) or None
+        _di_n_4h   = getattr(fv, "di_minus_4h",  None) or None
+        # 1H 지표
+        _rsi_1h    = getattr(fv, "rsi_1h",       None) or None
+        _bb_l_1h   = getattr(fv, "bb_lower_1h",  None) or None
+        # ① 피보나치
+        _fib38  = getattr(fv, "fib_38_2",    None) or None
+        _fib50  = getattr(fv, "fib_50_0",    None) or None
+        _fib62  = getattr(fv, "fib_61_8",    None) or None
+        _fext100 = getattr(fv, "fib_ext_100", None) or None
+        _fext162 = getattr(fv, "fib_ext_162", None) or None
+        _swing_h = getattr(fv, "swing_high_30d", None) or None
+        _swing_l = getattr(fv, "swing_low_30d",  None) or None
+        # ⑦ 앵커 VWAP
+        _vwap_anch = getattr(fv, "vwap_anchored", None) or None
+        # ⑯ Camarilla
+        _cam_h3 = getattr(fv, "cam_h3", None) or None
+        _cam_h4 = getattr(fv, "cam_h4", None) or None
+        _cam_l3 = getattr(fv, "cam_l3", None) or None
+        _cam_l4 = getattr(fv, "cam_l4", None) or None
+        # ⑭ Parabolic SAR
+        _psar = getattr(fv, "parabolic_sar", None) or None
+        _psar_dir = getattr(fv, "sar_direction", None) or None
+        # ⑬⑲ % stop + 심리 라운드 넘버 (계산)
+        _cur_for_table = _cur_price_val or (fv.price if fv else None)
         _atr_lv = fv.atr if fv.atr and fv.atr > 0 else None
 
         def _pf(v) -> str:
@@ -1250,8 +1467,169 @@ def _format_type3_section(
                          else "스윙 T3 목표" if not _tbl_is_long and _ws5 < _cur
                          else "주봉 추세 지지선" if _ws5 < _cur else "주봉 추세 저항선")
             _price_levels.append((_ws5, f"주봉 SMA5 — {_ws5_role}"))
+        if _wpp:  _price_levels.append((_wpp,  "주봉 피벗 P — 진입 타이밍 기준점"))
+        if _wps1: _price_levels.append((_wps1, "주봉 피벗 S1 — 스윙 손절 핵심 레벨"))
         if _wps2: _price_levels.append((_wps2, "주봉 피벗 S2 — 스윙 딥타겟 (Put T3)"))
         if _wpr1: _price_levels.append((_wpr1, "주봉 피벗 R1 — 스윙 상단 목표 (Call T3)"))
+        if _wpr2: _price_levels.append((_wpr2, "주봉 피벗 R2 — 스윙 최대 목표"))
+        # 4H 지표 레벨
+        if _pp_4h:   _price_levels.append((_pp_4h,   "4H 피벗 P — 단기 진입/저항 기준점"))
+        if _vwap4h:  _price_levels.append((_vwap4h,  "4H VWAP — 장중 평균가 (진입 구간 상단)"))
+        if _ps3_4h:  _price_levels.append((_ps3_4h,  "4H 피벗 S3 — 진입 구간 하단 (정밀)"))
+        if _pr3_4h:  _price_levels.append((_pr3_4h,  "4H 피벗 R3 — 진입 구간 상단 (Put)"))
+        if _bb_l_1h: _price_levels.append((_bb_l_1h, "1H BB 하단 — 단기 극과매도 지지"))
+        # 1H SMA (③ 진입 구간 계산 근거)
+        _s10_1h = getattr(fv, "sma10_1h", None) or None
+        _s20_1h = getattr(fv, "sma20_1h", None) or None
+        if _s10_1h: _price_levels.append((_s10_1h, "1H SMA10 — ③ 진입 구간 기준선"))
+        if _s20_1h: _price_levels.append((_s20_1h, "1H SMA20 — ③ 진입 구간 기준선"))
+        # ① 피보나치 (±20% 이내 레벨만)
+        if _cur and _fib38  and abs(_fib38  - _cur) / _cur < 0.20:
+            _price_levels.append((_fib38,  "① Fib 38.2% 되돌림 — 중간 지지/저항"))
+        if _cur and _fib50  and abs(_fib50  - _cur) / _cur < 0.20:
+            _price_levels.append((_fib50,  "① Fib 50.0% 되돌림 — 핵심 (진입 구간 참고)"))
+        if _cur and _fib62  and abs(_fib62  - _cur) / _cur < 0.20:
+            _price_levels.append((_fib62,  "① Fib 61.8% 되돌림 — 강한 지지/저항"))
+        if _cur and _fext100 and abs(_fext100 - _cur) / _cur < 0.30:
+            _price_levels.append((_fext100, "② Fib 100% 확장 — T1 보조"))
+        if _cur and _fext162 and abs(_fext162 - _cur) / _cur < 0.50:
+            _price_levels.append((_fext162, "② Fib 161.8% 확장 — T3 최대 목표"))
+        # ⑪ 스윙 고점/저점
+        if _cur and _swing_h and abs(_swing_h - _cur) / _cur < 0.25:
+            _price_levels.append((_swing_h, "⑪ 30일 스윙 고점 (Fib 기준)"))
+        if _cur and _swing_l and abs(_swing_l - _cur) / _cur < 0.25:
+            _price_levels.append((_swing_l, "⑪ 30일 스윙 저점 — 손절 참고"))
+        # ⑦ 앵커 VWAP
+        if _vwap_anch and not (isinstance(_vwap_anch, float) and _vwap_anch != _vwap_anch):
+            _price_levels.append((_vwap_anch, "⑦ 앵커 VWAP (스윙 저점 기준)"))
+        # ⑯ Camarilla (±8% 이내)
+        if _cur and _cam_h4 and abs(_cam_h4 - _cur) / _cur < 0.08:
+            _price_levels.append((_cam_h4, "⑯ (Cam) H4 — 추세 전환 저항"))
+        if _cur and _cam_h3 and abs(_cam_h3 - _cur) / _cur < 0.05:
+            _price_levels.append((_cam_h3, "⑯ (Cam) H3 — 타이트 저항"))
+        if _cur and _cam_l3 and abs(_cam_l3 - _cur) / _cur < 0.05:
+            _price_levels.append((_cam_l3, "⑯ (Cam) L3 — 타이트 지지"))
+        if _cur and _cam_l4 and abs(_cam_l4 - _cur) / _cur < 0.08:
+            _price_levels.append((_cam_l4, "⑯ (Cam) L4 — 추세 전환 지지"))
+        # ⑭ Parabolic SAR
+        if _psar and _cur and abs(_psar - _cur) / _cur < 0.15:
+            _sar_lbl = f"⑭ SAR ${_psar:.2f} (↑ 이 아래 = 추세전환)" if _psar_dir == "up" else f"⑭ SAR ${_psar:.2f} (↓ 이 위 = 추세전환)"
+            _price_levels.append((_psar, _sar_lbl))
+        # ⑬⑲ % 손절 참고 + 심리 라운드 넘버 (±8%)
+        if _cur_for_table:
+            _tbl_is_long = (r.direction == "long_call")
+            # % Stop (⑬)
+            if _tbl_is_long:
+                _price_levels.append((round(_cur_for_table * 0.98, 2), "⑬ 2% 고정 손절 참고"))
+                _price_levels.append((round(_cur_for_table * 0.95, 2), "⑬ 5% 고정 손절 참고"))
+            else:
+                _price_levels.append((round(_cur_for_table * 1.02, 2), "⑬ 2% 고정 손절 참고 (Put)"))
+                _price_levels.append((round(_cur_for_table * 1.05, 2), "⑬ 5% 고정 손절 참고 (Put)"))
+            # 심리 라운드 넘버 (⑲): 50달러 단위, ±8% 이내 (중복 방지)
+            _added_rnl: set[float] = set()
+            for _step in [50, 100]:
+                _base = round(_cur_for_table / _step) * _step
+                for _off in [-_step, 0, _step]:
+                    _rnl = _base + _off
+                    if (_rnl > 0 and _rnl != round(_cur_for_table)
+                            and abs(_rnl - _cur_for_table) / _cur_for_table < 0.08
+                            and _rnl not in _added_rnl):
+                        _added_rnl.add(_rnl)
+                        _price_levels.append((_rnl, f"⑲ 심리 지지/저항 ${int(_rnl)}"))
+        # A. 옵션 기반 가격선 (Max Pain + Implied Move ±1σ 범위)
+        if opt_analytics and _cur:
+            _mp_36 = opt_analytics.get("max_pain")
+            _im_36 = opt_analytics.get("implied_move_pct")
+            if _mp_36 and abs(_mp_36 - _cur) / _cur < 0.20:
+                _price_levels.append((_mp_36, "🎯 Max Pain — 옵션 만기일 자석 레벨 (옵션 발행자 이익 최대화)"))
+            if _im_36 and _im_36 > 0:
+                _im_upper = round(_cur * (1 + _im_36 / 100), 2)
+                _im_lower = round(_cur * (1 - _im_36 / 100), 2)
+                _price_levels.append((_im_upper, f"Implied Move +{_im_36:.1f}% 상단 (옵션 1σ 예상 범위)"))
+                _price_levels.append((_im_lower, f"Implied Move -{_im_36:.1f}% 하단 (옵션 1σ 예상 범위)"))
+        # D. VWAP 표준편차 밴드
+        _vs1u = getattr(fv, "vwap_std1_upper", None)
+        _vs1l = getattr(fv, "vwap_std1_lower", None)
+        _vs2u = getattr(fv, "vwap_std2_upper", None)
+        _vs2l = getattr(fv, "vwap_std2_lower", None)
+        if _vs1u and _cur and abs(_vs1u - _cur) / _cur < 0.15:
+            _price_levels.append((_vs1u, "D. VWAP +1σ — 정상 거래 상한"))
+        if _vs1l and _cur and abs(_vs1l - _cur) / _cur < 0.15:
+            _price_levels.append((_vs1l, "D. VWAP -1σ — 정상 거래 하한"))
+        if _vs2u and _cur and abs(_vs2u - _cur) / _cur < 0.20:
+            _price_levels.append((_vs2u, "D. VWAP +2σ — 과매수 경계"))
+        if _vs2l and _cur and abs(_vs2l - _cur) / _cur < 0.20:
+            _price_levels.append((_vs2l, "D. VWAP -2σ — 과매도 경계"))
+        # E. 전일/전주 고점/저점
+        _pdh = getattr(fv, "prev_day_high",  None)
+        _pdl = getattr(fv, "prev_day_low",   None)
+        _pwh = getattr(fv, "prev_week_high", None)
+        _pwl = getattr(fv, "prev_week_low",  None)
+        if _pdh and _cur and abs(_pdh - _cur) / _cur < 0.08:
+            _price_levels.append((_pdh, "E. 전일 고점 — 당일 저항"))
+        if _pdl and _cur and abs(_pdl - _cur) / _cur < 0.08:
+            _price_levels.append((_pdl, "E. 전일 저점 — 당일 지지"))
+        if _pwh and _cur and abs(_pwh - _cur) / _cur < 0.12:
+            _price_levels.append((_pwh, "E. 전주 고점 — 주간 저항"))
+        if _pwl and _cur and abs(_pwl - _cur) / _cur < 0.12:
+            _price_levels.append((_pwl, "E. 전주 저점 — 주간 지지"))
+        # A-1: EMA 9/21
+        _e9_36  = getattr(fv, "ema9",  None) if fv else None
+        _e21_36 = getattr(fv, "ema21", None) if fv else None
+        if _e9_36 and _cur and abs(_e9_36 - _cur) / _cur < 0.08:
+            _price_levels.append((_e9_36, "EMA 9 — 초단기 추세 기준선"))
+        if _e21_36 and _cur and abs(_e21_36 - _cur) / _cur < 0.10:
+            _price_levels.append((_e21_36, "EMA 21 — 단기 추세선"))
+        # A-2: Keltner Channel
+        _kcu_36 = getattr(fv, "keltner_upper", None) if fv else None
+        _kcl_36 = getattr(fv, "keltner_lower", None) if fv else None
+        if _kcu_36 and _cur and abs(_kcu_36 - _cur) / _cur < 0.15:
+            _price_levels.append((_kcu_36, "Keltner 상단 (EMA20+2×ATR) — 채널 돌파 시 강세 가속"))
+        if _kcl_36 and _cur and abs(_kcl_36 - _cur) / _cur < 0.15:
+            _price_levels.append((_kcl_36, "Keltner 하단 (EMA20-2×ATR) — 채널 이탈 시 하락 가속"))
+        # A-3: Donchian 20일
+        _dcu_36 = getattr(fv, "donchian_20_upper", None) if fv else None
+        _dcl_36 = getattr(fv, "donchian_20_lower", None) if fv else None
+        if _dcu_36 and _cur and abs(_dcu_36 - _cur) / _cur < 0.12:
+            _price_levels.append((_dcu_36, "Donchian 20일 상단 — 20일 최고가 돌파선"))
+        if _dcl_36 and _cur and abs(_dcl_36 - _cur) / _cur < 0.12:
+            _price_levels.append((_dcl_36, "Donchian 20일 하단 — 20일 최저가 지지선"))
+        # A-5: HV 기대이동폭 범위 (상단/하단)
+        _hvm5_36  = getattr(fv, "hv_move_5d",  None) if fv else None
+        _hvm15_36 = getattr(fv, "hv_move_15d", None) if fv else None
+        _hv30_36  = getattr(fv, "hv30",        None) if fv else None
+        if _hvm5_36 and _cur:
+            _price_levels.append((round(_cur + _hvm5_36,  2), f"HV{_hv30_36:.0f}% 5일 상단 (통계적 기대이동)"))
+            _price_levels.append((round(_cur - _hvm5_36,  2), f"HV{_hv30_36:.0f}% 5일 하단"))
+        if _hvm15_36 and _cur:
+            _price_levels.append((round(_cur + _hvm15_36, 2), f"HV{_hv30_36:.0f}% 15일 상단"))
+            _price_levels.append((round(_cur - _hvm15_36, 2), f"HV{_hv30_36:.0f}% 15일 하단"))
+        # A-6: Monthly Pivot
+        _mp_36 = getattr(fv, "monthly_pivot",    None) if fv else None
+        _mr1_36 = getattr(fv, "monthly_pivot_r1", None) if fv else None
+        _mr2_36 = getattr(fv, "monthly_pivot_r2", None) if fv else None
+        _ms1_36 = getattr(fv, "monthly_pivot_s1", None) if fv else None
+        _ms2_36 = getattr(fv, "monthly_pivot_s2", None) if fv else None
+        for _mlv, _mlabel in [
+            (_mp_36,  "월간 Pivot (P)"),
+            (_mr1_36, "월간 R1 — 상위 타임프레임 저항"),
+            (_mr2_36, "월간 R2 — 상위 타임프레임 2차 저항"),
+            (_ms1_36, "월간 S1 — 상위 타임프레임 지지"),
+            (_ms2_36, "월간 S2 — 상위 타임프레임 2차 지지"),
+        ]:
+            if _mlv and _cur and abs(_mlv - _cur) / _cur < 0.15:
+                _price_levels.append((_mlv, _mlabel))
+        # B: GEX 기반 가격선
+        if opt_analytics and _cur:
+            _cwall_36 = opt_analytics.get("call_wall")
+            _pwall_36 = opt_analytics.get("put_wall")
+            _gflip_36 = opt_analytics.get("gex_flip")
+            if _cwall_36 and abs(_cwall_36 - _cur) / _cur < 0.20:
+                _price_levels.append((_cwall_36, "🧲 Call Wall — 최대 콜 OI strike (단기 상단 저항 자석)"))
+            if _pwall_36 and abs(_pwall_36 - _cur) / _cur < 0.20:
+                _price_levels.append((_pwall_36, "🧲 Put Wall — 최대 풋 OI strike (단기 하단 지지 자석)"))
+            if _gflip_36 and abs(_gflip_36 - _cur) / _cur < 0.20:
+                _price_levels.append((_gflip_36, "⚡ GEX Flip — 딜러 Net Gamma 전환 레벨 (돌파 시 변동성 가속)"))
         # ATR 기반 손절선 — 방향에 따라 위/아래 분기
         _tbl_is_long = (r.direction == "long_call")
         if _cur and _atr_lv:
@@ -1304,6 +1682,31 @@ def _format_type3_section(
         else:
             _st_desc = "단기 저항 부근 숨고르기 또는 소폭 조정 예상."
 
+        # 피보나치·Measured Move·Weekly/Monthly 피벗 목표 레벨
+        _fib100_37  = getattr(fv, "fib_ext_100",     None) if fv else None
+        _fib162_37  = getattr(fv, "fib_ext_162",     None) if fv else None
+        _wpr1_37    = getattr(fv, "weekly_pivot_r1", None) if fv else None
+        _wpr2_37    = getattr(fv, "weekly_pivot_r2", None) if fv else None
+        _wps1_37    = getattr(fv, "weekly_pivot_s1", None) if fv else None
+        _wps2_37    = getattr(fv, "weekly_pivot_s2", None) if fv else None
+        _mpr1_37    = getattr(fv, "monthly_pivot_r1", None) if fv else None
+        _mpr2_37    = getattr(fv, "monthly_pivot_r2", None) if fv else None
+        _mps1_37    = getattr(fv, "monthly_pivot_s1", None) if fv else None
+        _mps2_37    = getattr(fv, "monthly_pivot_s2", None) if fv else None
+        _sh37       = getattr(fv, "swing_high_30d",  None) if fv else None
+        _sl37       = getattr(fv, "swing_low_30d",   None) if fv else None
+        _hvm5_37    = getattr(fv, "hv_move_5d",      None) if fv else None
+        _hvm15_37   = getattr(fv, "hv_move_15d",     None) if fv else None
+        _cwall_37   = (opt_analytics or {}).get("call_wall")
+        _pwall_37   = (opt_analytics or {}).get("put_wall")
+        _is_long_37 = (r.direction == "long_call")
+        _mm37: float | None = None
+        if _sh37 and _sl37 and _p:
+            _mm_range = _sh37 - _sl37
+            _mm37 = round(_p + _mm_range, 2) if (_is_long_37 and _mm_range > 0) else (
+                round(_p - _mm_range, 2) if (not _is_long_37 and _mm_range > 0) else None
+            )
+
         if _base_pct is not None and _bull_pct is not None:
             _mt_desc = (
                 f"Base 시나리오 기준 {_base_pct:+.1f}% 목표 (${_p * (1 + _base_pct / 100):.2f}). "
@@ -1311,6 +1714,32 @@ def _format_type3_section(
             )
         else:
             _mt_desc = "중기 목표가는 피봇 R1 돌파 후 R2 구간."
+        # 중기 T1 보조 근거 (Fib 100% + Weekly/Monthly R1 + Call Wall + HV 5d)
+        _mt_refs: list[str] = []
+        if _is_long_37:
+            if _fib100_37 and _p and _fib100_37 > _p:
+                _mt_refs.append(f"Fib 100% 확장 ${_fib100_37:.2f}")
+            if _wpr1_37 and _p and _wpr1_37 > _p:
+                _mt_refs.append(f"주봉 R1 ${_wpr1_37:.2f}")
+            if _mpr1_37 and _p and _mpr1_37 > _p:
+                _mt_refs.append(f"월봉 R1 ${_mpr1_37:.2f}")
+            if _cwall_37 and _p and _cwall_37 > _p:
+                _mt_refs.append(f"Call Wall ${_cwall_37:.2f} (OI 자석)")
+            if _hvm5_37 and _p:
+                _mt_refs.append(f"HV 5일 상단 ${round(_p + _hvm5_37, 2):.2f}")
+        else:
+            if _fib100_37 and _p and _fib100_37 < _p:
+                _mt_refs.append(f"Fib 100% 확장 ${_fib100_37:.2f}")
+            if _wps1_37 and _p and _wps1_37 < _p:
+                _mt_refs.append(f"주봉 S1 ${_wps1_37:.2f}")
+            if _mps1_37 and _p and _mps1_37 < _p:
+                _mt_refs.append(f"월봉 S1 ${_mps1_37:.2f}")
+            if _pwall_37 and _p and _pwall_37 < _p:
+                _mt_refs.append(f"Put Wall ${_pwall_37:.2f} (OI 자석)")
+            if _hvm5_37 and _p:
+                _mt_refs.append(f"HV 5일 하단 ${round(_p - _hvm5_37, 2):.2f}")
+        if _mt_refs:
+            _mt_desc += f" | T1 참고 레벨: {' / '.join(_mt_refs)}"
 
         if _bear_pct is not None:
             _lt_desc = (
@@ -1319,6 +1748,32 @@ def _format_type3_section(
             )
         else:
             _lt_desc = "장기 추세는 SMA200 지지 여부로 판단."
+        # 장기 T3 보조 근거 (Fib 161.8% + Weekly/Monthly R2 + Measured Move + HV 15d)
+        _lt_refs: list[str] = []
+        if _is_long_37:
+            if _fib162_37 and _p and _fib162_37 > _p:
+                _lt_refs.append(f"Fib 161.8% ${_fib162_37:.2f}")
+            if _wpr2_37 and _p and _wpr2_37 > _p:
+                _lt_refs.append(f"주봉 R2 ${_wpr2_37:.2f}")
+            if _mpr2_37 and _p and _mpr2_37 > _p:
+                _lt_refs.append(f"월봉 R2 ${_mpr2_37:.2f}")
+            if _mm37 and _mm37 > _p:
+                _lt_refs.append(f"Measured Move ${_mm37:.2f}")
+            if _hvm15_37 and _p:
+                _lt_refs.append(f"HV 15일 상단 ${round(_p + _hvm15_37, 2):.2f}")
+        else:
+            if _fib162_37 and _p and _fib162_37 < _p:
+                _lt_refs.append(f"Fib 161.8% ${_fib162_37:.2f}")
+            if _wps2_37 and _p and _wps2_37 < _p:
+                _lt_refs.append(f"주봉 S2 ${_wps2_37:.2f}")
+            if _mps2_37 and _p and _mps2_37 < _p:
+                _lt_refs.append(f"월봉 S2 ${_mps2_37:.2f}")
+            if _mm37 and _mm37 < _p:
+                _lt_refs.append(f"Measured Move ${_mm37:.2f}")
+            if _hvm15_37 and _p:
+                _lt_refs.append(f"HV 15일 하단 ${round(_p - _hvm15_37, 2):.2f}")
+        if _lt_refs:
+            _lt_desc = f"T3 참고 레벨: {' / '.join(_lt_refs)}. " + _lt_desc
 
         lines += [
             "### 3-7. 가격 예측 시나리오 (Price Projections)",
@@ -1337,7 +1792,23 @@ def _format_type3_section(
     if fv:
         _accel     = fv.pivot_r2 or fv.pivot_r1
         _breakdown = fv.sma200_val or fv.pivot_s2
-        if _accel or _breakdown:
+        _cam_h4_38   = getattr(fv, "cam_h4",         None)
+        _cam_l4_38   = getattr(fv, "cam_l4",         None)
+        _psar_38     = getattr(fv, "parabolic_sar",  None)
+        _psar_dir_38 = getattr(fv, "sar_direction",  None)
+        _fib62_38    = getattr(fv, "fib_61_8",       None)
+        _kcl_38      = getattr(fv, "keltner_lower",  None)
+        _ms1_38      = getattr(fv, "monthly_pivot_s1", None)
+        _ms2_38      = getattr(fv, "monthly_pivot_s2", None)
+        _mr1_38      = getattr(fv, "monthly_pivot_r1", None)
+        _gflip_38    = (opt_analytics or {}).get("gex_flip")
+        _pwall_38    = (opt_analytics or {}).get("put_wall")
+        _cwall_38    = (opt_analytics or {}).get("call_wall")
+        _is_long_38  = (r.direction == "long_call")
+        _has_any = bool(_accel or _breakdown or _cam_h4_38 or _cam_l4_38
+                        or _psar_38 or _fib62_38 or _gflip_38 or _pwall_38
+                        or _kcl_38 or _ms1_38)
+        if _has_any:
             lines += ["### 3-8. 핵심 변곡점 (Key Inflection Points)", "", "**⚡ 핵심 변곡점 (Key Inflection Points)**", "", "```"]
             if _accel:
                 _accel_cur = _cur_price_val or (fv.price if fv else None)
@@ -1345,6 +1816,37 @@ def _format_type3_section(
                     lines.append(f"상승 가속 조건   : ${_accel:.2f} 돌파 (✅ 이미 달성 — 현재가 ${_accel_cur:.2f})")
                 else:
                     lines.append(f"상승 가속 조건   : ${_accel:.2f} 대량 거래량 동반 돌파 → 상승 속도 가속")
+            if _cam_h4_38:
+                lines.append(f"Cam H4 전환 저항 : ${_cam_h4_38:.2f} 돌파 → 상승 추세 전환 신호 (⑯ Camarilla)")
+            if _cam_l4_38:
+                lines.append(f"Cam L4 전환 지지 : ${_cam_l4_38:.2f} 이탈 → 하락 추세 전환 신호 (⑯ Camarilla)")
+            if _psar_38:
+                if _psar_dir_38 == "up":
+                    lines.append(f"SAR 전환점 (상승) : ${_psar_38:.2f} 하향 전환 시 → 상승 추세 반전 경고 (⑭ SAR)")
+                else:
+                    lines.append(f"SAR 전환점 (하락) : ${_psar_38:.2f} 상향 전환 시 → 하락 추세 반전 신호 (⑭ SAR)")
+            if _fib62_38:
+                if _is_long_38:
+                    lines.append(f"Fib 61.8% 이탈   : ${_fib62_38:.2f} 일봉 하회 → 되돌림 추세 붕괴, 롱콜 논거 무효")
+                else:
+                    lines.append(f"Fib 61.8% 상향   : ${_fib62_38:.2f} 상향 돌파 → 하락 논거 약화, 롱풋 재검토")
+            if _kcl_38:
+                lines.append(f"Keltner 하단 이탈 : ${_kcl_38:.2f} 일봉 하회 → 추세 채널 붕괴, 변동성 확대 경보")
+            if _gflip_38:
+                if _is_long_38:
+                    lines.append(f"GEX Flip 레벨    : ${_gflip_38:.2f} — 딜러 Net Gamma 전환 (상향 돌파 시 변동성 가속)")
+                else:
+                    lines.append(f"GEX Flip 레벨    : ${_gflip_38:.2f} — 딜러 Net Gamma 전환 (하향 이탈 시 변동성 가속)")
+            if _cwall_38 and _is_long_38:
+                lines.append(f"Call Wall 상단   : ${_cwall_38:.2f} — OI 집중 저항, 돌파 실패 시 단기 천장")
+            if _pwall_38 and not _is_long_38:
+                lines.append(f"Put Wall 하단    : ${_pwall_38:.2f} — OI 집중 지지, 하향 이탈 시 낙폭 가속")
+            if _ms1_38:
+                lines.append(f"월봉 S1 지지선   : ${_ms1_38:.2f} — 상위 타임프레임 지지 (이탈 시 스윙 논거 약화)")
+            if _ms2_38:
+                lines.append(f"월봉 S2 지지선   : ${_ms2_38:.2f} — 상위 타임프레임 2차 지지")
+            if _mr1_38 and _is_long_38:
+                lines.append(f"월봉 R1 저항선   : ${_mr1_38:.2f} — 상위 타임프레임 저항 (돌파 시 스윙 타깃)")
             if _breakdown:
                 lines.append(f"추세 붕괴 기준   : ${_breakdown:.2f} 일봉 종가 하회 → 중기 상승 추세 소멸")
             lines += ["```", ""]
@@ -1406,7 +1908,7 @@ def _format_integrated_buy_block(
     macro_score: int,
     macro_label: str,
     sent: dict | None,
-    fv: "FinvizDetail | None" = None,
+    fv: "StockDetail | None" = None,
     k_score: float = 5.0,
     regime: "MarketRegime | None" = None,
     investment_horizons: "list[str] | None" = None,
@@ -1441,6 +1943,18 @@ def _format_integrated_buy_block(
 
     tech_score = ts.final_score if ts else 0.0
     tech_status = "충족" if tech_score >= 60 else "경고" if tech_score >= 40 else "미충족"
+
+    # 현재가 역산 — sc 시나리오 기준가 우선, fv.price는 캐시 기반으로 오래될 수 있음
+    _cur_price_val: "float | None" = None
+    if sc:
+        try:
+            _mv = getattr(sc.base, "stock_move_pct", None)
+            if _mv is not None and _mv != -1 and sc.base.target_stock_price:
+                _cur_price_val = sc.base.target_stock_price / (1 + _mv / 100)
+        except Exception:
+            pass
+    if _cur_price_val is None and fv and fv.price:
+        _cur_price_val = fv.price
 
     # Greeks — None이면 "N/A" 표시
     delta_str = f"{ov.greeks.delta:.2f}" if ov else "N/A (데이터 없음)"
@@ -1478,12 +1992,54 @@ def _format_integrated_buy_block(
         stop_str = t1_str = t2_str = t3_str = trailing_str = "N/A (시나리오 데이터 없음)"
 
     # ── SECTION 0: 종합 최종 판정 요약 (Executive Summary) ────────
-    # 스윙 무효화 조건 — fv에서 S1 또는 S2로 역산
+    # 스윙 무효화 조건 — 방향별로 Fib 61.8% > Pivot S/R1 > SMA200 우선순위
     _invalidation_price: str = "N/A"
+    _invalidation_note: str = ""
     if fv:
-        _inv_val = fv.pivot_s1 or fv.pivot_s2 or fv.sma200_val
-        if _inv_val:
-            _invalidation_price = f"${_inv_val:.2f}"
+        _is_long_sec0 = (r.direction == "long_call")
+        if _is_long_sec0:
+            # Long Call 무효화: 가격이 아래로 깨지면 안 되는 레벨 (높은 것 = 더 보수적)
+            _fib61_inv = getattr(fv, "fib_61_8", None)
+            _ps1_inv   = fv.pivot_s1
+            _inv_candidates = [x for x in [_fib61_inv, _ps1_inv, fv.sma200_val] if x]
+            if _inv_candidates:
+                _inv_val = max(_inv_candidates)  # 가장 높은(타이트) 레벨
+                _invalidation_price = f"${_inv_val:.2f}"
+                if _inv_val == _fib61_inv:
+                    _invalidation_note = " (Fib 61.8% 이탈 — 되돌림 추세 붕괴)"
+                elif _inv_val == _ps1_inv:
+                    _invalidation_note = " (Pivot S1 하회)"
+        else:
+            # Long Put 무효화: 가격이 위로 올라가면 안 되는 레벨 (낮은 것 = 더 보수적)
+            _fib61_inv = getattr(fv, "fib_61_8", None)  # 되돌림 61.8% 상향 = 하락 논거 약화
+            _pr1_inv   = fv.pivot_r1
+            _sar_inv   = getattr(fv, "parabolic_sar", None)
+            _sar_up    = getattr(fv, "sar_direction", None) == "down"  # SAR이 하락 모드여야 유효
+            _inv_cands_put = [x for x in [_fib61_inv, _pr1_inv] if x]
+            if _sar_inv and _sar_up:
+                _inv_cands_put.append(_sar_inv)
+            if _inv_cands_put:
+                _cur_for_inv = _cur_price_val or (fv.price if fv else None)
+                _above_cur = [x for x in _inv_cands_put if _cur_for_inv and x > _cur_for_inv]
+                if _above_cur:
+                    _inv_val = min(_above_cur)  # 가장 가까운 위쪽 레벨
+                    _invalidation_price = f"${_inv_val:.2f}"
+                    if _inv_val == _sar_inv:
+                        _invalidation_note = " (SAR 상향 돌파 — 하락 추세 반전)"
+                    elif _inv_val == _fib61_inv:
+                        _invalidation_note = " (Fib 61.8% 상향 = 하락 논거 약화)"
+    # SAR 경고 행 (SECTION 0 보조 행)
+    _sar_sec0_str: str = ""
+    if fv:
+        _sar_v0   = getattr(fv, "parabolic_sar", None)
+        _sar_dir0 = getattr(fv, "sar_direction", None)
+        if _sar_v0:
+            if _is_long_sec0 and _sar_dir0 == "up":
+                _sar_sec0_str = f"${_sar_v0:.2f} 하향 전환 시 포지션 재검토 (현재 SAR 상승 모드 유지)"
+            elif _is_long_sec0 and _sar_dir0 == "down":
+                _sar_sec0_str = f"⚠️ SAR 하락 모드 (${_sar_v0:.2f}) — 롱콜 방향 역풍"
+            elif not _is_long_sec0 and _sar_dir0 == "down":
+                _sar_sec0_str = f"${_sar_v0:.2f} 상향 전환 시 즉시 청산 (현재 SAR 하락 모드 유지)"
     # 최적 진입 방식
     _entry_method = (
         "즉시 시장가" if r.action == "진입" and (ts and ts.signal_count >= 7)
@@ -1539,7 +2095,23 @@ def _format_integrated_buy_block(
         f"| **ROIC** | {_kv(roic_,'.1f','%')} {roic_emoji} |",
         f"| **최적 진입 방식** | {_entry_method} |",
         f"| **핵심 근거** | {_core_rationale} |",
-        f"| **스윙 무효화 조건** | {_invalidation_price} 일봉 종가 하회 시 판정 무효 |",
+        f"| **스윙 무효화 조건** | {_invalidation_price} 일봉 종가 하회 시 판정 무효{_invalidation_note} |",
+        *(
+            [f"| **SAR 경고** | {_sar_sec0_str} |"]
+            if _sar_sec0_str else []
+        ),
+        *(
+            [f"| **Keltner 채널** | ${getattr(fv,'keltner_lower',None):.2f} 하단 이탈 시 추세 채널 붕괴 — 포지션 재검토 |"]
+            if fv and getattr(fv, "keltner_lower", None) else []
+        ),
+        *(
+            [f"| **Call Wall** | ${opt_analytics.get('call_wall'):.2f} — 단기 상단 저항 (OI 집중 자석) |"]
+            if opt_analytics and opt_analytics.get("call_wall") and (r.direction == "long_call") else []
+        ),
+        *(
+            [f"| **Put Wall** | ${opt_analytics.get('put_wall'):.2f} — 단기 하단 지지 (이탈 시 낙폭 가속) |"]
+            if opt_analytics and opt_analytics.get("put_wall") and (r.direction != "long_call") else []
+        ),
         "",
         "---",
         "",
@@ -1686,10 +2258,20 @@ def _format_integrated_buy_block(
             if "실적" in _ev_type and r.ticker in _ev_name.upper():
                 _ev_date = getattr(_ev, "date", None)
                 _ev_days = getattr(_ev, "days_until", None)
+                _ev_eps  = getattr(_ev, "eps_estimate", None)
+                _ev_rev  = getattr(_ev, "revenue_estimate_b", None)
                 if _ev_date:
                     try:
                         _date_str = _ev_date.strftime("%Y-%m-%d") if hasattr(_ev_date, "strftime") else str(_ev_date)[:10]
                         _earn_str = f"**{_date_str}** ({_ev_days}일 후)" if _ev_days is not None else f"**{_date_str}**"
+                        # EPS/매출 예상치 추가
+                        _earn_extras = []
+                        if _ev_eps is not None:
+                            _earn_extras.append(f"EPS est. **${_ev_eps:.2f}**")
+                        if _ev_rev is not None:
+                            _earn_extras.append(f"매출 est. **${_ev_rev:.1f}B**")
+                        if _earn_extras:
+                            _earn_str += " | " + " / ".join(_earn_extras)
                     except Exception:
                         pass
                 break
@@ -1832,7 +2414,7 @@ def _format_integrated_buy_block(
 
     # TYPE 3: 기술 분석 (실제 지표값 + LLM 내러티브 포함)
     tech_narrative = sent.get("technical_narrative") if sent else None
-    lines += _format_type3_section(r, ts, sc, regime, fv=fv, narrative=tech_narrative).splitlines()
+    lines += _format_type3_section(r, ts, sc, regime, fv=fv, narrative=tech_narrative, opt_analytics=opt_analytics).splitlines()
     lines += [""]
 
     # Technical Dashboard (TYPE 3 섹션)
@@ -1887,15 +2469,26 @@ def _format_integrated_buy_block(
 
         if _is_long:
             # ── Long Call ─────────────────────────────────────────────
-            # 손절: 현재가 - N×ATR  vs  SMA (아래) 중 더 높은 것(타이트)
+            # 손절: 현재가 - N×ATR  vs  MA/스윙저점 (아래) 중 더 높은 것(타이트)
             _near_stop_atr  = round(_cur_stk - 0.5 * _atr, 2) if _cur_stk and _atr else None
             _swing_stop_atr = round(_cur_stk - 0.8 * _atr, 2) if _cur_stk and _atr else None
             _sma20_ref = (fv.sma20_val if fv and fv.sma20_val
                           and _cur_stk and fv.sma20_val < _cur_stk else None)
             _sma50_ref = (fv.sma50_val if fv and fv.sma50_val
                           and _cur_stk and fv.sma50_val < _cur_stk else None)
-            _near_stk_stop  = max((x for x in [_near_stop_atr, _sma20_ref]          if x is not None), default=None)
-            _swing_stk_stop = max((x for x in [_swing_stop_atr, _sma50_ref, _sma20_ref] if x is not None), default=None)
+            # ⑪ 스윙 저점 손절 (30일 내 최저점)
+            _swing_low_stop = (getattr(fv, "swing_low_30d", None)
+                               if fv and getattr(fv, "swing_low_30d", None)
+                               and _cur_stk and getattr(fv, "swing_low_30d", 0) < _cur_stk else None)
+            # ⑫ Weekly Pivot S1 손절 (스윙 기준)
+            _wps1_stop = (getattr(fv, "weekly_pivot_s1", None)
+                          if fv and getattr(fv, "weekly_pivot_s1", None)
+                          and _cur_stk and getattr(fv, "weekly_pivot_s1", 0) < _cur_stk else None)
+            _near_stk_stop  = max((x for x in [_near_stop_atr, _sma20_ref]                              if x is not None), default=None)
+            _swing_stk_stop = max((x for x in [_swing_stop_atr, _sma50_ref, _sma20_ref, _swing_low_stop] if x is not None), default=None)
+            # ⑫ Weekly S1이 스윙 손절보다 타이트(높)하면 Weekly S1 우선
+            if _wps1_stop and _swing_stk_stop and _wps1_stop > _swing_stk_stop:
+                _swing_stk_stop = _wps1_stop
 
             # 목표: 현재가 위 저항선 — T1(가장 가까운) → T3(더 먼)
             _r1_cand   = (fv.pivot_r1  if fv and fv.pivot_r1  and _cur_stk and fv.pivot_r1  > _cur_stk else None)
@@ -1905,14 +2498,27 @@ def _format_integrated_buy_block(
             _t1_atr    = round(_cur_stk + 1.0 * _atr, 2) if _cur_stk and _atr else None
             _t3_atr    = round(_cur_stk + 2.0 * _atr, 2) if _cur_stk and _atr else None
 
-            # T1: 현재가 위 가장 가까운 저항 (SMA10 > R1 > SMA5 > +1ATR 중 최솟값)
-            _t1_cands = [x for x in [_t1_atr, _r1_cand, _sma10_cand, _sma5_cand] if x is not None]
+            # ① 피보나치 되돌림 T1 후보 (Fib50% — 핵심 되돌림)
+            _fib50_cand  = (getattr(fv, "fib_50_0", None)
+                            if fv and getattr(fv, "fib_50_0", None)
+                            and _cur_stk and getattr(fv, "fib_50_0", 0) > _cur_stk else None)
+            # ① 피보나치 확장 T3 후보 (Fib162%)
+            _fib162_cand = (getattr(fv, "fib_ext_162", None)
+                            if fv and getattr(fv, "fib_ext_162", None)
+                            and _cur_stk and getattr(fv, "fib_ext_162", 0) > _cur_stk else None)
+            # ⑱ Weekly Pivot R2 T3 후보
+            _wpr2_cand   = (getattr(fv, "weekly_pivot_r2", None)
+                            if fv and getattr(fv, "weekly_pivot_r2", None)
+                            and _cur_stk and getattr(fv, "weekly_pivot_r2", 0) > _cur_stk else None)
+
+            # T1: 현재가 위 가장 가까운 저항 (Fib50 포함)
+            _t1_cands = [x for x in [_t1_atr, _r1_cand, _sma10_cand, _sma5_cand, _fib50_cand] if x is not None]
             _stk_t1   = min(_t1_cands) if _t1_cands else (sc.base.target_stock_price if sc and sc.base else None)
-            # T3: 주봉 SMA5 > 일봉 SMA5 > 2×ATR 순 우선 (현재가 위, T1보다 높은 것)
+            # T3: 주봉R2 > Fib162% > 주봉SMA5 > SMA5 > 2×ATR 순 (T1보다 높은 것)
             _ws5_cand = (getattr(fv, "weekly_sma5_val", None)
                          if fv and getattr(fv, "weekly_sma5_val", None)
                          and _cur_stk and getattr(fv, "weekly_sma5_val", 0) > _cur_stk else None)
-            _t3_cands = [x for x in [_ws5_cand, _sma5_cand, _t3_atr]
+            _t3_cands = [x for x in [_wpr2_cand, _fib162_cand, _ws5_cand, _sma5_cand, _t3_atr]
                          if x is not None and (_stk_t1 is None or x > _stk_t1)]
             _stk_t3   = (max(_t3_cands) if _t3_cands else None) or (sc.bullish.target_stock_price if sc and sc.bullish else None)
 
@@ -1933,8 +2539,19 @@ def _format_integrated_buy_block(
                           and _cur_stk and fv.sma20_val > _cur_stk else None)
             _sma50_ref = (fv.sma50_val if fv and fv.sma50_val
                           and _cur_stk and fv.sma50_val > _cur_stk else None)
-            _near_stk_stop  = min((x for x in [_near_stop_atr, _sma20_ref]              if x is not None), default=None)
-            _swing_stk_stop = min((x for x in [_swing_stop_atr, _sma50_ref, _sma20_ref] if x is not None), default=None)
+            # ⑪ 스윙 고점 손절 (Put: 스윙 고점 위 = 손절)
+            _swing_high_stop = (getattr(fv, "swing_high_30d", None)
+                                if fv and getattr(fv, "swing_high_30d", None)
+                                and _cur_stk and getattr(fv, "swing_high_30d", 0) > _cur_stk else None)
+            # ⑫ Weekly Pivot R1 손절 (Put 스윙 기준)
+            _wpr1_stop = (getattr(fv, "weekly_pivot_r1", None)
+                          if fv and getattr(fv, "weekly_pivot_r1", None)
+                          and _cur_stk and getattr(fv, "weekly_pivot_r1", 0) > _cur_stk else None)
+            _near_stk_stop  = min((x for x in [_near_stop_atr, _sma20_ref]                                if x is not None), default=None)
+            _swing_stk_stop = min((x for x in [_swing_stop_atr, _sma50_ref, _sma20_ref, _swing_high_stop] if x is not None), default=None)
+            # ⑫ Weekly R1이 스윙 손절보다 타이트(낮)하면 Weekly R1 우선
+            if _wpr1_stop and _swing_stk_stop and _wpr1_stop < _swing_stk_stop:
+                _swing_stk_stop = _wpr1_stop
 
             # 목표: 현재가 아래 지지선 — T1(가장 가까운) → T3(더 먼)
             _s1_cand    = (fv.pivot_s1 if fv and fv.pivot_s1 and _cur_stk and fv.pivot_s1 < _cur_stk else None)
@@ -1944,14 +2561,27 @@ def _format_integrated_buy_block(
             _t1_atr     = round(_cur_stk - 1.0 * _atr, 2) if _cur_stk and _atr else None
             _t3_atr     = round(_cur_stk - 2.0 * _atr, 2) if _cur_stk and _atr else None
 
-            # T1: 현재가 아래 가장 가까운 지지 (최댓값)
-            _t1_cands = [x for x in [_t1_atr, _s1_cand, _sma10_cand, _sma5_cand] if x is not None]
+            # ① 피보나치 Put T1 후보 (Fib50% — 핵심 지지)
+            _fib50_cand  = (getattr(fv, "fib_50_0", None)
+                            if fv and getattr(fv, "fib_50_0", None)
+                            and _cur_stk and getattr(fv, "fib_50_0", 0) < _cur_stk else None)
+            # ② 피보나치 162% 확장 T3 후보 (Put 최대 목표)
+            _fib162_cand = (getattr(fv, "fib_ext_162", None)
+                            if fv and getattr(fv, "fib_ext_162", None)
+                            and _cur_stk and getattr(fv, "fib_ext_162", 0) < _cur_stk else None)
+            # ⑱ Weekly Pivot S2 T3 후보 (Put 딥타겟)
+            _wps2_cand   = (getattr(fv, "weekly_pivot_s2", None)
+                            if fv and getattr(fv, "weekly_pivot_s2", None)
+                            and _cur_stk and getattr(fv, "weekly_pivot_s2", 0) < _cur_stk else None)
+
+            # T1: 현재가 아래 가장 가까운 지지 (Fib50 포함)
+            _t1_cands = [x for x in [_t1_atr, _s1_cand, _sma10_cand, _sma5_cand, _fib50_cand] if x is not None]
             _stk_t1   = max(_t1_cands) if _t1_cands else (sc.base.target_stock_price if sc and sc.base else None)
-            # T3: 주봉 SMA5 > 일봉 SMA5 > 2×ATR 순 우선 (현재가 아래, T1보다 낮은 것)
+            # T3: 주봉S2 > Fib162% > 주봉SMA5 > SMA5 > -2×ATR (T1보다 낮은 것)
             _ws5_cand = (getattr(fv, "weekly_sma5_val", None)
                          if fv and getattr(fv, "weekly_sma5_val", None)
                          and _cur_stk and getattr(fv, "weekly_sma5_val", 0) < _cur_stk else None)
-            _t3_cands = [x for x in [_ws5_cand, _sma5_cand, _t3_atr]
+            _t3_cands = [x for x in [_wps2_cand, _fib162_cand, _ws5_cand, _sma5_cand, _t3_atr]
                          if x is not None and (_stk_t1 is None or x < _stk_t1)]
             _stk_t3   = (min(_t3_cands) if _t3_cands else None) or (sc.bearish.target_stock_price if sc and sc.bearish else None)
 
@@ -1979,35 +2609,74 @@ def _format_integrated_buy_block(
         def _fmt(v: float | None) -> str:
             return f"${v:.2f}" if v else "N/A"
 
-        # ── 진입 구간 계산 (Pivot S3/R3 + SMA20 기반) ─────────────────
-        # long_call : Pivot S3 (아래) ~ 현재가×0.99  → 눌림목 매수 구간
-        # long_put  : 현재가×1.01 ~ Pivot R3 (위)    → 반등 후 매도 구간
-        _ps3 = getattr(fv, "pivot_s3", None) if fv else None
-        _pr3 = getattr(fv, "pivot_r3", None) if fv else None
-        _sma20_fv = getattr(fv, "sma20_val", None) if fv else None
+        # ── 진입 구간 계산 (1H SMA 우선 → 4H S3/VWAP → 일봉 S3) ───────
+        # C1: 모범 보고서의 "$900~$920" = 1H SMA10/20 수렴 레벨 재현
+        # long_call: 1H SMA10/20 수렴 구간 ~ 현재가×0.99 눌림목
+        # long_put : 현재가×1.01 ~ 1H SMA10/20 수렴 구간 반등
+        _ps3       = getattr(fv, "pivot_s3",    None) if fv else None
+        _pr3       = getattr(fv, "pivot_r3",    None) if fv else None
+        _ps3_4h    = getattr(fv, "pivot_s3_4h", None) if fv else None
+        _pr3_4h    = getattr(fv, "pivot_r3_4h", None) if fv else None
+        _vwap4h_ez = getattr(fv, "vwap_4h",     None) if fv else None
+        _sma20_fv  = getattr(fv, "sma20_val",   None) if fv else None
+        _s10_1h_ez = getattr(fv, "sma10_1h",    None) if fv else None
+        _s20_1h_ez = getattr(fv, "sma20_1h",    None) if fv else None
 
         if _is_long:
-            # Long Call 진입 구간 하단: max(Pivot S3, SMA20) if below current
-            _ez_candidates = [x for x in [_ps3, _sma20_fv]
-                              if x is not None and _cur_stk and x < _cur_stk]
-            _ez_low  = max(_ez_candidates) if _ez_candidates else None
-            _ez_high = round(_cur_stk * 0.99, 2) if _cur_stk else None
+            # 진입 하단 우선순위:
+            # ① 1H SMA10/20 수렴 구간 (모범의 $917/$917 → $900-920)
+            # ② 4H S3 (버그 수정 후 정밀값)
+            # ③ 일봉 S3
+            # ④ SMA20 (현재가 아래)
+            _ez_low_cands = [x for x in [_s10_1h_ez, _s20_1h_ez, _ps3_4h, _ps3, _sma20_fv]
+                             if x is not None and _cur_stk and x < _cur_stk]
+            _ez_low = max(_ez_low_cands) if _ez_low_cands else None
+            # 진입 상단: 4H VWAP 우선, 없으면 현재가×0.99
+            if _vwap4h_ez and _cur_stk and _vwap4h_ez < _cur_stk:
+                _ez_high = round(_vwap4h_ez, 2)
+            else:
+                _ez_high = round(_cur_stk * 0.99, 2) if _cur_stk else None
+            # 소스 표기
+            if _s10_1h_ez and _ez_low and abs(_ez_low - _s10_1h_ez) < 1:
+                _ez_src = "1H SMA10"
+            elif _s20_1h_ez and _ez_low and abs(_ez_low - _s20_1h_ez) < 1:
+                _ez_src = "1H SMA20"
+            elif _ps3_4h and _ez_low == _ps3_4h:
+                _ez_src = "4H S3"
+            elif _ps3 and _ez_low == _ps3:
+                _ez_src = "일봉 S3"
+            else:
+                _ez_src = "SMA20"
             if _ez_low and _ez_high:
-                _entry_zone = f"눌림목 {_sfmt(_ez_low)}~{_sfmt(_ez_high)}"
+                _entry_zone = f"눌림목 {_sfmt(_ez_low)}~{_sfmt(_ez_high)} ({_ez_src})"
             elif _ez_low:
-                _entry_zone = f"눌림목 {_sfmt(_ez_low)} 부근"
+                _entry_zone = f"눌림목 {_sfmt(_ez_low)} 부근 ({_ez_src})"
             else:
                 _entry_zone = "현재가 진입"
         else:
-            # Long Put 진입 구간 상단: min(Pivot R3, SMA20) if above current
-            _ez_candidates = [x for x in [_pr3, _sma20_fv]
+            # 진입 상단 우선순위:
+            # ① 1H SMA10/20 (현재가 위에 있을 때)
+            # ② 4H R3
+            # ③ 일봉 R3
+            # ④ SMA20 (현재가 위)
+            _ez_high_cands = [x for x in [_s10_1h_ez, _s20_1h_ez, _pr3_4h, _pr3, _sma20_fv]
                               if x is not None and _cur_stk and x > _cur_stk]
+            _ez_high = min(_ez_high_cands) if _ez_high_cands else None
             _ez_low  = round(_cur_stk * 1.01, 2) if _cur_stk else None
-            _ez_high = min(_ez_candidates) if _ez_candidates else None
+            if _s10_1h_ez and _ez_high and abs(_ez_high - _s10_1h_ez) < 1:
+                _ez_src = "1H SMA10"
+            elif _s20_1h_ez and _ez_high and abs(_ez_high - _s20_1h_ez) < 1:
+                _ez_src = "1H SMA20"
+            elif _pr3_4h and _ez_high == _pr3_4h:
+                _ez_src = "4H R3"
+            elif _pr3 and _ez_high == _pr3:
+                _ez_src = "일봉 R3"
+            else:
+                _ez_src = "SMA20"
             if _ez_low and _ez_high:
-                _entry_zone = f"반등 후 {_sfmt(_ez_low)}~{_sfmt(_ez_high)}"
+                _entry_zone = f"반등 후 {_sfmt(_ez_low)}~{_sfmt(_ez_high)} ({_ez_src})"
             elif _ez_high:
-                _entry_zone = f"반등 후 {_sfmt(_ez_high)} 부근"
+                _entry_zone = f"반등 후 {_sfmt(_ez_high)} 부근 ({_ez_src})"
             else:
                 _entry_zone = "현재가 진입"
 
@@ -2303,6 +2972,44 @@ def _format_integrated_buy_block(
 
     # ── TYPE 5: Buy & Sell ──────────────────────────────────────
     lines += ["## ━━━ TYPE 5 · 매수 & 매도 종합 판단 ━━━", ""]
+
+    # ── D: 장기 투자 관점 독립 박스 ──────────────────────────────────
+    # 단기 트레이드 방향(long_call/put)과 무관하게 개별 종목 주봉 추세 기반 판단
+    # 모범 보고서의 TYPE5 BUY 70% 구조 재현
+    _w_adx_d  = getattr(fv, "weekly_adx",     None) if fv else None
+    _w_dip_d  = getattr(fv, "weekly_di_plus", None) if fv else None
+    _w_din_d  = getattr(fv, "weekly_di_minus",None) if fv else None
+    _w_rsi_d  = getattr(fv, "weekly_rsi",     None) if fv else None
+
+    if _w_adx_d is not None and _w_dip_d is not None and _w_din_d is not None:
+        _lt_strong_bull = (_w_dip_d > _w_din_d * 1.5 and _w_adx_d >= 30)
+        _lt_strong_bear = (_w_din_d > _w_dip_d * 1.5 and _w_adx_d >= 30)
+        if _lt_strong_bull:
+            _lt_dir   = "🟢 장기 상승 추세 유효"
+            _lt_act   = "조정 시 매수 기회 (BUY ON PULLBACK)"
+            _lt_basis = f"주봉 DI+{_w_dip_d:.0f} >> DI-{_w_din_d:.0f}, ADX {_w_adx_d:.0f}"
+            _lt_warn  = ("⚠️ 현재 단기 트레이드 방향은 long_put이지만, **장기 주봉 추세는 강한 상승**입니다."
+                         if r.direction == "long_put" else "")
+        elif _lt_strong_bear:
+            _lt_dir   = "🔴 장기 하락 추세 진행"
+            _lt_act   = "반등 시 매도 기회 (SELL ON BOUNCE)"
+            _lt_basis = f"주봉 DI-{_w_din_d:.0f} >> DI+{_w_dip_d:.0f}, ADX {_w_adx_d:.0f}"
+            _lt_warn  = ""
+        else:
+            _lt_dir   = "🟡 장기 추세 혼조"
+            _lt_act   = "장기 방향 불명확 — 추세 확인 후 진입"
+            _lt_basis = f"주봉 DI+{_w_dip_d:.0f} / DI-{_w_din_d:.0f}, ADX {_w_adx_d:.0f}"
+            _lt_warn  = ""
+        _rsi_str_d = f"주봉 RSI {_w_rsi_d:.0f}" if _w_rsi_d else ""
+        lines += [
+            "### 📐 장기 투자 관점 (트레이드 방향과 독립)",
+            "",
+            f"> **{_lt_dir}** | {_lt_act}",
+            f"> 근거: {_lt_basis}" + (f" | {_rsi_str_d}" if _rsi_str_d else ""),
+            "",
+        ]
+        if _lt_warn:
+            lines += [f"> {_lt_warn}", ""]
 
     # 복합 스코어카드 — 펀더멘털/애널리스트/차원 포함
     # 펀더멘털 데이터 (fv 있을 때)
@@ -2751,6 +3458,34 @@ def _format_integrated_buy_block(
             "",
         ]
 
+    # 기술적 무효화 트리거 (가격 레벨 기반)
+    if fv:
+        _is_long_57 = (r.direction == "long_call")
+        _fib62_57   = getattr(fv, "fib_61_8", None)
+        _psar_57    = getattr(fv, "parabolic_sar", None)
+        _psar_dir57 = getattr(fv, "sar_direction", None)
+        _cur_57     = _cur_price_val or fv.price
+        _tech_inval: list[str] = []
+        if _fib62_57:
+            if _is_long_57:
+                _tech_inval.append(f"${_fib62_57:.2f} (Fib 61.8%) 일봉 종가 하회 → 롱콜 논거 즉시 무효 (되돌림 추세 붕괴)")
+            else:
+                _tech_inval.append(f"${_fib62_57:.2f} (Fib 61.8%) 상향 돌파 → 롱풋 하락 논거 약화, 포지션 재검토")
+        if _psar_57:
+            if _is_long_57 and _psar_dir57 == "up":
+                _tech_inval.append(f"SAR ${_psar_57:.2f} 하향 전환 → 상승 모멘텀 상실 경고, 부분 익절 고려")
+            elif not _is_long_57 and _psar_dir57 == "down":
+                _tech_inval.append(f"SAR ${_psar_57:.2f} 상향 돌파 → 롱풋 하락 추세 반전 신호, 즉시 청산 트리거")
+            elif _is_long_57 and _psar_dir57 == "down":
+                _tech_inval.append(f"⚠️ SAR 이미 하락 모드 (${_psar_57:.2f}) — 롱콜 진입 전 SAR 상향 전환 확인 권장")
+        if _tech_inval:
+            lines += [
+                "**기술적 무효화 트리거 (Price-Level Invalidation):**",
+                "",
+                *[f"- {t}" for t in _tech_inval],
+                "",
+            ]
+
     # 종목 특성 리스크
     if fv:
         _atr_val = fv.atr
@@ -2954,7 +3689,7 @@ def _format_integrated_buy_block(
     return lines
 
 
-def _calc_fundamental_score(fvd: "FinvizDetail | None") -> int:
+def _calc_fundamental_score(fvd: "StockDetail | None") -> int:
     """펀더멘털 점수 0~100 계산 (fvd 필드 기반)"""
     if not fvd:
         return 50
@@ -3009,7 +3744,7 @@ def _format_sell_position_block(
     thesis: dict | None = None,
     devils: dict | None = None,
     regime_flag: str = "",
-    fvd: FinvizDetail | None = None,
+    fvd: StockDetail | None = None,
     k_score_entry: float | None = None,
     regime_infer: dict | None = None,
 ) -> list[str]:

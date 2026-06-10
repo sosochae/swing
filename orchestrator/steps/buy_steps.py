@@ -2447,6 +2447,21 @@ class BuySteps:
                         "call_wall": _nar_oa.get("call_wall") or "N/A",
                         "put_wall":  _nar_oa.get("put_wall")  or "N/A",
                         "gex_flip":  _nar_oa.get("gex_flip")  or "N/A",
+                        # EMA 50/100/200
+                        "ema50":  _nar_gd("ema50"),
+                        "ema100": _nar_gd("ema100"),
+                        "ema200": _nar_gd("ema200"),
+                        # 52주 고점/저점
+                        "w52_high": _nar_gd("w52_high"),
+                        "w52_low":  _nar_gd("w52_low"),
+                        # FVG
+                        "fvg_bull_top":    _nar_gd("fvg_bull_top"),
+                        "fvg_bull_bottom": _nar_gd("fvg_bull_bottom"),
+                        "fvg_bear_top":    _nar_gd("fvg_bear_top"),
+                        "fvg_bear_bottom": _nar_gd("fvg_bear_bottom"),
+                        # Gap Fill
+                        "gap_up_fill":   _nar_gd("gap_up_fill"),
+                        "gap_down_fill": _nar_gd("gap_down_fill"),
                     }
                     _nar_key = f"{_nar_tk}_{date.today()}_tech_narrative"
                     _nar_result = await analyze_with_llm(

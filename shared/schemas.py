@@ -309,6 +309,12 @@ class StockDetail(BaseModel):
     # ── EMA 단기선 ────────────────────────────────────────────────────
     ema9:  float | None = None                # EMA 9일 (초단기 지지/저항)
     ema21: float | None = None                # EMA 21일 (단기 추세선)
+    ema50:  float | None = None               # EMA 50일 (중기 추세선 / 기관 기준)
+    ema100: float | None = None               # EMA 100일 (중장기 추세선)
+    ema200: float | None = None               # EMA 200일 (장기 추세선 / 골든·데스크로스 기준)
+    # ── 52주 고점/저점 ──────────────────────────────────────────────────
+    w52_high: float | None = None             # 52주 고점 (연간 최대 저항)
+    w52_low:  float | None = None             # 52주 저점 (연간 최대 지지)
     # ── Keltner Channel (EMA20 ± 2×ATR) ─────────────────────────────
     keltner_upper: float | None = None        # Keltner 상단 (과매수/채널 돌파 기준)
     keltner_lower: float | None = None        # Keltner 하단 (과매도/채널 하향 기준)
@@ -325,6 +331,14 @@ class StockDetail(BaseModel):
     monthly_pivot_r2: float | None = None     # 월간 R2
     monthly_pivot_s1: float | None = None     # 월간 S1
     monthly_pivot_s2: float | None = None     # 월간 S2
+    # ── FVG (Fair Value Gap) ──────────────────────────────────────────
+    fvg_bull_top:    float | None = None      # 상승 FVG 상단 (미채움 공정가치 구간)
+    fvg_bull_bottom: float | None = None      # 상승 FVG 하단
+    fvg_bear_top:    float | None = None      # 하락 FVG 상단
+    fvg_bear_bottom: float | None = None      # 하락 FVG 하단
+    # ── Gap Fill ─────────────────────────────────────────────────────
+    gap_up_fill:   float | None = None        # 미채움 갭 업 레벨 (전날 종가)
+    gap_down_fill: float | None = None        # 미채움 갭 다운 레벨 (전날 종가)
     # ── 애널리스트 의견 집계 ───────────────────────────────────────────
     analyst_buy: int | None = None            # 매수(Strong Buy + Buy) 수
     analyst_hold: int | None = None           # 보유(Hold) 수

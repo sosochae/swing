@@ -332,11 +332,14 @@ Devil's Advocate 차감:
 - 피보나치 확장 100%: ${{ fib_ext_100 }}  |  161.8%: ${{ fib_ext_162 }}
 - Camarilla H3/H4: ${{ cam_h3 }} / ${{ cam_h4 }}  |  L3/L4: ${{ cam_l3 }} / ${{ cam_l4 }}
 - Parabolic SAR: ${{ psar }}  (방향: {{ sar_dir }})  (⚠️ sar_dir=down이면 하락추세 SAR)
-- EMA 9: ${{ ema9 }}  |  EMA 21: ${{ ema21 }}
+- EMA 9: ${{ ema9 }}  |  EMA 21: ${{ ema21 }}  |  EMA 50: ${{ ema50 }}  |  EMA 100: ${{ ema100 }}  |  EMA 200: ${{ ema200 }}
+- 52주 고점: ${{ w52_high }}  |  52주 저점: ${{ w52_low }}
 - Keltner 상단: ${{ keltner_upper }}  |  하단: ${{ keltner_lower }}
 - HV(30일): {{ hv30 }}%  |  HV 5일 기대이동폭: ${{ hv_move_5d }}  |  15일: ${{ hv_move_15d }}
 - Monthly Pivot: ${{ monthly_pivot }}  |  R1 ${{ monthly_pivot_r1 }} / R2 ${{ monthly_pivot_r2 }}  |  S1 ${{ monthly_pivot_s1 }} / S2 ${{ monthly_pivot_s2 }}
 - Call Wall (OI 자석): ${{ call_wall }}  |  Put Wall: ${{ put_wall }}  |  GEX Flip: ${{ gex_flip }}
+- FVG 상승 구간: ${{ fvg_bull_bottom }} ~ ${{ fvg_bull_top }}  |  FVG 하락 구간: ${{ fvg_bear_bottom }} ~ ${{ fvg_bear_top }}
+- 미채움 갭 업: ${{ gap_up_fill }}  |  미채움 갭 다운: ${{ gap_down_fill }}
 
 ## 기술 점수 요약
 - MA 정배열: {{ ma_alignment }}

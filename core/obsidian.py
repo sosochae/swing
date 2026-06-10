@@ -1580,6 +1580,23 @@ def _format_type3_section(
             _price_levels.append((_e9_36, "EMA 9 — 초단기 추세 기준선"))
         if _e21_36 and _cur and abs(_e21_36 - _cur) / _cur < 0.10:
             _price_levels.append((_e21_36, "EMA 21 — 단기 추세선"))
+        # A-1b: EMA 50/100/200
+        _e50_36  = getattr(fv, "ema50",  None) if fv else None
+        _e100_36 = getattr(fv, "ema100", None) if fv else None
+        _e200_36 = getattr(fv, "ema200", None) if fv else None
+        if _e50_36 and _cur and abs(_e50_36 - _cur) / _cur < 0.15:
+            _price_levels.append((_e50_36, "EMA 50 — 중기 추세선 (기관 기준)"))
+        if _e100_36 and _cur and abs(_e100_36 - _cur) / _cur < 0.20:
+            _price_levels.append((_e100_36, "EMA 100 — 중장기 추세선"))
+        if _e200_36 and _cur and abs(_e200_36 - _cur) / _cur < 0.25:
+            _price_levels.append((_e200_36, "EMA 200 — 장기 추세선 (골든/데스크로스 기준)"))
+        # A-9: 52주 고점/저점
+        _w52h_36 = getattr(fv, "w52_high", None) if fv else None
+        _w52l_36 = getattr(fv, "w52_low",  None) if fv else None
+        if _w52h_36 and _cur and abs(_w52h_36 - _cur) / _cur < 0.30:
+            _price_levels.append((_w52h_36, "📅 52주 고점 — 연간 최대 저항 (돌파 시 추세전환)"))
+        if _w52l_36 and _cur and abs(_w52l_36 - _cur) / _cur < 0.30:
+            _price_levels.append((_w52l_36, "📅 52주 저점 — 연간 최대 지지 (이탈 시 추세전환)"))
         # A-2: Keltner Channel
         _kcu_36 = getattr(fv, "keltner_upper", None) if fv else None
         _kcl_36 = getattr(fv, "keltner_lower", None) if fv else None
@@ -1594,6 +1611,28 @@ def _format_type3_section(
             _price_levels.append((_dcu_36, "Donchian 20일 상단 — 20일 최고가 돌파선"))
         if _dcl_36 and _cur and abs(_dcl_36 - _cur) / _cur < 0.12:
             _price_levels.append((_dcl_36, "Donchian 20일 하단 — 20일 최저가 지지선"))
+        # A-7: FVG (Fair Value Gap)
+        _fvg_bt_36 = getattr(fv, "fvg_bull_top",    None) if fv else None
+        _fvg_bb_36 = getattr(fv, "fvg_bull_bottom",  None) if fv else None
+        _fvg_rt_36 = getattr(fv, "fvg_bear_top",    None) if fv else None
+        _fvg_rb_36 = getattr(fv, "fvg_bear_bottom",  None) if fv else None
+        if _fvg_bt_36 and _fvg_bb_36 and _cur:
+            _fvg_b_mid = (_fvg_bt_36 + _fvg_bb_36) / 2
+            if abs(_fvg_b_mid - _cur) / _cur < 0.15:
+                _price_levels.append((_fvg_bt_36, "📐 FVG 상승 상단 — 미채움 공정가치 구간 (지지)"))
+                _price_levels.append((_fvg_bb_36, "📐 FVG 상승 하단 — 미채움 공정가치 구간 (지지)"))
+        if _fvg_rt_36 and _fvg_rb_36 and _cur:
+            _fvg_r_mid = (_fvg_rt_36 + _fvg_rb_36) / 2
+            if abs(_fvg_r_mid - _cur) / _cur < 0.15:
+                _price_levels.append((_fvg_rt_36, "📐 FVG 하락 상단 — 미채움 공정가치 구간 (저항)"))
+                _price_levels.append((_fvg_rb_36, "📐 FVG 하락 하단 — 미채움 공정가치 구간 (저항)"))
+        # A-8: Gap Fill
+        _gap_up_36   = getattr(fv, "gap_up_fill",   None) if fv else None
+        _gap_down_36 = getattr(fv, "gap_down_fill", None) if fv else None
+        if _gap_up_36 and _cur and abs(_gap_up_36 - _cur) / _cur < 0.15:
+            _price_levels.append((_gap_up_36, "⬆️ 갭 업 미채움 — 전날 종가 복귀 레벨"))
+        if _gap_down_36 and _cur and abs(_gap_down_36 - _cur) / _cur < 0.15:
+            _price_levels.append((_gap_down_36, "⬇️ 갭 다운 미채움 — 전날 종가 복귀 레벨"))
         # A-5: HV 기대이동폭 범위 (상단/하단)
         _hvm5_36  = getattr(fv, "hv_move_5d",  None) if fv else None
         _hvm15_36 = getattr(fv, "hv_move_15d", None) if fv else None

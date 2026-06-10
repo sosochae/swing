@@ -575,11 +575,13 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         volumes: list[float] = []
         highs: list[float] = []
         lows: list[float] = []
+        opens: list[float] = []
         if hist is not None and not hist.empty:
             closes = hist["Close"].dropna().tolist()
             volumes = hist["Volume"].dropna().tolist()
             highs = hist["High"].dropna().tolist()
             lows = hist["Low"].dropna().tolist()
+            opens = hist["Open"].dropna().tolist()
 
         # ── 가격 / 등락 ──
         price = _f(info.get("currentPrice") or info.get("regularMarketPrice"))
@@ -649,6 +651,31 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
             if _e21:
                 _ema21_val = round(_e21[-1], 2)
 
+        # ── A-1b: EMA 50/100/200 ──────────────────────────────────────────
+        _ema50_val:  Optional[float] = None
+        _ema100_val: Optional[float] = None
+        _ema200_val: Optional[float] = None
+        if len(closes) >= 50:
+            _e50 = _ema(closes, 50)
+            if _e50:
+                _ema50_val = round(_e50[-1], 2)
+        if len(closes) >= 100:
+            _e100 = _ema(closes, 100)
+            if _e100:
+                _ema100_val = round(_e100[-1], 2)
+        if len(closes) >= 200:
+            _e200 = _ema(closes, 200)
+            if _e200:
+                _ema200_val = round(_e200[-1], 2)
+
+        # ── A-9: 52주 고점/저점 ────────────────────────────────────────────
+        _w52_high: Optional[float] = None
+        _w52_low:  Optional[float] = None
+        if len(highs) >= 1:
+            _w52_high = round(float(max(highs[-252:])), 2) if len(highs) >= 252 else round(float(max(highs)), 2)
+        if len(lows) >= 1:
+            _w52_low  = round(float(min(lows[-252:])),  2) if len(lows)  >= 252 else round(float(min(lows)),  2)
+
         # ── A-2: Keltner Channel (EMA20 ± 2×ATR) ─────────────────────────
         _keltner_upper: Optional[float] = None
         _keltner_lower: Optional[float] = None
@@ -704,6 +731,58 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
                 _monthly_pivot_s2 = round(_mP - (_mH - _mL), 2)
         except Exception:
             pass
+
+        # ── A-7: FVG (Fair Value Gap) — 최근 20봉 중 현재가 근접 미채움 구간 ──
+        _fvg_bull_top:    Optional[float] = None
+        _fvg_bull_bottom: Optional[float] = None
+        _fvg_bear_top:    Optional[float] = None
+        _fvg_bear_bottom: Optional[float] = None
+        _n_fvg = min(len(highs), len(lows))
+        if _n_fvg >= 3:
+            for _fi in range(_n_fvg - 3, max(-1, _n_fvg - 23), -1):
+                _fh0, _fl0 = highs[_fi], lows[_fi]
+                _fh2, _fl2 = highs[_fi + 2], lows[_fi + 2]
+                # Bullish FVG: high[i] < low[i+2] → 미채움 구간 = [high[i], low[i+2]]
+                if _fl2 > _fh0 and _fvg_bull_top is None:
+                    _zmid = (_fl2 + _fh0) / 2
+                    if price and abs(_zmid - price) / price < 0.15:
+                        _fvg_bull_top    = round(_fl2, 2)
+                        _fvg_bull_bottom = round(_fh0, 2)
+                # Bearish FVG: low[i] > high[i+2] → 미채움 구간 = [high[i+2], low[i]]
+                if _fh2 < _fl0 and _fvg_bear_top is None:
+                    _zmid = (_fl0 + _fh2) / 2
+                    if price and abs(_zmid - price) / price < 0.15:
+                        _fvg_bear_top    = round(_fl0, 2)
+                        _fvg_bear_bottom = round(_fh2, 2)
+                if _fvg_bull_top and _fvg_bear_top:
+                    break
+
+        # ── A-8: Gap Fill — 최근 10일 미채움 갭 ─────────────────────────
+        _gap_up_fill:   Optional[float] = None
+        _gap_down_fill: Optional[float] = None
+        _n_gap = min(len(opens), len(closes), len(highs), len(lows))
+        if _n_gap >= 2:
+            for _d in range(1, min(11, _n_gap)):
+                _gday = _n_gap - _d
+                _pc   = closes[_gday - 1]
+                _go   = opens[_gday]
+                if _pc <= 0:
+                    continue
+                _gpct = (_go - _pc) / _pc
+                if _gpct > 0.005 and _gap_up_fill is None:
+                    # 갭 업 — 이후 어느 날이라도 low ≤ _pc 이면 채워진 것
+                    _filled = any(lows[_gday + k] <= _pc for k in range(_n_gap - _gday))
+                    if not _filled and price and price > _pc:
+                        if abs(_pc - price) / price < 0.15:
+                            _gap_up_fill = round(_pc, 2)
+                elif _gpct < -0.005 and _gap_down_fill is None:
+                    # 갭 다운 — 이후 어느 날이라도 high ≥ _pc 이면 채워진 것
+                    _filled = any(highs[_gday + k] >= _pc for k in range(_n_gap - _gday))
+                    if not _filled and price and price < _pc:
+                        if abs(_pc - price) / price < 0.15:
+                            _gap_down_fill = round(_pc, 2)
+                if _gap_up_fill and _gap_down_fill:
+                    break
 
         # ──⑦ 앵커 VWAP (스윙 저점 기준) ─────────────────────────────────
         _vwap_anchored: Optional[float] = None
@@ -929,6 +1008,11 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         prev_day_low=_prev_day_low,
         ema9=_ema9_val,
         ema21=_ema21_val,
+        ema50=_ema50_val,
+        ema100=_ema100_val,
+        ema200=_ema200_val,
+        w52_high=_w52_high,
+        w52_low=_w52_low,
         keltner_upper=_keltner_upper,
         keltner_lower=_keltner_lower,
         donchian_20_upper=_donchian_20_upper,
@@ -941,6 +1025,12 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         monthly_pivot_r2=_monthly_pivot_r2,
         monthly_pivot_s1=_monthly_pivot_s1,
         monthly_pivot_s2=_monthly_pivot_s2,
+        fvg_bull_top=_fvg_bull_top,
+        fvg_bull_bottom=_fvg_bull_bottom,
+        fvg_bear_top=_fvg_bear_top,
+        fvg_bear_bottom=_fvg_bear_bottom,
+        gap_up_fill=_gap_up_fill,
+        gap_down_fill=_gap_down_fill,
         vwap_anchored=_vwap_anchored,
         candle_signal=_candle_pattern,
         # ── 애널리스트 의견 ──

@@ -12,6 +12,22 @@ positions.md에 포지션이 없으면 분석 대상 없음으로 종료.
 """
 
 from __future__ import annotations
+# ── SSL CA bundle ASCII 경로 보정 (한글 사용자명 환경에서 curl_cffi 오류 방지) ──
+import os as _os, shutil as _sh, certifi as _certifi_ssl
+_ca_raw = _certifi_ssl.where()
+try:
+    _ca_raw.encode('ascii')
+    _ca_ascii = _ca_raw
+except UnicodeEncodeError:
+    from pathlib import Path as _Path
+    _cache_dir = _Path(__file__).resolve().parents[1] / 'cache'
+    _cache_dir.mkdir(exist_ok=True)
+    _ca_ascii = str(_cache_dir / 'cacert.pem')
+    _sh.copy2(_ca_raw, _ca_ascii)
+for _ev in ('SSL_CERT_FILE', 'CURL_CA_BUNDLE', 'REQUESTS_CA_BUNDLE'):
+    _os.environ[_ev] = _ca_ascii
+del _ca_raw, _ca_ascii, _ev, _os, _sh, _certifi_ssl
+# ─────────────────────────────────────────────────────────────────────────────
 
 import argparse
 import asyncio
@@ -31,7 +47,6 @@ sys.path.insert(0, str(_root))
 def _print_step_result(ctx: Any, step_num: int) -> None:
     if step_num == 0:
         print(f"  summary  : {len(ctx.summary_data.tickers) if ctx.summary_data else 0}종목")
-        print(f"  finviz   : {len(ctx.finviz_rows)}행")
         print(f"  earnings : {len(ctx.earnings_list)}건")
         print(f"  detail   : {len(ctx.stock_data)}종목")
         print(f"  kavout   : {len(ctx.kavout_data)}종목")

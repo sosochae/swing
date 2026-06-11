@@ -31,8 +31,13 @@ def _calc_rsi(closes: list[float], period: int = 14) -> Optional[float]:
     deltas = np.diff(arr)
     gains = np.where(deltas > 0, deltas, 0.0)
     losses = np.where(deltas < 0, -deltas, 0.0)
-    avg_gain = float(np.mean(gains[-period:]))
-    avg_loss = float(np.mean(losses[-period:]))
+    # Wilder's Smoothing: 첫 period봉 SMA로 시드 → alpha=1/period EMA
+    avg_gain = float(np.mean(gains[:period]))
+    avg_loss = float(np.mean(losses[:period]))
+    alpha = 1.0 / period
+    for g, l in zip(gains[period:], losses[period:]):
+        avg_gain = alpha * float(g) + (1 - alpha) * avg_gain
+        avg_loss = alpha * float(l) + (1 - alpha) * avg_loss
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
@@ -208,10 +213,10 @@ def _calc_parabolic_sar(highs: list[float], lows: list[float],
     if n < 3:
         return None, None
     highs = highs[-n:]; lows = lows[-n:]
-    # 초기 방향: 첫 봉 기준 임시 설정
-    uptrend = highs[-1] > highs[-2]
-    sar = lows[-2] if uptrend else highs[-2]
-    ep  = highs[-1] if uptrend else lows[-1]
+    # 초기 방향: 배열 첫 2봉 기준 — 루프가 i=2(3번째 봉)부터 시작하므로 반드시 앞에서 초기화
+    uptrend = highs[1] > highs[0]
+    sar = lows[0] if uptrend else highs[0]
+    ep  = highs[1] if uptrend else lows[1]
     af  = af_start
     for i in range(2, n):
         prev_sar = sar
@@ -271,13 +276,11 @@ def _detect_candle_pattern(recent_ohlc: list[dict]) -> str:
     return "none"
 
 
-def _calc_anchored_vwap(hist_df, anchor_price: float) -> Optional[float]:
-    """⑦ 앵커 VWAP — 최근 스윙 저점 날짜 이후 누적 VWAP"""
+def _calc_anchored_vwap(hist_df, anchor_bars_back: int) -> Optional[float]:
+    """⑦ 앵커 VWAP — 스윙 저점 날짜(anchor_bars_back봉 전)부터 현재까지 누적 VWAP"""
     try:
-        # 스윙 저점에 가장 가까운 날짜 찾기
-        closes = hist_df["Close"].tolist()
-        closest_idx = min(range(len(closes)), key=lambda i: abs(closes[i] - anchor_price))
-        subset = hist_df.iloc[closest_idx:]
+        subset = hist_df.iloc[-anchor_bars_back:] if anchor_bars_back > 0 else hist_df
+        subset = subset.dropna(subset=["High", "Low", "Close", "Volume"])
         if subset.empty:
             return None
         tp = (subset["High"] + subset["Low"] + subset["Close"]) / 3
@@ -310,6 +313,7 @@ def _calc_intraday_indicators(ticker: str) -> dict:
         "rsi_4h": None, "macd_hist_4h": None,
         "adx_4h": None, "di_plus_4h": None, "di_minus_4h": None,
         "vwap_4h": None, "pivot_p_4h": None, "pivot_s3_4h": None, "pivot_r3_4h": None,
+        "pivot_r1_4h": None, "pivot_r2_4h": None, "pivot_s1_4h": None, "pivot_s2_4h": None,
         "rsi_1h": None, "bb_lower_1h": None,
         "sma5_1h": None, "sma10_1h": None, "sma20_1h": None, "macd_hist_1h": None,
         "vwap_std1_upper": None, "vwap_std1_lower": None,
@@ -457,6 +461,10 @@ def _calc_intraday_indicators(ticker: str) -> dict:
                 result["pivot_p_4h"]  = round(_rpp,  2)
                 result["pivot_s3_4h"] = round(_rps3, 2)
                 result["pivot_r3_4h"] = round(_rpr3, 2)
+                result["pivot_r1_4h"] = round(2 * _rpp - _rpl, 2)
+                result["pivot_r2_4h"] = round(_rpp + (_rph - _rpl), 2)
+                result["pivot_s1_4h"] = round(2 * _rpp - _rph, 2)
+                result["pivot_s2_4h"] = round(_rpp - (_rph - _rpl), 2)
 
     except Exception as exc:
         log.debug("_calc_intraday_indicators 실패 %s: %s", ticker, exc)
@@ -624,9 +632,17 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         _fib_fields: dict = {}
         _swing_high_30d: Optional[float] = None
         _swing_low_30d:  Optional[float] = None
+        _anchor_bars_back: Optional[int] = None
         if len(highs) >= 20 and len(lows) >= 20:
-            _swing_high_30d = round(float(max(highs[-30:])), 2) if len(highs) >= 30 else round(float(max(highs)), 2)
-            _swing_low_30d  = round(float(min(lows[-30:])),  2) if len(lows)  >= 30 else round(float(min(lows)),  2)
+            # [-31:-1]: 당일 미완성봉 제외, 확정된 최대 30봉 기준
+            _sh_src = highs[-31:-1] if len(highs) >= 31 else (highs[:-1] if len(highs) > 1 else highs)
+            _sl_src = lows[-31:-1]  if len(lows)  >= 31 else (lows[:-1]  if len(lows)  > 1 else lows)
+            _swing_high_30d = round(float(max(_sh_src)), 2)
+            _swing_low_30d  = round(float(min(_sl_src)), 2)
+            # 앵커 VWAP용: 스윙 저점이 hist 끝에서 몇 봉 전인지 (당일봉 포함 기준)
+            # _sl_src[i] = lows[-(len(_sl_src)+1) + i] → hist.iloc[-(len(_sl_src)+1-i):]
+            _sl_argmin = int(np.argmin(np.array(_sl_src)))
+            _anchor_bars_back = len(_sl_src) + 1 - _sl_argmin  # +1: 당일봉까지 포함
             _fib_fields = _calc_fibonacci(_swing_high_30d, _swing_low_30d)
 
         # ──⑯ Camarilla Pivot (전일 H/L/C) ───────────────────────────────
@@ -784,13 +800,11 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
                 if _gap_up_fill and _gap_down_fill:
                     break
 
-        # ──⑦ 앵커 VWAP (스윙 저점 기준) ─────────────────────────────────
+        # ──⑦ 앵커 VWAP (스윙 저점 기준, 날짜 기반)
         _vwap_anchored: Optional[float] = None
-        if _swing_low_30d is not None:
+        if _anchor_bars_back is not None:
             try:
-                _hist_df = t.history(period="30d", auto_adjust=True)
-                if not _hist_df.empty:
-                    _vwap_anchored = _calc_anchored_vwap(_hist_df, _swing_low_30d)
+                _vwap_anchored = _calc_anchored_vwap(hist, _anchor_bars_back)
             except Exception:
                 pass
 

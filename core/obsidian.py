@@ -403,6 +403,7 @@ class ObsidianClient:
         stock_data: dict[str, StockDetail] | None = None,
         kavout_data: dict | None = None,
         regime_infer: dict | None = None,
+        options_analytics: "dict[str, dict] | None" = None,
     ) -> str:
         """매도 분석 노트 저장 — 완전 재작성 (환각 방지 강화)"""
         today = date.today().isoformat()
@@ -493,6 +494,7 @@ class ObsidianClient:
                     fvd=(stock_data or {}).get(d.ticker),
                     k_score_entry=(lambda _kr: float(_kr.k_score or 5.0) if hasattr(_kr, "k_score") else float((_kr or {}).get("k_score", 5.0)))((kavout_data or {}).get(d.ticker)) if kavout_data else None,
                     regime_infer=(regime_infer or {}).get(_pk),
+                    opt_analytics=(options_analytics or {}).get(d.ticker),
                 )
 
 
@@ -1406,6 +1408,10 @@ def _format_type3_section(
         _pp_4h     = getattr(fv, "pivot_p_4h",   None) or None
         _ps3_4h    = getattr(fv, "pivot_s3_4h",  None) or None
         _pr3_4h    = getattr(fv, "pivot_r3_4h",  None) or None
+        _pr1_4h    = getattr(fv, "pivot_r1_4h",  None) or None
+        _pr2_4h    = getattr(fv, "pivot_r2_4h",  None) or None
+        _ps1_4h    = getattr(fv, "pivot_s1_4h",  None) or None
+        _ps2_4h    = getattr(fv, "pivot_s2_4h",  None) or None
         _rsi_4h    = getattr(fv, "rsi_4h",       None) or None
         _macd_h4h  = getattr(fv, "macd_hist_4h", None)
         _di_p_4h   = getattr(fv, "di_plus_4h",   None) or None
@@ -1474,6 +1480,10 @@ def _format_type3_section(
         if _wpr2: _price_levels.append((_wpr2, "주봉 피벗 R2 — 스윙 최대 목표"))
         # 4H 지표 레벨
         if _pp_4h:   _price_levels.append((_pp_4h,   "4H 피벗 P — 단기 진입/저항 기준점"))
+        if _pr1_4h:  _price_levels.append((_pr1_4h,  "4H 피벗 R1 — 단기 저항"))
+        if _pr2_4h:  _price_levels.append((_pr2_4h,  "4H 피벗 R2 — 중기 저항"))
+        if _ps1_4h:  _price_levels.append((_ps1_4h,  "4H 피벗 S1 — 단기 지지"))
+        if _ps2_4h:  _price_levels.append((_ps2_4h,  "4H 피벗 S2 — 중기 지지"))
         if _vwap4h:  _price_levels.append((_vwap4h,  "4H VWAP — 장중 평균가 (진입 구간 상단)"))
         if _ps3_4h:  _price_levels.append((_ps3_4h,  "4H 피벗 S3 — 진입 구간 하단 (정밀)"))
         if _pr3_4h:  _price_levels.append((_pr3_4h,  "4H 피벗 R3 — 진입 구간 상단 (Put)"))
@@ -3786,6 +3796,7 @@ def _format_sell_position_block(
     fvd: StockDetail | None = None,
     k_score_entry: float | None = None,
     regime_infer: dict | None = None,
+    opt_analytics: dict | None = None,
 ) -> list[str]:
     """TYPE S1~S7 매도 포지션 보고서 블록 (모범 결과.md 기준 구조화)"""
 
@@ -4076,6 +4087,183 @@ def _format_sell_position_block(
             f"| {_p(s2)} | {_p(s1)} | **{current_price_str}** | {_p(r1)} | {_p(r2)} | {_p(ma200)} |",
             "",
         ]
+
+        # ── 확장 가격 레벨 통합 테이블 ──────────────────────────────
+        _cur_sv = current_price
+        if _cur_sv and _cur_sv > 0:
+            _sell_plevels: list[tuple[float, str]] = []
+
+            def _pf_sv(v: float) -> str:
+                return f"${v:.2f}"
+
+            # 피보나치
+            _fib38_sv  = getattr(fvd, "fib_38_2",    None)
+            _fib50_sv  = getattr(fvd, "fib_50_0",    None)
+            _fib62_sv  = getattr(fvd, "fib_61_8",    None)
+            _fext100_sv = getattr(fvd, "fib_ext_100", None)
+            _fext162_sv = getattr(fvd, "fib_ext_162", None)
+            if _fib38_sv  and abs(_fib38_sv  - _cur_sv) / _cur_sv < 0.20:
+                _sell_plevels.append((_fib38_sv,  "① Fib 38.2% 되돌림 — 중간 지지/저항"))
+            if _fib50_sv  and abs(_fib50_sv  - _cur_sv) / _cur_sv < 0.20:
+                _sell_plevels.append((_fib50_sv,  "① Fib 50.0% 되돌림 — 핵심 되돌림"))
+            if _fib62_sv  and abs(_fib62_sv  - _cur_sv) / _cur_sv < 0.20:
+                _sell_plevels.append((_fib62_sv,  "① Fib 61.8% 되돌림 — 강한 지지/저항"))
+            if _fext100_sv and abs(_fext100_sv - _cur_sv) / _cur_sv < 0.30:
+                _sell_plevels.append((_fext100_sv, "② Fib 100% 확장"))
+            if _fext162_sv and abs(_fext162_sv - _cur_sv) / _cur_sv < 0.50:
+                _sell_plevels.append((_fext162_sv, "② Fib 161.8% 확장 — 최대 목표"))
+
+            # Camarilla
+            _cam_h3_sv = getattr(fvd, "cam_h3", None)
+            _cam_h4_sv = getattr(fvd, "cam_h4", None)
+            _cam_l3_sv = getattr(fvd, "cam_l3", None)
+            _cam_l4_sv = getattr(fvd, "cam_l4", None)
+            if _cam_h4_sv and abs(_cam_h4_sv - _cur_sv) / _cur_sv < 0.08:
+                _sell_plevels.append((_cam_h4_sv, "⑯ (Cam) H4 — 추세 전환 저항"))
+            if _cam_h3_sv and abs(_cam_h3_sv - _cur_sv) / _cur_sv < 0.05:
+                _sell_plevels.append((_cam_h3_sv, "⑯ (Cam) H3 — 타이트 저항"))
+            if _cam_l3_sv and abs(_cam_l3_sv - _cur_sv) / _cur_sv < 0.05:
+                _sell_plevels.append((_cam_l3_sv, "⑯ (Cam) L3 — 타이트 지지"))
+            if _cam_l4_sv and abs(_cam_l4_sv - _cur_sv) / _cur_sv < 0.08:
+                _sell_plevels.append((_cam_l4_sv, "⑯ (Cam) L4 — 추세 전환 지지"))
+
+            # Parabolic SAR
+            _psar_sv     = getattr(fvd, "parabolic_sar",  None)
+            _psar_dir_sv = getattr(fvd, "sar_direction",  None)
+            if _psar_sv and abs(_psar_sv - _cur_sv) / _cur_sv < 0.15:
+                _psar_lbl_sv = (f"⑭ SAR ${_psar_sv:.2f} (↑ 이 아래 = 추세전환)" if _psar_dir_sv == "up"
+                                else f"⑭ SAR ${_psar_sv:.2f} (↓ 이 위 = 추세전환)")
+                _sell_plevels.append((_psar_sv, _psar_lbl_sv))
+
+            # EMA
+            for _ema_sv, _ema_lbl_sv, _ema_thr_sv in [
+                (getattr(fvd, "ema9",   None), "EMA 9 — 초단기 추세",                     0.08),
+                (getattr(fvd, "ema21",  None), "EMA 21 — 단기 추세선",                    0.10),
+                (getattr(fvd, "ema50",  None), "EMA 50 — 중기 추세선 (기관 기준)",          0.15),
+                (getattr(fvd, "ema100", None), "EMA 100 — 중장기 추세선",                  0.20),
+                (getattr(fvd, "ema200", None), "EMA 200 — 장기 추세선 (골든/데스크로스 기준)", 0.25),
+            ]:
+                if _ema_sv and abs(_ema_sv - _cur_sv) / _cur_sv < _ema_thr_sv:
+                    _sell_plevels.append((_ema_sv, _ema_lbl_sv))
+
+            # Keltner Channel
+            _kcu_sv = getattr(fvd, "keltner_upper", None)
+            _kcl_sv = getattr(fvd, "keltner_lower", None)
+            if _kcu_sv and abs(_kcu_sv - _cur_sv) / _cur_sv < 0.15:
+                _sell_plevels.append((_kcu_sv, "Keltner 상단 (EMA20+2×ATR) — 채널 돌파 시 강세 가속"))
+            if _kcl_sv and abs(_kcl_sv - _cur_sv) / _cur_sv < 0.15:
+                _sell_plevels.append((_kcl_sv, "Keltner 하단 (EMA20-2×ATR) — 채널 이탈 시 하락 가속"))
+
+            # FVG (Fair Value Gap)
+            _fvg_bt_sv = getattr(fvd, "fvg_bull_top",    None)
+            _fvg_bb_sv = getattr(fvd, "fvg_bull_bottom",  None)
+            _fvg_rt_sv = getattr(fvd, "fvg_bear_top",    None)
+            _fvg_rb_sv = getattr(fvd, "fvg_bear_bottom",  None)
+            if _fvg_bt_sv and _fvg_bb_sv:
+                _fvg_b_mid_sv = (_fvg_bt_sv + _fvg_bb_sv) / 2
+                if abs(_fvg_b_mid_sv - _cur_sv) / _cur_sv < 0.15:
+                    _sell_plevels.append((_fvg_bt_sv, "📐 FVG 상승 상단 — 미채움 공정가치 구간 (지지)"))
+                    _sell_plevels.append((_fvg_bb_sv, "📐 FVG 상승 하단 — 미채움 공정가치 구간 (지지)"))
+            if _fvg_rt_sv and _fvg_rb_sv:
+                _fvg_r_mid_sv = (_fvg_rt_sv + _fvg_rb_sv) / 2
+                if abs(_fvg_r_mid_sv - _cur_sv) / _cur_sv < 0.15:
+                    _sell_plevels.append((_fvg_rt_sv, "📐 FVG 하락 상단 — 미채움 공정가치 구간 (저항)"))
+                    _sell_plevels.append((_fvg_rb_sv, "📐 FVG 하락 하단 — 미채움 공정가치 구간 (저항)"))
+
+            # Gap Fill
+            _gap_up_sv   = getattr(fvd, "gap_up_fill",   None)
+            _gap_down_sv = getattr(fvd, "gap_down_fill", None)
+            if _gap_up_sv and abs(_gap_up_sv - _cur_sv) / _cur_sv < 0.15:
+                _sell_plevels.append((_gap_up_sv, "⬆️ 갭 업 미채움 — 전날 종가 복귀 레벨"))
+            if _gap_down_sv and abs(_gap_down_sv - _cur_sv) / _cur_sv < 0.15:
+                _sell_plevels.append((_gap_down_sv, "⬇️ 갭 다운 미채움 — 전날 종가 복귀 레벨"))
+
+            # HV 기대이동폭
+            _hvm5_sv  = getattr(fvd, "hv_move_5d",  None)
+            _hvm15_sv = getattr(fvd, "hv_move_15d", None)
+            _hv30_sv  = getattr(fvd, "hv30",        None)
+            _hv_lbl_sv = f"HV{_hv30_sv:.0f}%" if _hv30_sv else "HV"
+            if _hvm5_sv:
+                _sell_plevels.append((round(_cur_sv + _hvm5_sv,  2), f"{_hv_lbl_sv} 5일 상단 (통계적 기대이동)"))
+                _sell_plevels.append((round(_cur_sv - _hvm5_sv,  2), f"{_hv_lbl_sv} 5일 하단"))
+            if _hvm15_sv:
+                _sell_plevels.append((round(_cur_sv + _hvm15_sv, 2), f"{_hv_lbl_sv} 15일 상단"))
+                _sell_plevels.append((round(_cur_sv - _hvm15_sv, 2), f"{_hv_lbl_sv} 15일 하단"))
+
+            # Monthly Pivot
+            for _mlv_sv, _mlbl_sv in [
+                (getattr(fvd, "monthly_pivot",    None), "월간 Pivot (P)"),
+                (getattr(fvd, "monthly_pivot_r1", None), "월간 R1 — 상위 타임프레임 저항"),
+                (getattr(fvd, "monthly_pivot_r2", None), "월간 R2 — 상위 타임프레임 2차 저항"),
+                (getattr(fvd, "monthly_pivot_s1", None), "월간 S1 — 상위 타임프레임 지지"),
+                (getattr(fvd, "monthly_pivot_s2", None), "월간 S2 — 상위 타임프레임 2차 지지"),
+            ]:
+                if _mlv_sv and abs(_mlv_sv - _cur_sv) / _cur_sv < 0.15:
+                    _sell_plevels.append((_mlv_sv, _mlbl_sv))
+
+            # 52주 고/저
+            _w52h_sv = getattr(fvd, "w52_high", None)
+            _w52l_sv = getattr(fvd, "w52_low",  None)
+            if _w52h_sv and abs(_w52h_sv - _cur_sv) / _cur_sv < 0.30:
+                _sell_plevels.append((_w52h_sv, "📅 52주 고점 — 연간 최대 저항 (돌파 시 추세전환)"))
+            if _w52l_sv and abs(_w52l_sv - _cur_sv) / _cur_sv < 0.30:
+                _sell_plevels.append((_w52l_sv, "📅 52주 저점 — 연간 최대 지지 (이탈 시 추세전환)"))
+
+            # GEX (opt_analytics)
+            if opt_analytics:
+                _cwall_sv = opt_analytics.get("call_wall")
+                _pwall_sv = opt_analytics.get("put_wall")
+                _gflip_sv = opt_analytics.get("gex_flip")
+                if _cwall_sv and abs(_cwall_sv - _cur_sv) / _cur_sv < 0.20:
+                    _sell_plevels.append((_cwall_sv, "🧲 Call Wall — 최대 콜 OI strike (단기 상단 저항)"))
+                if _pwall_sv and abs(_pwall_sv - _cur_sv) / _cur_sv < 0.20:
+                    _sell_plevels.append((_pwall_sv, "🧲 Put Wall — 최대 풋 OI strike (단기 하단 지지)"))
+                if _gflip_sv and abs(_gflip_sv - _cur_sv) / _cur_sv < 0.20:
+                    _sell_plevels.append((_gflip_sv, "⚡ GEX Flip — 딜러 Net Gamma 전환 레벨 (돌파 시 변동성 가속)"))
+
+            if _sell_plevels:
+                _sell_plevels.sort(key=lambda x: x[0], reverse=True)
+                lines += [
+                    "**📐 확장 가격 레벨 통합**",
+                    "",
+                    "| 구분 | 가격 | 근거 |",
+                    "|------|------|------|",
+                ]
+                _cur_ins_sv = False
+                for _slv, _sdesc in _sell_plevels:
+                    if not _cur_ins_sv and _slv <= _cur_sv:
+                        lines.append(f"| **현재가** | **{_pf_sv(_cur_sv)}** | |")
+                        _cur_ins_sv = True
+                    _stag = "저항" if _slv > _cur_sv else "지지"
+                    lines.append(f"| {_stag} | {_pf_sv(_slv)} | {_sdesc} |")
+                if not _cur_ins_sv:
+                    lines.append(f"| **현재가** | **{_pf_sv(_cur_sv)}** | |")
+                lines.append("")
+
+    # 옵션 시장 구조 (Implied Move / Max Pain / P/C Ratio / GEX)
+    if opt_analytics:
+        _im_s = opt_analytics.get("implied_move_near")
+        _mp_s = opt_analytics.get("max_pain_near")
+        _pc_s = opt_analytics.get("pc_ratio")
+        _cw_s = opt_analytics.get("call_wall")
+        _pw_s = opt_analytics.get("put_wall")
+        _gf_s = opt_analytics.get("gex_flip")
+        if any(v is not None for v in [_im_s, _mp_s, _pc_s, _cw_s, _pw_s, _gf_s]):
+            lines += ["**📐 옵션 시장 구조**", "", "| 항목 | 값 |", "|------|-----|"]
+            if _im_s is not None:
+                lines.append(f"| Implied Move (내재 이동폭) | ±{_im_s:.1f}% |")
+            if _mp_s is not None:
+                lines.append(f"| Max Pain | ${_mp_s:,.2f} |")
+            if _pc_s is not None:
+                _pc_s_label = "풋 우세" if _pc_s > 1.2 else ("콜 우세" if _pc_s < 0.7 else "중립")
+                lines.append(f"| P/C Ratio (OI 기준) | {_pc_s:.3f} ({_pc_s_label}) |")
+            if _cw_s is not None:
+                lines.append(f"| Call Wall (단기 상단 저항) | ${_cw_s:,.2f} |")
+            if _pw_s is not None:
+                lines.append(f"| Put Wall (단기 하단 지지) | ${_pw_s:,.2f} |")
+            if _gf_s is not None:
+                lines.append(f"| GEX Flip (딜러 헤지 전환점) | ${_gf_s:,.2f} |")
+            lines.append("")
 
     # ── TYPE S4: 펀더멘털 & 시장 감정 ──────────────────────────────
     lines += [f"### 📊 TYPE S4 — 펀더멘털 & 시장 감정  [{d.ticker}]", ""]

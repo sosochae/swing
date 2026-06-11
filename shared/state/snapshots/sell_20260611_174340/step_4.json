@@ -1,0 +1,22 @@
+{
+  "execution_id": "sell_20260611_174340",
+  "step": 4,
+  "completed_at": "2026-06-11T17:45:59.258928",
+  "duration_ms": 59921,
+  "data": {
+    "MU_2026-08-21_1090.0": {
+      "flags": [
+        "청산_권고_신호"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": -829.0,
+        "theta_pnl": -941.0,
+        "vega_pnl": 0.0,
+        "total_estimated_pnl": -1770.0,
+        "actual_pnl": -5973.0
+      }
+    }
+  }
+}

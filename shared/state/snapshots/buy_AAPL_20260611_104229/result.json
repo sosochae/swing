@@ -1,0 +1,64 @@
+{
+  "execution_id": "buy_AAPL_20260611_104229",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "AAPL",
+      "direction": "long_call",
+      "action": "탈락",
+      "final_score": 0.0,
+      "conviction": {
+        "technical_signals": 0,
+        "timing_conditions": 0,
+        "total_signals": 0,
+        "rr_ratio": 0.0,
+        "ivr": 0.0,
+        "level": "low",
+        "trend_confidence": 0.0,
+        "news_confidence": 0.0,
+        "thesis_confidence": 0.0,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.0
+      },
+      "capital_allocation": 0.0,
+      "contracts": 0,
+      "strike": 0.0,
+      "expiry": "2026-07-17",
+      "rationale": "데이터 부족: 시나리오 미산출",
+      "risk_factors": [],
+      "scenario": null,
+      "da_reasons": []
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "borderline",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 27.5,
+  "summary": {
+    "filtered_tickers": [
+      "AAPL"
+    ],
+    "regime": "borderline"
+  }
+}

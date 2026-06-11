@@ -1,0 +1,17 @@
+{
+  "execution_id": "sell_20260611_173554",
+  "step": 5,
+  "completed_at": "2026-06-11T17:40:45.714822",
+  "duration_ms": 14422,
+  "data": {
+    "MU_2026-08-21_1090.0": {
+      "event_judgment": "청산_유리",
+      "iv_crush_risk": true,
+      "iv_crush_estimated_loss": 120,
+      "recommendation": "IVR이 93%로 높고 실적 발표 및 거시 이벤트가 다가오므로 IV 크러시 가능성이 크므로 현재 포지션을 청산하는 것이 적절합니다.",
+      "da_reasons": [
+        "내부자 데이터 이상 ($3010M — 기관 혼재 의심, 차감 보류)"
+      ]
+    }
+  }
+}

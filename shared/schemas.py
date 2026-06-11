@@ -259,6 +259,10 @@ class StockDetail(BaseModel):
     pivot_p_4h: float | None = None           # 4H 피벗 중심값 (단기 진입/저항 기준)
     pivot_s3_4h: float | None = None          # 4H 피벗 S3 (진입 구간 하단 정밀화)
     pivot_r3_4h: float | None = None          # 4H 피벗 R3
+    pivot_r1_4h: float | None = None          # 4H 피벗 R1 (단기 저항)
+    pivot_r2_4h: float | None = None          # 4H 피벗 R2 (중기 저항)
+    pivot_s1_4h: float | None = None          # 4H 피벗 S1 (단기 지지)
+    pivot_s2_4h: float | None = None          # 4H 피벗 S2 (중기 지지)
     # ── 1시간봉 지표 ─────────────────────────────────────────────────
     rsi_1h: float | None = None               # 1H RSI(14) (극과매도 감지)
     bb_lower_1h: float | None = None          # 1H 볼린저밴드 하단 (단기 지지)

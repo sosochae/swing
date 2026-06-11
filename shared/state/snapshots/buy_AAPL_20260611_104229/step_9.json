@@ -1,0 +1,10 @@
+{
+  "execution_id": "buy_AAPL_20260611_104229",
+  "step": 9,
+  "completed_at": "2026-06-11T10:42:57.762736",
+  "duration_ms": 0,
+  "data": {
+    "remaining_cash": 22222.0,
+    "warnings": []
+  }
+}

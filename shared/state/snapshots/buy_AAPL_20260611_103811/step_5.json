@@ -1,0 +1,11 @@
+{
+  "execution_id": "buy_AAPL_20260611_103811",
+  "step": 5,
+  "completed_at": "2026-06-11T10:40:46.562817",
+  "duration_ms": 129016,
+  "data": {
+    "researched": [
+      "AAPL"
+    ]
+  }
+}

@@ -376,6 +376,7 @@ SHORT_FLOAT_SQUEEZE_THRESHOLD: float = 15.0
 OI_CHANGE_RATIO_THRESHOLD: float = 0.05   # 방향 OI 증가량 / 해당 방향 총 OI ≥ 5% → 신호
 OI_CHANGE_SIGNAL_BONUS:    int   = 1      # 방향 일치 시 signal_count 가산
 OI_CHANGE_SCORE_BONUS:     float = 2.0   # 방향 일치 시 final_score 가산 (약한 보조 신호)
+OI_COUNTER_RATIO_THRESHOLD: float = 0.10  # 반대 방향 OI 급증 기준 (10%) → 매도 청산 압력 플래그
 
 # ══════════════════════════════════════════════════════════════════════
 # 16. 매수 — Devil's Advocate 점수 차감  (buy_steps.py Step 6)

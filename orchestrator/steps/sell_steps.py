@@ -37,7 +37,6 @@ from core.llm import analyze_with_llm, call_ddg_search, _collect_rss_feeds
 from core.obsidian import _format_sell_review_section
 from core.parsers import (
     load_latest_summary,
-    parse_finviz,
     parse_kavout,
     parse_positions,
 )
@@ -109,8 +108,8 @@ class SellSteps:
 
     async def step_0_env(self, ctx: PipelineContext) -> None:
         """
-        환경 검증 + positions.md 파싱 + 시장 데이터 5종 로딩
-        (summary, finviz, earnings, stock_data, kavout)
+        환경 검증 + positions.md 파싱 + 시장 데이터 4종 로딩
+        (summary, earnings, stock_data, kavout)
 
         스펙: §9.4 Step 0
         """
@@ -157,15 +156,7 @@ class SellSteps:
             append_audit(ctx.execution_id, 0, "degraded", error=f"E201: summary {exc}")
             ctx.summary_data = None
 
-        # Finviz 파싱
-        try:
-            ctx.finviz_rows = parse_finviz(ctx.paths.finviz_file)
-            log.info("sell_finviz_loaded", rows=len(ctx.finviz_rows))
-        except Exception as exc:
-            log.warning("sell_finviz_warn", error=str(exc))
-            ctx.finviz_rows = []
-
-        # 어닝 분석: Finviz 파일 제거 → sell pipeline은 어닝 이벤트를 summary.events로만 참조
+        # 어닝 분석: sell pipeline은 어닝 이벤트를 summary.events로만 참조
         ctx.earnings_list = []
 
         ctx.stock_data = {}
@@ -190,7 +181,7 @@ class SellSteps:
                                  price=_fresh_fvd.price, rsi=_fresh_fvd.rsi14,
                                  target=_fresh_fvd.target_price, recom=_fresh_fvd.recom)
                     else:
-                        # yfinance 실패 시 기존 finviz_detail 유지 (fallback)
+                        # yfinance 실패 시 기존 stock_data 유지 (fallback)
                         log.warning("sell_yfinance_no_price", ticker=_ticker,
                                     reason="price=None, stock_data 유지")
             except Exception as _yf_exc:
@@ -288,7 +279,6 @@ class SellSteps:
                      data={
                          "positions": len(ctx.positions),
                          "summary_tickers": len(ctx.summary_data.tickers) if ctx.summary_data else 0,
-                         "finviz_rows": len(ctx.finviz_rows),
                          "earnings": len(ctx.earnings_list),
                          "stock_data": len(ctx.stock_data),
                          "kavout": len(ctx.kavout_data),
@@ -327,7 +317,12 @@ class SellSteps:
         for pos in ctx.positions:
             try:
                 ticker_data = ctx.summary_data.tickers.get(pos.ticker) if ctx.summary_data else None
-                current_price = ticker_data.technical.price if ticker_data else pos.entry_stock_price
+                _fvd_s1 = ctx.stock_data.get(pos.ticker)
+                current_price = (
+                    (_fvd_s1.price if _fvd_s1 and _fvd_s1.price is not None else None)
+                    or (ticker_data.technical.price if ticker_data else None)
+                    or pos.entry_stock_price
+                )
 
                 # 현재 옵션 프리미엄 조회
                 opt_data = ctx.summary_data.options.get(pos.ticker) if ctx.summary_data else None
@@ -531,6 +526,33 @@ class SellSteps:
             except Exception as _exc:
                 log.warning("sell_macro_realtime_failed", error=str(_exc))
 
+        # ── SPY 4H 지표 fetch (레짐 방향 판정 정밀화) ──────────────────────────
+        # 매수 파이프라인과 동일: SPY 4H DI+/DI- + MACD Hist → analyze_market_regime() 단기 신호 강화
+        if ctx.summary_data:
+            try:
+                from core.api_fetcher import _calc_intraday_indicators
+                _spy_4h = await asyncio.to_thread(_calc_intraday_indicators, "SPY")
+                _spy_4h_upd: dict = {}
+                if _spy_4h.get("di_plus_4h") is not None:
+                    _spy_4h_upd["spy_di_plus_4h"]   = _spy_4h["di_plus_4h"]
+                if _spy_4h.get("di_minus_4h") is not None:
+                    _spy_4h_upd["spy_di_minus_4h"]  = _spy_4h["di_minus_4h"]
+                if _spy_4h.get("macd_hist_4h") is not None:
+                    _spy_4h_upd["spy_macd_hist_4h"] = _spy_4h["macd_hist_4h"]
+                if _spy_4h_upd:
+                    ctx.summary_data.macro = ctx.summary_data.macro.model_copy(
+                        update=_spy_4h_upd
+                    )
+                    append_audit(ctx.execution_id, 2, "info",
+                                 data={"spy_4h_realtime": "ok",
+                                       "fields": list(_spy_4h_upd.keys())})
+                    log.info("sell_spy_4h_refreshed",
+                             di_p=_spy_4h_upd.get("spy_di_plus_4h"),
+                             di_n=_spy_4h_upd.get("spy_di_minus_4h"),
+                             macd_h=_spy_4h_upd.get("spy_macd_hist_4h"))
+            except Exception as _spy4h_exc:
+                log.warning("sell_spy_4h_fetch_failed", error=str(_spy4h_exc))
+
         if ctx.summary_data:
             ctx.regime = analyze_market_regime(ctx.summary_data)
 
@@ -689,6 +711,9 @@ class SellSteps:
                 if _fv.rsi14       is not None: _upd["rsi14"]            = _fv.rsi14
                 if _fv.rel_volume  is not None: _upd["avg_volume_ratio"] = _fv.rel_volume
                 if _fv.adx         is not None: _upd["adx14"]            = _fv.adx
+                if _fv.di_plus     is not None: _upd["di_plus"]          = _fv.di_plus
+                if _fv.di_minus    is not None: _upd["di_minus"]         = _fv.di_minus
+                if _fv.sma10_val   is not None: _upd["ma10"]             = _fv.sma10_val
                 if _fv.sma5_val    is not None: _upd["ma5"]              = _fv.sma5_val
                 if _fv.sma20_val   is not None: _upd["ma20"]             = _fv.sma20_val
                 if _fv.sma50_val   is not None: _upd["ma50"]             = _fv.sma50_val
@@ -762,7 +787,7 @@ class SellSteps:
                 )
                 ctx.technical_scores[_pos_key(pos)] = score
 
-                # ── ⑨ Finviz 애널리스트 추천 시그널 보정 ─────────────────
+                # ── ⑨ 애널리스트 추천 시그널 보정 ────────────────────────
                 _fvd_s = ctx.stock_data.get(pos.ticker)
                 if _fvd_s:
                     _asig = 0
@@ -784,6 +809,67 @@ class SellSteps:
                             "final_score":  max(0.0, min(100.0, score.final_score + _asc)),
                         })
                         score = ctx.technical_scores[_pos_key(pos)]
+
+                # ── Kavout 시그널 보정 (매수 파이프라인과 동일 기준) ──────────────────
+                # K-Score는 보고서 표시·타이브레이커 전용; Stock Rank/Quality/ROIC/Return으로 점수 보정
+                _krow_s3 = ctx.kavout_data.get(pos.ticker)
+                if _krow_s3:
+                    _sr_score  = float(_krow_s3.stock_rank_score or 0.0) if hasattr(_krow_s3, "stock_rank_score") else float((_krow_s3 or {}).get("stock_rank_score", 0.0))
+                    _quality   = float(_krow_s3.quality_score    or 0.0) if hasattr(_krow_s3, "quality_score")    else float((_krow_s3 or {}).get("quality_score", 0.0))
+                    _roic      = float(_krow_s3.roic             or 0.0) if hasattr(_krow_s3, "roic")             else float((_krow_s3 or {}).get("roic", 0.0))
+                    _ret_12m   = float(_krow_s3.return_12m       or 0.0) if hasattr(_krow_s3, "return_12m")       else float((_krow_s3 or {}).get("return_12m", 0.0))
+
+                    _kav_sig = 0
+                    _kav_sc  = 0.0
+                    if _sr_score >= st.KAVOUT_SR_HIGH_SCORE:
+                        _kav_sig += st.KAVOUT_SR_HIGH_SIGNAL_BONUS
+                        _kav_sc  += st.KAVOUT_SR_HIGH_SCORE_BONUS
+                    elif _sr_score > 0 and _sr_score <= st.KAVOUT_SR_LOW_SCORE:
+                        _kav_sig += st.KAVOUT_SR_LOW_SIGNAL_PENALTY
+                        _kav_sc  += st.KAVOUT_SR_LOW_SCORE_PENALTY
+                    if _quality >= st.KAVOUT_QUALITY_THRESHOLD:
+                        _kav_sig += st.KAVOUT_QUALITY_SIGNAL_BONUS
+                        _kav_sc  += st.KAVOUT_QUALITY_SCORE_BONUS
+                    if _roic >= st.KAVOUT_ROIC_THRESHOLD:
+                        _kav_sig += st.KAVOUT_ROIC_SIGNAL_BONUS
+                        _kav_sc  += st.KAVOUT_ROIC_SCORE_BONUS
+                    if _ret_12m >= st.KAVOUT_RETURN_12M_THRESHOLD:
+                        _kav_sig += st.KAVOUT_RETURN_SIGNAL_BONUS
+                        _kav_sc  += st.KAVOUT_RETURN_SCORE_BONUS
+
+                    if _kav_sig != 0 or _kav_sc != 0:
+                        _cur_s3 = ctx.technical_scores.get(_pos_key(pos)) or score
+                        ctx.technical_scores[_pos_key(pos)] = _cur_s3.model_copy(update={
+                            "signal_count": max(0, _cur_s3.signal_count + _kav_sig),
+                            "final_score":  max(0.0, min(100.0, _cur_s3.final_score + _kav_sc)),
+                        })
+
+            # ── 주봉 방향 역전 청산 플래그 ─────────────────────────────────────
+            # 매수의 _stock_direction() 역방향 적용:
+            # 롱콜인데 주봉 강한 하락(ADX≥30, DI->>DI+) → ctx.sell_health에 플래그 기록
+            # 롱풋인데 주봉 강한 상승(ADX≥30, DI+>>DI-) → ctx.sell_health에 플래그 기록
+            _fvd_wk = ctx.stock_data.get(pos.ticker)
+            if _fvd_wk:
+                _wdip = getattr(_fvd_wk, "weekly_di_plus",  None)
+                _wdin = getattr(_fvd_wk, "weekly_di_minus", None)
+                _wadx = getattr(_fvd_wk, "weekly_adx",      None)
+                if (_wdip is not None and _wdin is not None
+                        and _wadx is not None and _wadx >= st.STOCK_DIR_WEEKLY_ADX_MIN):
+                    _is_long_pos = (pos.option_type == "롱콜")
+                    _weekly_reversed = (
+                        (_is_long_pos     and _wdin > _wdip * st.STOCK_DIR_WEEKLY_DI_RATIO)
+                        or (not _is_long_pos and _wdip > _wdin * st.STOCK_DIR_WEEKLY_DI_RATIO)
+                    )
+                    if _weekly_reversed:
+                        _h_wk = ctx.sell_health.get(_pos_key(pos), {})
+                        _fl_wk = list(_h_wk.get("flags", []))
+                        if "주봉역방향_청산권고" not in _fl_wk:
+                            _fl_wk.append("주봉역방향_청산권고")
+                        ctx.sell_health[_pos_key(pos)] = {**_h_wk, "flags": _fl_wk}
+                        log.warning("sell_weekly_dir_reversed",
+                                    ticker=pos.ticker, option_type=pos.option_type,
+                                    wadx=round(_wadx, 1), wdip=round(_wdip, 1),
+                                    wdin=round(_wdin, 1))
 
             # ── ⑩⑪⑫ RSS + DDG 3쿼리 + Brave 뉴스 수집 + LLM 감성 분석 ──
             try:
@@ -861,6 +947,37 @@ class SellSteps:
                         ctx.summary_data.tickers[pos.ticker].news.extend(news_items)
 
                     if news_items:
+                        # K어닝 분석 파일에서 실적 요약 추출 (매수 파이프라인과 동일)
+                        _sell_earnings_summary = ""
+                        try:
+                            from core.parsers import _parse_earnings_file as _sell_pef
+                            _sell_k_candidates = [
+                                ctx.paths.k_earnings_analysis_today,
+                                ctx.paths.k_earnings_analysis,
+                            ]
+                            for _sell_kp in _sell_k_candidates:
+                                if not _sell_kp.exists():
+                                    continue
+                                _sell_k_eas = _sell_pef(_sell_kp)
+                                _sell_k_match = next((e for e in _sell_k_eas if e.ticker == pos.ticker), None)
+                                if _sell_k_match and (
+                                    _sell_k_match.business_model or _sell_k_match.strategy_changes
+                                    or _sell_k_match.management_confidence
+                                ):
+                                    _sell_parts: list[str] = []
+                                    if _sell_k_match.quarter:
+                                        _sell_parts.append(f"최근분기: {_sell_k_match.quarter}")
+                                    if _sell_k_match.business_model:
+                                        _sell_parts.append(f"사업모델: {_sell_k_match.business_model[:600]}")
+                                    if _sell_k_match.strategy_changes:
+                                        _sell_parts.append(f"전략변화: {_sell_k_match.strategy_changes[:500]}")
+                                    if _sell_k_match.management_confidence:
+                                        _sell_parts.append(f"경영진확신도: {_sell_k_match.management_confidence[:400]}")
+                                    _sell_earnings_summary = (" | ".join(_sell_parts))[:2000]
+                                    break
+                        except Exception as _sell_k_exc:
+                            log.debug("sell_k_earnings_summary_skip", ticker=pos.ticker, error=str(_sell_k_exc))
+
                         _cache_key = f"{pos.ticker}_{date.today()}_sell_research"
                         llm_result = await analyze_with_llm(
                             template_name="buy_step3_research",
@@ -869,7 +986,7 @@ class SellSteps:
                                 "direction": direction,
                                 "price": round(current_price, 2),
                                 "news": news_items[:50],
-                                "earnings_summary": "",
+                                "earnings_summary": _sell_earnings_summary,
                             },
                             cache_key=_cache_key,
                         )
@@ -895,6 +1012,18 @@ class SellSteps:
                                 if _v is not None and _v != 0.0:
                                     return _v
                             return default
+                        _sell_nar_sd = ctx.stock_data.get(pos.ticker) if ctx.stock_data else None
+                        def _gd(key, default="N/A"):
+                            _v2 = getattr(_sell_nar_sd, key, None) if _sell_nar_sd else None
+                            return _v2 if _v2 is not None else default
+                        _sell_nar_opt = (
+                            ctx.summary_data.options.get(pos.ticker) if ctx.summary_data else None
+                        )
+                        _sell_nar_oa = {
+                            "call_wall": getattr(_sell_nar_opt, "call_wall", None),
+                            "put_wall":  getattr(_sell_nar_opt, "put_wall", None),
+                            "gex_flip":  getattr(_sell_nar_opt, "gex_flip", None),
+                        }
                         _nar_vars = {
                             "ticker":       pos.ticker,
                             "direction":    direction,
@@ -929,6 +1058,44 @@ class SellSteps:
                             "rvol_score":   _ts.rvol_score,
                             "signal_count": _ts.signal_count,
                             "confidence_pct": round(_ts.signal_count / 8 * 100),
+                            "regime_status": ctx.regime.regime_status if ctx.regime else "unknown",
+                            "fib_38_2":    _gd("fib_38_2"),
+                            "fib_50":      _gd("fib_50_0"),
+                            "fib_61_8":    _gd("fib_61_8"),
+                            "fib_ext_100": _gd("fib_ext_100"),
+                            "fib_ext_162": _gd("fib_ext_162"),
+                            "cam_l3":      _gd("cam_l3"),
+                            "cam_l4":      _gd("cam_l4"),
+                            "cam_h3":      _gd("cam_h3"),
+                            "cam_h4":      _gd("cam_h4"),
+                            "psar":        _gd("parabolic_sar"),
+                            "sar_dir":     _gd("sar_direction"),
+                            "ema9":        _gd("ema9"),
+                            "ema21":       _gd("ema21"),
+                            "ema50":       _gd("ema50"),
+                            "ema100":      _gd("ema100"),
+                            "ema200":      _gd("ema200"),
+                            "keltner_upper": _gd("keltner_upper"),
+                            "keltner_lower": _gd("keltner_lower"),
+                            "hv30":        _gd("hv30"),
+                            "hv_move_5d":  _gd("hv_move_5d"),
+                            "hv_move_15d": _gd("hv_move_15d"),
+                            "monthly_pivot":    _gd("monthly_pivot"),
+                            "monthly_pivot_r1": _gd("monthly_pivot_r1"),
+                            "monthly_pivot_r2": _gd("monthly_pivot_r2"),
+                            "monthly_pivot_s1": _gd("monthly_pivot_s1"),
+                            "monthly_pivot_s2": _gd("monthly_pivot_s2"),
+                            "call_wall": _sell_nar_oa.get("call_wall") or "N/A",
+                            "put_wall":  _sell_nar_oa.get("put_wall")  or "N/A",
+                            "gex_flip":  _sell_nar_oa.get("gex_flip")  or "N/A",
+                            "w52_high":       _gd("w52_high"),
+                            "w52_low":        _gd("w52_low"),
+                            "fvg_bull_top":    _gd("fvg_bull_top"),
+                            "fvg_bull_bottom": _gd("fvg_bull_bottom"),
+                            "fvg_bear_top":    _gd("fvg_bear_top"),
+                            "fvg_bear_bottom": _gd("fvg_bear_bottom"),
+                            "gap_up_fill":   _gd("gap_up_fill"),
+                            "gap_down_fill": _gd("gap_down_fill"),
                         }
                         _nar_key = f"{pos.ticker}_{date.today()}_sell_tech_narrative"
                         _nar_result = await analyze_with_llm(
@@ -1093,7 +1260,7 @@ class SellSteps:
                     _da_reasons.append(
                         f"내부자 데이터 이상 (${_net_sell / 1e6:.0f}M — 기관 혼재 의심, 차감 보류)"
                     )
-                    _insider_deducted = True  # Finviz 중복 차감 방지
+                    _insider_deducted = True  # 중복 차감 방지
                 elif _net_sell > st.DA_BUY_INSIDER_SELL_AMOUNT:
                     _da_deduction += abs(st.DA_BUY_INSIDER_SELL_PENALTY)
                     _insider_deducted = True
@@ -1117,21 +1284,21 @@ class SellSteps:
                             f"(분기: {_latest_q.get('quarter', '?')})"
                         )
 
-            # ⑯ Finviz 내부자/EPS 보완 소스 차감 (summary에서 이미 차감한 경우 중복 방지)
+            # ⑯ API 내부자/EPS 보완 소스 차감 (summary에서 이미 차감한 경우 중복 방지)
             if _fvd_d:
                 if (not _insider_deducted
                         and _fvd_d.insider_trans_pct is not None
                         and _fvd_d.insider_trans_pct < st.DA_BUY_INSIDER_API_PCT):
                     _da_deduction += abs(st.DA_BUY_INSIDER_API_PENALTY)
                     _da_reasons.append(
-                        f"Finviz 내부자 거래 {_fvd_d.insider_trans_pct:.1f}% (대규모 내부자 매도)"
+                        f"내부자 거래 {_fvd_d.insider_trans_pct:.1f}% (대규모 내부자 매도)"
                     )
                 if (not _eps_deducted
                         and _fvd_d.eps_surprise_pct is not None
                         and _fvd_d.eps_surprise_pct < st.DA_BUY_EPS_MISS_PCT):
                     _da_deduction += abs(st.DA_BUY_EPS_API_PENALTY)
                     _da_reasons.append(
-                        f"Finviz EPS 서프라이즈 {_fvd_d.eps_surprise_pct:.1f}% (미스)"
+                        f"EPS 서프라이즈 {_fvd_d.eps_surprise_pct:.1f}% (미스)"
                     )
 
             # 차감 적용 → technical_score final_score 조정
@@ -1230,6 +1397,19 @@ class SellSteps:
 
         pos_tickers_6 = list({p.ticker for p in ctx.positions})
 
+        # ── SUMMARY chain OI 변화 데이터 백업 (체인 교체 전 필수) ────────────────
+        # yfinance 체인 교체 후 oi_change 필드가 사라지므로 미리 추출.
+        # 키: {ticker: {(strike, option_type): oi_change}}
+        _sell_oi_change_map: dict[str, dict[tuple, int | None]] = {}
+        if ctx.summary_data:
+            for _pk6_oi in pos_tickers_6:
+                _p_opt6_oi = ctx.summary_data.options.get(_pk6_oi)
+                if _p_opt6_oi and _p_opt6_oi.chain:
+                    _sell_oi_change_map[_pk6_oi] = {
+                        (float(e.get("strike", 0)), str(e.get("option_type", ""))): e.get("oi_change")
+                        for e in _p_opt6_oi.chain
+                    }
+
         # ── ⑰ 옵션 체인 실시간 갱신 + OI 복원 ──────────────────────────────
         if ctx.summary_data and pos_tickers_6:
             try:
@@ -1274,7 +1454,11 @@ class SellSteps:
         # ── ⑱ 실시간 chain에서 옵션 analytics 재계산 ─────────────────────────
         if ctx.summary_data and pos_tickers_6:
             try:
-                from core.api_fetcher import _calc_atm_straddle as _cas6, _calc_max_pain as _cmp6
+                from core.api_fetcher import (
+                    _calc_atm_straddle as _cas6,
+                    _calc_max_pain as _cmp6,
+                    _calc_gex_levels as _cgex6,
+                )
                 _analytics_updated6 = 0
                 for _tk6 in pos_tickers_6:
                     _opt6 = ctx.summary_data.options.get(_tk6)
@@ -1299,6 +1483,7 @@ class SellSteps:
                         if _spot6 > 0 and _strad6 > 0 else _opt6.implied_move_near
                     )
                     _mpain6 = _cmp6(_chain6)
+                    _gex6   = _cgex6(_chain6, _spot6) if _spot6 > 0 else {}
                     ctx.summary_data.options[_tk6] = _opt6.model_copy(update={
                         "total_call_oi":      _c_oi6,
                         "total_put_oi":       _p_oi6,
@@ -1306,14 +1491,111 @@ class SellSteps:
                         "implied_move_near":  _impl6,
                         "max_pain_near":      float(_mpain6) if _mpain6 else _opt6.max_pain_near,
                         "atm_straddle_price": _strad6 if _strad6 > 0 else _opt6.atm_straddle_price,
+                        "call_wall":          _gex6.get("call_wall"),
+                        "put_wall":           _gex6.get("put_wall"),
+                        "gex_flip":           _gex6.get("gex_flip"),
                     })
                     _analytics_updated6 += 1
+                    log.debug("sell_option_analytics_refreshed", ticker=_tk6,
+                              pc_ratio=_pc6, implied_move=_impl6, max_pain=_mpain6,
+                              call_wall=_gex6.get("call_wall"), put_wall=_gex6.get("put_wall"),
+                              gex_flip=_gex6.get("gex_flip"))
                 append_audit(ctx.execution_id, 6, "info",
                              data={"option_analytics_refresh": "ok",
                                    "updated": _analytics_updated6})
                 log.info("sell_option_analytics_done", updated=_analytics_updated6)
             except Exception as _oa6:
                 log.warning("sell_option_analytics_refresh_failed", error=str(_oa6))
+
+        # ── ⑳ OI 변화 방향성 신호 (보조 신호 — 데이터 없으면 완전 무시) ──────────
+        if ctx.summary_data and ctx.technical_scores:
+            _sell_oi_dir = ctx.regime.allowed_direction if ctx.regime else "long_call"
+            if _sell_oi_dir in ("both", "none"):
+                _sell_oi_dir = "long_call"
+            _sell_oi_is_long = (_sell_oi_dir == "long_call")
+            _sell_oi_signal_count = 0
+
+            for _sell_oi_pos in ctx.positions:
+                _sell_oi_pkey   = _pos_key(_sell_oi_pos)
+                _sell_oi_score  = ctx.technical_scores.get(_sell_oi_pkey)
+                _sell_oi_opt    = ctx.summary_data.options.get(_sell_oi_pos.ticker)
+                _sell_oi_td     = ctx.summary_data.tickers.get(_sell_oi_pos.ticker)
+                _sell_oi_chg_map = _sell_oi_change_map.get(_sell_oi_pos.ticker, {})
+
+                if not _sell_oi_score or not _sell_oi_opt or not _sell_oi_opt.chain:
+                    continue
+                if not _sell_oi_chg_map:
+                    continue
+
+                _sell_oi_spot = _sell_oi_td.technical.price if _sell_oi_td else 0.0
+                if _sell_oi_spot <= 0:
+                    continue
+
+                _sell_oi_call_growth = 0
+                _sell_oi_put_growth  = 0
+                _sell_oi_call_total  = 0
+                _sell_oi_put_total   = 0
+                _sell_has_any_chg    = False
+
+                for _sell_ce in _sell_oi_opt.chain:
+                    _sell_ce_strike = float(_sell_ce.get("strike", 0))
+                    _sell_ce_type   = str(_sell_ce.get("option_type", ""))
+                    if _sell_oi_spot <= 0 or abs(_sell_ce_strike / _sell_oi_spot - 1.0) > 0.10:
+                        continue
+                    _sell_ce_oi  = int(_sell_ce.get("oi", 0) or 0)
+                    _sell_ce_chg = _sell_oi_chg_map.get((_sell_ce_strike, _sell_ce_type))
+                    if _sell_ce_chg is not None:
+                        _sell_has_any_chg = True
+                    if _sell_ce_type == "call":
+                        _sell_oi_call_total  += _sell_ce_oi
+                        if _sell_ce_chg is not None:
+                            _sell_oi_call_growth += max(0, _sell_ce_chg)
+                    elif _sell_ce_type == "put":
+                        _sell_oi_put_total  += _sell_ce_oi
+                        if _sell_ce_chg is not None:
+                            _sell_oi_put_growth += max(0, _sell_ce_chg)
+
+                if not _sell_has_any_chg:
+                    continue
+
+                _sell_oi_call_ratio = (
+                    _sell_oi_call_growth / _sell_oi_call_total if _sell_oi_call_total > 0 else 0.0
+                )
+                _sell_oi_put_ratio = (
+                    _sell_oi_put_growth / _sell_oi_put_total if _sell_oi_put_total > 0 else 0.0
+                )
+                _sell_oi_target = _sell_oi_call_ratio if _sell_oi_is_long else _sell_oi_put_ratio
+                if _sell_oi_target >= st.OI_CHANGE_RATIO_THRESHOLD:
+                    ctx.technical_scores[_sell_oi_pkey] = _sell_oi_score.model_copy(update={
+                        "signal_count": _sell_oi_score.signal_count + st.OI_CHANGE_SIGNAL_BONUS,
+                        "final_score":  min(100.0, _sell_oi_score.final_score + st.OI_CHANGE_SCORE_BONUS),
+                    })
+                    _sell_oi_signal_count += 1
+                    log.info("sell_oi_change_signal_applied",
+                             ticker=_sell_oi_pos.ticker, pos_key=_sell_oi_pkey,
+                             direction=_sell_oi_dir,
+                             call_ratio=round(_sell_oi_call_ratio, 3),
+                             put_ratio=round(_sell_oi_put_ratio, 3),
+                             bonus_score=st.OI_CHANGE_SCORE_BONUS)
+
+                # 반대 방향 OI 급증 → 청산 압력 플래그
+                # 롱콜 보유 중 풋 OI 급증 / 롱풋 보유 중 콜 OI 급증 → 기관 헤지 수요 감지
+                _sell_oi_counter = _sell_oi_put_ratio if _sell_oi_is_long else _sell_oi_call_ratio
+                if _sell_oi_counter >= st.OI_COUNTER_RATIO_THRESHOLD:
+                    _h_oi = ctx.sell_health.get(_sell_oi_pkey, {})
+                    _fl_oi = list(_h_oi.get("flags", []))
+                    if "OI역방향_청산압력" not in _fl_oi:
+                        _fl_oi.append("OI역방향_청산압력")
+                    ctx.sell_health[_sell_oi_pkey] = {**_h_oi, "flags": _fl_oi}
+                    log.info("sell_oi_counter_signal",
+                             ticker=_sell_oi_pos.ticker,
+                             position=_sell_oi_dir,
+                             counter_ratio=round(_sell_oi_counter, 3))
+
+            if _sell_oi_signal_count:
+                append_audit(ctx.execution_id, 6, "info",
+                             data={"sell_oi_change_signals": _sell_oi_signal_count})
+                log.info("sell_oi_change_signals_done", count=_sell_oi_signal_count)
 
         # ── ⑲ option_flow_ok / signal_count 재평가 (포지션 키 기준) ─────────
         if ctx.summary_data and ctx.technical_scores:
@@ -1503,7 +1785,9 @@ class SellSteps:
             h = health.get(_pos_key(pos), {})
             # Step 4 LLM 결과가 있으면 우선 적용 (deterministic → LLM 갱신)
             t = thesis.get(_pos_key(pos), {})
-            flags = list(t.get("flags") or h.get("flags", []))
+            _t_flags = list(t.get("flags") or [])
+            _h_flags = list(h.get("flags", []))
+            flags = _t_flags + [f for f in _h_flags if f not in _t_flags]
             urgency = t.get("dte_urgency") or h.get("dte_urgency", "안정")
             tech = ctx.technical_scores.get(_pos_key(pos))
             # Step 2 레짐 역전 플래그 반영
@@ -1647,6 +1931,9 @@ class SellSteps:
                   or "목표주가_근접" in flags
                   or "목표주가_초과" in flags):
                 # 이벤트 청산 유리 or 50% 수익 or 목표주가 근접/초과 → 부분 확정
+                action = "PARTIAL_EXIT"
+            elif "주봉역방향_청산권고" in flags or "OI역방향_청산압력" in flags:
+                # Step 3 주봉 역전 또는 Step 6 반대방향 OI 급증 → 부분 청산
                 action = "PARTIAL_EXIT"
             elif tech and not tech.trend_confirmed:
                 action = "PARTIAL_EXIT"
@@ -1809,9 +2096,9 @@ class SellSteps:
             # 레짐 역전 또는 DTE 주의 → 75% (큰 비중 축소)
             # 이벤트 리스크 헷지 또는 추세 약화 → 33% (헷지 수준만)
             # 기본 (이익 확정 목적) → 50%
-            if "레짐역전_청산권고" in flags or urgency == "주의":
+            if "레짐역전_청산권고" in flags or "주봉역방향_청산권고" in flags or urgency == "주의":
                 close_ratio = st.SELL_PARTIAL_REGIME_RATIO
-                exit_reason = f"PARTIAL_EXIT — 레짐역전/DTE주의 ({st.SELL_PARTIAL_REGIME_RATIO:.0%})"
+                exit_reason = f"PARTIAL_EXIT — 레짐역전/주봉역전/DTE주의 ({st.SELL_PARTIAL_REGIME_RATIO:.0%})"
             elif d.get("unrealized_pnl", 0) > 0:
                 # 수익 중 부분 확정
                 close_ratio = st.SELL_PARTIAL_PROFIT_RATIO
@@ -2117,6 +2404,18 @@ class SellSteps:
 
         try:
             health_results = ctx.sell_health  # Step 1에서 저장
+            # ── options_analytics 추출 (Step 6 GEX/Implied Move/Max Pain 포함) ──
+            _s11_opt_analytics: dict[str, dict] = {}
+            if ctx.summary_data and ctx.summary_data.options:
+                for _s11_tk, _s11_opt in ctx.summary_data.options.items():
+                    _s11_opt_analytics[_s11_tk] = {
+                        "implied_move_near": _s11_opt.implied_move_near,
+                        "max_pain_near":     _s11_opt.max_pain_near,
+                        "pc_ratio":          _s11_opt.pc_ratio,
+                        "call_wall":         _s11_opt.call_wall,
+                        "put_wall":          _s11_opt.put_wall,
+                        "gex_flip":          _s11_opt.gex_flip,
+                    }
             note_path = await self.obsidian.save_sell_note(
                 execution_id=ctx.execution_id,
                 decisions=ctx.sell_decisions,
@@ -2132,6 +2431,7 @@ class SellSteps:
                 stock_data=dict(ctx.stock_data) if ctx.stock_data else None,
                 kavout_data=dict(ctx.kavout_data) if ctx.kavout_data else None,
                 regime_infer=dict(ctx.sell_regime_infer) if getattr(ctx, "sell_regime_infer", None) else None,
+                options_analytics=_s11_opt_analytics or None,
             )
         except Exception as exc:
             note_path = ""

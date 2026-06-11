@@ -2422,6 +2422,7 @@ class BuySteps:
                         "signal_count":    _nar_ts.signal_count,
                         "confidence_pct":  _nar_conf_pct,
                         "regime_status":   ctx.regime.regime_status if ctx.regime else "unknown",
+                        "fib_38_2":    _nar_gd("fib_38_2"),
                         "fib_50":      _nar_gd("fib_50_0"),
                         "fib_61_8":    _nar_gd("fib_61_8"),
                         "fib_ext_100": _nar_gd("fib_ext_100"),

@@ -1,0 +1,12 @@
+{
+  "execution_id": "sell_20260611_161955",
+  "step": 2,
+  "completed_at": "2026-06-11T16:21:06.726507",
+  "duration_ms": 59328,
+  "data": {
+    "regime": "borderline",
+    "regime_flags": {
+      "MU_2026-08-21_1090.0": "REGIME_REVERSED"
+    }
+  }
+}

@@ -67,9 +67,10 @@ ULTRA_MIN_OI:             int   = 200   # LEAPS 유동성 기준 완화
 ULTRA_MAX_SPREAD_PCT:     float = 10.0  # LEAPS 스프레드 허용 범위 완화
 
 # ─ 기간 분류 신호 임계값
-HORIZON_SHORT_RSI_MIN:    float = 75.0   # RSI ≥ 75 (강한 단기 모멘텀)
-HORIZON_SHORT_ADX_MIN:    float = 30.0   # ADX ≥ 30
-HORIZON_SHORT_RVOL_MIN:   float = 1.5    # RVOL ≥ 1.5
+HORIZON_SHORT_RSI_MIN:    float = 55.0   # RSI ≥ 55 (상승 초입 포착, 과열 전)
+HORIZON_SHORT_RSI_MAX:    float = 72.0   # RSI ≤ 72 (과열 구간 제외)
+HORIZON_SHORT_ADX_MIN:    float = 22.0   # ADX ≥ 22
+HORIZON_SHORT_RVOL_MIN:   float = 1.3    # RVOL ≥ 1.3
 HORIZON_SHORT_MOVE_MIN:   float = 5.0    # 당일 등락 ≥ +5% (절댓값)
 HORIZON_SHORT_EARN_DAYS:  int   = 14     # 어닝 후 14일 이내
 HORIZON_MID_ADX_MIN:      float = 20.0   # ADX ≥ 20
@@ -77,6 +78,10 @@ HORIZON_LONG_PEG_MAX:     float = 2.0    # PEG ≤ 2.0
 HORIZON_LONG_REV_MIN:     float = 20.0   # 매출 성장률 ≥ 20%
 HORIZON_ULTRA_REV_MIN:    float = 30.0   # 매출 성장률 ≥ 30% (초장기 조건 강화)
 HORIZON_ULTRA_PEG_MAX:    float = 1.5    # PEG ≤ 1.5 (장기 대비 엄격)
+# ─ IVR 기반 기간 제한 (옵션 가격이 비쌀 때 해당 기간 비추천)
+HORIZON_SHORT_IVR_MAX:    float = 50.0   # 단기: IVR < 50
+HORIZON_MID_IVR_MAX:      float = 65.0   # 중기: IVR < 65
+HORIZON_LONG_IVR_MAX:     float = 35.0   # 장기: IVR < 35 (싼 옵션일 때만 장기 매수)
 
 # ══════════════════════════════════════════════════════════════════════
 # 2. 종목 스크리닝 필터  (apply_filters)
@@ -464,6 +469,15 @@ SELL_IMPLIED_MOVE_MAX: float = 30.0
 TRAILING_STOP_PCT:      float = 20.0   # 고점 대비 -20% 하락 → 트레일링 스탑 발동
 FIRST_TARGET_GAIN_PCT:  float = 50.0   # +50% 수익 → 1차 부분 익절 권고
 
+# ── ROLL 임계값 ────────────────────────────────────────────────────────
+ROLL_DELTA_DEEP_ITM:  float = 0.80  # |delta| ≥ 0.80 → deep ITM (레버리지 소진 구간)
+ROLL_DELTA_DEEP_OTM:  float = 0.20  # |delta| < 0.20 → deep OTM (회복 가능성 희박)
+ROLL_EXTRINSIC_MIN:   float = 0.10  # extrinsic_ratio < 10% → 시간가치 90% 소진
+ROLL_EARLY_DTE:       int   = 21    # DTE ≤ 21 → 감마 위험 구간 진입, 만기임박 롤 검토
+ROLL_OTM_LOSS_MAX:    float = 0.40  # OTM 행사가조정 롤 허용 최대 손실률 40% (엄격 제한)
+ROLL_OTM_MIN_SIGNALS: int   = 3     # OTM 롤 허용 최소 기술 신호 수 (thesis 유효성 보조 기준)
+ROLL_STRIKE_OTM_PCT:  float = 0.04  # 레버리지 복원 롤 행사가: 현재가 ±4% OTM
+
 # ══════════════════════════════════════════════════════════════════════
 # 24. 전략 철학 — LLM 프롬프트 삽입 텍스트
 # ══════════════════════════════════════════════════════════════════════
@@ -553,3 +567,146 @@ FSCORE_RVOL_LOW:  float = 1.2   # ≥ 1.2 → 약함
 MCAP_LARGE_CAP: float = 50_000_000_000   # $50B 이상 → 대형주
 MCAP_MID_CAP:   float =  5_000_000_000   # $5B~$50B  → 중형주
 # $5B 미만 또는 시총 미확인 → 소형주
+
+# ══════════════════════════════════════════════════════════════════════
+# 26. Reversal Risk Engine (RRE) — 고점 회피 엔진
+#     설계 근거: docs/reversal_risk_engine_design.md
+#     검증 기준: scripts/validate_rre_thresholds.py (2026-06-23)
+#
+#     단위 주의 — production 데이터 필드 단위에 맞춤:
+#       · return_1m (kavout)            = 퍼센트 (예: 40.5 = +40.5%)
+#       · sma20_pct / change_pct        = 퍼센트
+#       · net_income_growth_yoy         = 퍼센트
+#       · implied_eps_growth_pct        = 퍼센트
+#       · short_float_pct               = 퍼센트
+#       · pc_ratio / RVOL / max_pain gap = 비율(dimensionless)
+# ══════════════════════════════════════════════════════════════════════
+
+# ─ F8 포물선 경고 필터 (analysis.apply_filters) ─────────────────────
+# 주봉 RSI + ADX 동시 극단 과열 → 블로우오프 탑 패턴.
+# Hard stop 아님 — F8_PARABOLIC_TOP 코드만 기록(종목 유지), DA에서 차감.
+# 임계값: 검증 데이터 최적 분리선 (RSI 85 / ADX 67)
+RRE_F8_WEEKLY_RSI_MIN:  float = 85.0   # 주봉 RSI > 85 → 포물선 구간
+RRE_F8_WEEKLY_ADX_MIN:  float = 67.0   # 주봉 ADX > 67 → 추세 과열 (보조)
+DA_BUY_PARABOLIC_PENALTY: float = -35.0   # F8 플래그 종목 DA 차감
+
+# ─ Category B 오버라이드 예외 (buy_steps._stock_direction) ──────────
+# 주봉 DI+>>DI- 이더라도 포물선(RSI>85) 구간이면 long_call 강제 취소
+RRE_CATEGORY_B_RSI_OVERRIDE: float = 85.0
+
+# ══════════════════════════════════════════════════════════════════════
+# 26-A. RRE 7차원 판정 임계값 (calculate_reversal_risk_score)
+#   차원 1/6/7 → 검증 스크립트 로직 그대로 (FP 0% 보존)
+#   차원 2/3/4/5 → 설계 문서 기반 (옵션데이터 한계로 별도 미검증)
+# ══════════════════════════════════════════════════════════════════════
+
+# ─ 차원1: 기술적 소진 (필수 RSI + 보조 2개 이상) ────────────────────
+RRE_D1_SMA20_GAP_MIN:   float = 10.0   # sma20_pct > +10% (보조)
+RRE_D1_RETURN_1M_MIN:   float = 40.0   # return_1m > +40% (보조)
+# 필수=RRE_F8_WEEKLY_RSI_MIN(85), 보조ADX=RRE_F8_WEEKLY_ADX_MIN(67)
+
+# ─ 차원2: 옵션 시장 구조 (둘 다 충족 → 적색) ────────────────────────
+RRE_D2_MAXPAIN_GAP_MIN: float = 0.08   # (현재가-MaxPain)/MaxPain > 8%
+RRE_D2_PC_MAX:          float = 0.25   # P/C < 0.25 (콜 극단 집중)
+
+# ─ 차원3: 스마트머니 이탈 (핵심 충족 → 적색) ────────────────────────
+RRE_D3_INSIDER_SELL_MIN: float = 100_000_000.0   # 내부자 순매도 > $100M
+
+# ─ 차원4: 촉매 소진 (필수 + 보조 → 적색) ────────────────────────────
+RRE_D4_CATALYST_GAP_DAYS: int   = 60   # 다음 촉매(실적)까지 > 60일
+RRE_D4_RETURN_1M_MIN:     float = 30.0 # 최근 1M > +30% (호재 소화 프록시)
+
+# ─ 차원5: 펀더멘털 괴리 (핵심 둘 다 → 적색) ─────────────────────────
+RRE_D5_GAAP_DECLINE_MAX:  float = -30.0  # net_income_growth_yoy < -30%
+RRE_D5_DCF_CAGR_BUBBLE:   float = 50.0   # implied_eps_growth_pct > 50%
+
+# ─ 차원6: 수급 군집 (검증됨: 2조건) ─────────────────────────────────
+RRE_D6_RVOL_MAX:        float = 1.2    # RVOL < 1.2 (수요 고갈)
+RRE_D6_RETURN_1M_MIN:   float = 30.0   # return_1m > +30%
+RRE_D6_SHORT_FLOAT_LOW: float = 5.0    # 공매도 < 5% (보조, 하락쿠션 없음)
+
+# ─ 차원7: 멀티TF 역배열 (검증됨: 주봉상승 AND 일봉 MACD<0) ──────────
+RRE_D7_WEEKLY_ADX_MIN:  float = 20.0   # weekly_bullish 판정용 ADX 하한
+RRE_D7_1H_RSI_MAX:      float = 50.0   # 1H RSI < 50 (보조, 단기 중립이하)
+
+# ─ RRE 종합 판정 ────────────────────────────────────────────────────
+RRE_FORCE_REJECT_THRESHOLD:  int = 5   # 5개 이상 적색 → 강제 탈락(action=탈락)
+RRE_HEAVY_PENALTY_THRESHOLD: int = 3   # 3~4개 → DA -40pt
+RRE_LIGHT_PENALTY_THRESHOLD: int = 2   # 2개    → DA -20pt
+DA_BUY_RRE_HEAVY_PENALTY: float = -40.0
+DA_BUY_RRE_LIGHT_PENALTY: float = -20.0
+
+# ══════════════════════════════════════════════════════════════════════
+# 26-B. step_6_devils DA 보강 (개별 신호 패치)
+# ══════════════════════════════════════════════════════════════════════
+
+# ─ 분포 패턴 (Wyckoff Distribution) ─────────────────────────────────
+# 4조건: ①1개월급등 ②내부자매도 ③거래량미확인 ④모멘텀꺾임(일봉/4H MACD<0)
+RRE_DIST_RETURN_1M_MIN:     float = 40.0          # 1개월 수익률 > +40%
+RRE_DIST_INSIDER_SELL_MIN:  float = 50_000_000.0  # 내부자 순매도 > $50M
+RRE_DIST_RVOL_MAX:          float = 1.2           # RVOL < 1.2
+RRE_DIST_MIN_CONDITIONS:    int   = 3             # 3개+ → 분포패턴
+DA_BUY_DISTRIBUTION_PENALTY:           float = -30.0
+DA_BUY_DISTRIBUTION_CONFIRMED_PENALTY: float = -45.0  # 4개 전부
+
+# ─ UTAD (Upthrust After Distribution): 단일세션 급등 함정 ───────────
+RRE_UTAD_SINGLE_DAY_RETURN_MIN: float = 10.0   # change_pct > +10%
+DA_BUY_UTAD_PENALTY:            float = -20.0
+
+# ─ 내부자 매도 차감 3단계 (기존 일괄 -10 → 규모별 차등) ─────────────
+RRE_INSIDER_TIER1_MIN:  float = 10_000_000.0   # $10M~$50M  → -10pt
+RRE_INSIDER_TIER2_MIN:  float = 50_000_000.0   # $50M~$100M → -20pt
+RRE_INSIDER_TIER3_MIN:  float = 100_000_000.0  # $100M+     → -35pt
+DA_BUY_INSIDER_TIER1_PENALTY: float = -10.0
+DA_BUY_INSIDER_TIER2_PENALTY: float = -20.0
+DA_BUY_INSIDER_TIER3_PENALTY: float = -35.0
+
+# ─ 멀티 TF 역배열 DA ────────────────────────────────────────────────
+DA_BUY_TF_DIVERGENCE_PENALTY: float = -15.0
+
+# ─ 옵션 시장 구조 DA (Max Pain 괴리 + P/C 역발상) ───────────────────
+RRE_MAX_PAIN_GAP_WARNING:  float = 0.08   # 현재가 > Max Pain × 1.08
+RRE_MAX_PAIN_GAP_CRITICAL: float = 0.12   # 현재가 > Max Pain × 1.12
+DA_BUY_MAX_PAIN_WARNING_PENALTY:  float = -15.0
+DA_BUY_MAX_PAIN_CRITICAL_PENALTY: float = -25.0
+RRE_PC_RATIO_CROWD_WARNING:  float = 0.30   # P/C < 0.30 → 군집
+RRE_PC_RATIO_CROWD_EXTREME:  float = 0.20   # P/C < 0.20 → 극단 군집
+DA_BUY_PC_CROWD_WARNING_PENALTY:  float = -10.0
+DA_BUY_PC_CROWD_EXTREME_PENALTY:  float = -20.0
+
+# ─ 촉매 소진 DA ─────────────────────────────────────────────────────
+RRE_CATALYST_GAP_DAYS:   int   = 60     # 다음 촉매 > 60일
+RRE_CATALYST_RETURN_MIN: float = 30.0   # 최근 1M > +30%
+DA_BUY_CATALYST_EXHAUSTION_PENALTY: float = -20.0
+
+# ─ 감성 역방향 해석 (극단 구간) ─────────────────────────────────────
+RRE_SENTIMENT_RSI_THRESHOLD:    float = 85.0   # 주봉 RSI 이상
+RRE_SENTIMENT_RETURN_THRESHOLD: float = 30.0   # 1개월 수익률 이상(%)
+DA_BUY_SENTIMENT_REVERSAL_PENALTY: float = -15.0
+
+# ─ GAAP/DCF 펀더멘털 괴리 DA ────────────────────────────────────────
+RRE_GAAP_DECLINE_THRESHOLD: float = -30.0   # net_income_growth_yoy < -30%
+RRE_DCF_CAGR_BUBBLE:        float = 50.0    # implied_eps_growth_pct > 50%
+DA_BUY_EARNINGS_QUALITY_PENALTY: float = -10.0
+DA_BUY_DCF_BUBBLE_PENALTY:       float = -15.0
+
+# ─ 종목별 섹터 상대강도 이탈 DA (2.9) ───────────────────────────────
+# 종목 1M수익률 − 섹터(SMH) 1M수익률 = 초과수익(%p). 혼자 튄 종목 = 평균회귀 압력.
+RRE_STOCK_SECTOR_EXCESS_WARNING:  float = 30.0   # 초과수익 > +30%p
+RRE_STOCK_SECTOR_EXCESS_CRITICAL: float = 50.0   # 초과수익 > +50%p
+DA_BUY_SECTOR_DEVIATION_PENALTY:         float = -10.0
+DA_BUY_SECTOR_DEVIATION_EXTREME_PENALTY: float = -20.0
+
+# ══════════════════════════════════════════════════════════════════════
+# 26-C. 매크로/섹터 보강 (analyze_market_regime / step_2)
+# ══════════════════════════════════════════════════════════════════════
+RRE_MACRO_PEER_WEAK_RATIO:    float = 0.50   # 반도체 피어 50%+ 약세 → 경고
+RRE_MACRO_SECTOR_RS_WARNING:  float = -5.0   # SMH 20일 - SPY 20일 < -5%p
+RRE_MACRO_SECTOR_RS_CRITICAL: float = -10.0  # < -10%p
+RRE_MACRO_HYG_DROP_PCT:       float = -1.0   # HYG/IEF 비율 20일 변화 < -1%
+RRE_MACRO_VIX_BACKWARDATION:  float = 1.0    # VIX9D / VIX > 1.0
+RRE_MACRO_YIELD_RISE_WARNING:  float = 0.30  # 10년물 20일 변화 > +0.3%p
+RRE_MACRO_YIELD_RISE_CRITICAL: float = 0.50  # > +0.5%p
+RRE_MACRO_BREADTH_WEAK:        float = 50.0  # ^BPSPX < 50 → 시장폭 약화
+# 섹터 로테이션: 방어주(XLU,XLV) − 성장주(XLK,SMH) 10일 수익률 차이(%p)
+RRE_MACRO_ROTATION_GAP:        float = 2.0   # 방어주가 성장주를 +2%p 초과 → 리스크오프

@@ -1,0 +1,15 @@
+{
+  "execution_id": "sell_20260613_013048",
+  "step": 5,
+  "completed_at": "2026-06-13T01:36:28.393128",
+  "duration_ms": 41187,
+  "data": {
+    "MU_2026-08-21_1090.0": {
+      "event_judgment": "보유_유리",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0,
+      "recommendation": "IVR이 0%로 매우 낮아 IV 확대 여력이 제한적이며, 실적 발표 전후 IV 변동이 작을 것으로 예상되어 IV 크러시 리스크가 낮습니다. 따라서 현재 포지션을 유지하는 것이 유리합니다.",
+      "da_reasons": []
+    }
+  }
+}

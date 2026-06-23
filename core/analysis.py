@@ -310,6 +310,64 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
             f"SOXX 약세 ({macro.soxx:.0f} < MA20 {macro.soxx_ma20:.0f}) — 기술주 선행 약세"
         )
 
+    # ── E-2. RRE 매크로/섹터 보강 리스크 (docs §8) ───────────────
+    # macro_warn: '심각' 등급 경고 수 → 2건 이상 동시 발생 시 favorable 강등
+    macro_warn = 0
+    # ① 섹터 대장주 피어 약세
+    _peer_ratio = getattr(macro, "sector_peer_weak_ratio", None)
+    if _peer_ratio is not None and _peer_ratio >= st.RRE_MACRO_PEER_WEAK_RATIO:
+        macro_warn += 1
+        _peer_detail = getattr(macro, "sector_peer_detail", "") or ""
+        risk_factors.append(
+            f"반도체 피어 약세 {_peer_ratio*100:.0f}% ({_peer_detail}) — 섹터 끌림 위험"
+        )
+    # ② SMH vs SPY 상대강도 이탈
+    _rs = getattr(macro, "smh_rs_20d", None)
+    if _rs is not None:
+        if _rs < st.RRE_MACRO_SECTOR_RS_CRITICAL:
+            macro_warn += 1
+            risk_factors.append(f"SMH 상대강도 {_rs:+.1f}%p (강한 이탈) — 반도체 자금 유출")
+        elif _rs < st.RRE_MACRO_SECTOR_RS_WARNING:
+            risk_factors.append(f"SMH 상대강도 {_rs:+.1f}%p — 반도체 약세 경고")
+    # ③ HYG 크레딧 스프레드 확대
+    _hyg_chg = getattr(macro, "hyg_ief_chg_20d", None)
+    if _hyg_chg is not None and _hyg_chg < st.RRE_MACRO_HYG_DROP_PCT:
+        macro_warn += 1
+        risk_factors.append(
+            f"HYG/IEF 비율 20일 {_hyg_chg:+.1f}% — 신용 리스크 확대 (주식 선행 하락 신호)"
+        )
+    # ④ VIX 백워데이션
+    _vix_bw = getattr(macro, "vix_backwardation", None)
+    if _vix_bw is not None and _vix_bw > st.RRE_MACRO_VIX_BACKWARDATION:
+        macro_warn += 1
+        risk_factors.append(f"VIX 백워데이션 (VIX9D/VIX {_vix_bw:.2f}) — 즉각적 위험 신호")
+    # ⑤ 시장 폭 약화
+    _bpspx = getattr(macro, "bpspx", None)
+    if _bpspx is not None and _bpspx < st.RRE_MACRO_BREADTH_WEAK:
+        macro_warn += 1
+        risk_factors.append(
+            f"시장 폭 약화 (^BPSPX {_bpspx:.0f} < {st.RRE_MACRO_BREADTH_WEAK:.0f}) — 소수 종목 의존 상승"
+        )
+    # ⑥ 금리 방향성 (상승 중)
+    _yld_chg = getattr(macro, "yield_10y_chg_20d", None)
+    if _yld_chg is not None:
+        if _yld_chg > st.RRE_MACRO_YIELD_RISE_CRITICAL:
+            macro_warn += 1
+            risk_factors.append(f"10년물 20일 +{_yld_chg:.2f}%p 급등 — 고PER 성장주 강한 압박")
+        elif _yld_chg > st.RRE_MACRO_YIELD_RISE_WARNING:
+            risk_factors.append(f"10년물 20일 +{_yld_chg:.2f}%p 상승 중 — 밸류에이션 압박")
+    # ⑦ SKEW (기관 하락 헤지)
+    _skew = getattr(macro, "skew", None)
+    if _skew is not None and _skew > 140:
+        risk_factors.append(f"SKEW {_skew:.0f} > 140 — 기관 OTM 풋 대량 매입 (하락 헤지 급증)")
+    # ⑧ 섹터 로테이션 (방어주 > 성장주 outperform = 리스크오프 전환)
+    _rot = getattr(macro, "sector_rotation_10d", None)
+    if _rot is not None and _rot > st.RRE_MACRO_ROTATION_GAP:
+        macro_warn += 1
+        risk_factors.append(
+            f"섹터 로테이션: 방어주가 성장주 +{_rot:.1f}%p outperform — 리스크오프 전환"
+        )
+
     # ── F. 레짐 최종 판정 ────────────────────────────────────────
     # unfavorable 조건:
     #   - VIX > 30 (옵션 매수 비효율) — vol_status fail
@@ -347,6 +405,11 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
         else:
             regime_status = "favorable"
         allowed_direction = index_trend_dir
+
+    # 매크로/섹터 심각 경고 2건+ 동시 발생 → favorable 강등 (long_put 방향은 유지)
+    if regime_status == "favorable" and macro_warn >= 2:
+        regime_status = "borderline"
+        risk_factors.append(f"매크로/섹터 경고 {macro_warn}건 동시 → 레짐 borderline 강등")
 
     # 확신도 계산
     pass_count       = sum(1 for s in [trend_status, vol_status, index_status] if s == "pass")
@@ -876,68 +939,92 @@ def classify_investment_horizon(
     peg_ratio: float | None = None,
     revenue_growth_yoy: float | None = None, # %
     days_since_earnings: int | None = None,  # 어닝 발표 후 경과일
+    days_until_earnings: int | None = None, # 다음 어닝까지 남은 일수 (미래)
     forward_pe: float | None = None,
-) -> list[str]:
+    ivr: float | None = None,               # IVR (옵션 가격 수준, 높을수록 비쌈)
+) -> tuple[list[str], str]:
     """
     종목의 투자 기간 적합성 분류.
-    단기 / 중기 / 장기 중 해당하는 것을 모두 반환 (복수 가능).
+
+    단기는 항상 기본 포함. 우선 추천(primary) 기간을 tuple 두 번째 원소로 반환.
 
     분류 기준:
-      단기 (DTE 25-40): 강한 단기 모멘텀
-        - RSI ≥ 75 AND ADX ≥ 30 AND RVOL ≥ 1.5
+      단기 (DTE 25-40): 기본 항상 포함. 아래 조건 충족 시 우선 추천.
+        - RSI 55~72 AND ADX ≥ 22 AND RVOL ≥ 1.3 AND IVR < 50
         - AND (당일 등락 ≥ +5% OR 어닝 후 14일 이내)
-      중기 (DTE 45-90): 표준 스윙
-        - ADX ≥ 20 AND MA 정배열 AND 애널리스트 Buy 우세 (≥ 60%)
-        - 조건 없어도 기본 포함 (가장 범용)
-      장기 (DTE 90-180): 구조적 성장 베팅
-        - PEG ≤ 2.0 OR 매출 성장 ≥ 20% AND K-Score ≥ 7
+      중기 (DTE 45-90): 표준 스윙 — ADX/MA 조건 미달이어도 기본 포함
+        - IVR < 65 권장
+      장기 (DTE 90-180): 구조적 성장 + 옵션 저렴할 때
+        - PEG ≤ 2.0 OR 매출 성장 ≥ 20%, AND IVR < 35
 
     Returns:
-        e.g. ["중기", "장기"] or ["단기", "중기"]
+        (horizons, primary) — horizons: 해당 기간 목록, primary: 우선 추천 기간
     """
     horizons: list[str] = []
 
-    # ── 단기 판정 ──────────────────────────────────────────────
-    _rsi_ok   = rsi14 is not None and rsi14 >= st.HORIZON_SHORT_RSI_MIN
+    # ── 단기 판정 (항상 기본 포함, 조건 충족 시 우선 추천) ────────
+    _rsi_ok   = rsi14 is not None and st.HORIZON_SHORT_RSI_MIN <= rsi14 <= st.HORIZON_SHORT_RSI_MAX
     _adx_ok   = adx14 is not None and adx14 >= st.HORIZON_SHORT_ADX_MIN
     _rvol_ok  = avg_volume_ratio is not None and avg_volume_ratio >= st.HORIZON_SHORT_RVOL_MIN
+    _ivr_short_ok = ivr is None or ivr < st.HORIZON_SHORT_IVR_MAX
     _move_ok  = change_pct is not None and abs(change_pct) >= st.HORIZON_SHORT_MOVE_MIN
     _earn_ok  = days_since_earnings is not None and days_since_earnings <= st.HORIZON_SHORT_EARN_DAYS
-    _short_base = _rsi_ok and _adx_ok and _rvol_ok
-    _short_trigger = _move_ok or _earn_ok
-    if _short_base and _short_trigger:
-        horizons.append("단기")
+    _short_priority = _rsi_ok and _adx_ok and _rvol_ok and _ivr_short_ok and (_move_ok or _earn_ok)
+    horizons.append("단기")  # 항상 기본 포함
 
     # ── 중기 판정 ──────────────────────────────────────────────
-    # 가장 기본적인 기간 — ADX 조건 미달이어도 방향이 명확하면 포함
     _mid_adx  = adx14 is not None and adx14 >= st.HORIZON_MID_ADX_MIN
     _mid_ma   = ma_alignment == "bullish"
-    _mid_buy  = analyst_buy_pct is None or analyst_buy_pct >= 0.60
-    # ADX+MA 정배열이거나, 단순히 MA 정배열이면 중기 포함
-    if (_mid_adx and _mid_ma) or _mid_ma or _mid_adx:
+    _ivr_mid_ok = ivr is None or ivr < st.HORIZON_MID_IVR_MAX
+    if ((_mid_adx and _mid_ma) or _mid_ma or _mid_adx) and _ivr_mid_ok:
         horizons.append("중기")
-    elif not horizons:
-        # 아무 것도 해당 없으면 최소한 중기는 포함 (기본 추천)
-        horizons.append("중기")
+    elif _ivr_mid_ok:
+        horizons.append("중기")  # 기본 추천 (IVR 허용 범위 내)
+    else:
+        horizons.append("중기")  # IVR 높아도 중기는 항상 포함 (기본값)
 
-    # ── 장기 판정 ──────────────────────────────────────────────
+    # ── 장기 판정 (펀더멘털 + 저IVR 조합 필요) ───────────────────
     _peg_ok  = peg_ratio is not None and 0 < peg_ratio <= st.HORIZON_LONG_PEG_MAX
     _rev_ok  = revenue_growth_yoy is not None and revenue_growth_yoy >= st.HORIZON_LONG_REV_MIN
-    _pe_ok   = forward_pe is not None and 0 < forward_pe <= 80    # 고평가 배제
-    if _peg_ok or (_rev_ok and _pe_ok):
+    _pe_ok   = forward_pe is not None and 0 < forward_pe <= 80
+    _ivr_long_ok = ivr is None or ivr < st.HORIZON_LONG_IVR_MAX
+    if (_peg_ok or (_rev_ok and _pe_ok)) and _ivr_long_ok:
         horizons.append("장기")
 
     # ── 초장기 판정 (DTE 180~365, LEAPS) ───────────────────────
-    # 장기보다 조건 강화: 매출 성장 ≥ 30% + K-Score ≥ 7, 또는 PEG ≤ 1.5
     _ultra_rev = revenue_growth_yoy is not None and revenue_growth_yoy >= st.HORIZON_ULTRA_REV_MIN
     _ultra_peg = peg_ratio is not None and 0 < peg_ratio <= st.HORIZON_ULTRA_PEG_MAX
     if _ultra_peg or (_ultra_rev and _pe_ok):
         horizons.append("초장기")
 
-    log.debug("horizon_classified", ticker=ticker, horizons=horizons,
-              rsi=rsi14, adx=adx14, rvol=avg_volume_ratio,
-              change_pct=change_pct, peg=peg_ratio)
-    return horizons
+    # ── 어닝 촉매 창 판정 ──────────────────────────────────────
+    # 7~21일 전: 어닝 기대 모멘텀 → 단기 우선 권고
+    _pre_earn_window = (
+        days_until_earnings is not None and 7 < days_until_earnings <= 21
+    )
+    # 7일 이내: 어닝 직전 급등락 불확실 → 단기 priority 제외
+    _pre_earn_danger = (
+        days_until_earnings is not None and days_until_earnings <= 7
+    )
+
+    # ── primary horizon 결정 ────────────────────────────────────
+    if _short_priority and not _pre_earn_danger:
+        primary = "단기"
+    elif _pre_earn_window and not _short_priority and not _pre_earn_danger:
+        # 모멘텀 미충족이어도 어닝 창 내이면 단기 권고
+        primary = "단기"
+    elif "중기" in horizons and (_mid_adx or _mid_ma):
+        primary = "중기"
+    elif "장기" in horizons:
+        primary = "장기"
+    else:
+        primary = "중기"
+
+    log.debug("horizon_classified", ticker=ticker, horizons=horizons, primary=primary,
+              rsi=rsi14, adx=adx14, rvol=avg_volume_ratio, ivr=ivr,
+              change_pct=change_pct, peg=peg_ratio, short_priority=_short_priority,
+              days_until_earnings=days_until_earnings, pre_earn_window=_pre_earn_window)
+    return horizons, primary
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1309,6 +1396,7 @@ def calculate_confidence(
     timing_conditions_met: int = 2,
     regime_confidence: float = 0.67,  # MarketRegime.regime_confidence (0~1)
     sentiment: dict | None = None,    # Step 5 LLM 감성 분석 결과 (있으면 news_confidence에 반영)
+    sentiment_reversal: bool = False,  # 포물선 극단 구간 → 긍정 감성을 역발상(약세)으로 재해석
 ) -> ConfidenceScore:
     """
     최종 확신도 점수 계산
@@ -1358,7 +1446,13 @@ def calculate_confidence(
             base_sent = (st.CONVICTION_NEWS_BULLISH_BASE if overall in bearish_set
                          else st.CONVICTION_NEWS_BEARISH_BASE if overall in bullish_set
                          else st.CONVICTION_NEWS_MIXED_BASE)
-        if conf_str == "High" or strength in ("Strong", "Very Strong"):
+        # 포물선 극단 구간: 극단 긍정 감성을 역발상(약세) 신호로 재해석.
+        # "살 사람이 다 샀다" → 나쁜 뉴스 하나에 팔 사람만 남은 상태.
+        if sentiment_reversal and is_long_dir and overall in bullish_set:
+            base_sent = st.CONVICTION_NEWS_BEARISH_BASE
+            if conf_str == "High" or strength in ("Strong", "Very Strong"):
+                base_sent = max(0.0, base_sent + st.CONVICTION_NEWS_CONFIDENCE_PENALTY)
+        elif conf_str == "High" or strength in ("Strong", "Very Strong"):
             base_sent = min(1.0, base_sent + st.CONVICTION_NEWS_CONFIDENCE_BONUS)
         elif conf_str == "Low" or strength in ("Weak", "Very Weak"):
             base_sent = max(0.0, base_sent + st.CONVICTION_NEWS_CONFIDENCE_PENALTY)
@@ -1409,6 +1503,109 @@ def calculate_confidence(
 
 
 # ─────────────────────────────────────────────────────────────
+# 7.5 Reversal Risk Engine (RRE) — 고점 회피 엔진
+#   매수 파이프라인과 독립적으로 "이 종목이 얼마나 위험한 고점인가?"를 평가.
+#   설계: docs/reversal_risk_engine_design.md / 검증: scripts/validate_rre_thresholds.py
+# ─────────────────────────────────────────────────────────────
+
+def is_parabolic_top(weekly_rsi: float | None, weekly_adx: float | None) -> bool:
+    """F8 포물선 경고 — 주봉 RSI/ADX 동시 극단 과열(블로우오프 탑) 여부.
+
+    Hard stop 아님 — 호출부에서 F8_PARABOLIC_TOP 코드만 기록(종목 유지)하고
+    DA에서 차감한다.
+    """
+    if weekly_rsi is None or weekly_adx is None:
+        return False
+    return (weekly_rsi > st.RRE_F8_WEEKLY_RSI_MIN
+            and weekly_adx > st.RRE_F8_WEEKLY_ADX_MIN)
+
+
+def calculate_reversal_risk_score(
+    fv: Any,                                # StockDetail (없으면 None)
+    opt: Any,                               # TickerOptions (없으면 None)
+    insider_net_sell_usd: float | None = None,  # 내부자 순매도 달러 (양수=순매도)
+    return_1m_pct: float | None = None,         # kavout 1개월 수익률 (퍼센트)
+    next_catalyst_days: int | None = None,      # 다음 실적까지 일수 (없으면 None=공백)
+) -> tuple[int, list[str]]:
+    """Reversal Risk Engine — 7개 차원 독립 평가.
+
+    차원 1/6/7은 validate_rre_thresholds.py에서 튜닝된 로직 그대로(FP 0% 보존),
+    차원 2/3/4/5는 설계 문서 기반(옵션·펀더 데이터 한계로 별도 미검증).
+
+    Returns:
+        (적색 차원 수, 적색 차원 이름 리스트)
+    """
+    red: list[str] = []
+
+    def _g(name: str) -> Any:
+        return getattr(fv, name, None) if fv is not None else None
+
+    weekly_rsi   = _g("weekly_rsi")
+    weekly_adx   = _g("weekly_adx")
+    weekly_di_p  = _g("weekly_di_plus")
+    weekly_di_n  = _g("weekly_di_minus")
+    sma20_pct    = _g("sma20_pct")
+    macd_hist_d  = _g("macd_hist")            # 일봉 MACD 히스토그램 (검증 로직)
+    rel_volume   = _g("rel_volume")
+    gaap_growth  = _g("net_income_growth_yoy")
+    dcf_cagr     = _g("implied_eps_growth_pct")
+    current_px   = _g("price")
+
+    pc_ratio = getattr(opt, "pc_ratio", None) if opt is not None else None
+    max_pain = getattr(opt, "max_pain_near", None) if opt is not None else None
+
+    # ── 차원 1: 기술적 소진 (필수 RSI + 보조 2개 이상) ──────────────
+    cond_rsi = weekly_rsi is not None and weekly_rsi > st.RRE_F8_WEEKLY_RSI_MIN
+    aux = 0
+    if weekly_adx is not None and weekly_adx > st.RRE_F8_WEEKLY_ADX_MIN:
+        aux += 1
+    if sma20_pct is not None and sma20_pct > st.RRE_D1_SMA20_GAP_MIN:
+        aux += 1
+    if return_1m_pct is not None and return_1m_pct > st.RRE_D1_RETURN_1M_MIN:
+        aux += 1
+    if cond_rsi and aux >= 2:
+        red.append("기술적소진")
+
+    # ── 차원 2: 옵션 시장 구조 (Max Pain 괴리 AND P/C 극단) ─────────
+    gap_red = (max_pain is not None and current_px is not None and max_pain > 0
+               and (current_px - max_pain) / max_pain > st.RRE_D2_MAXPAIN_GAP_MIN)
+    pc_red = pc_ratio is not None and 0 < pc_ratio < st.RRE_D2_PC_MAX
+    if gap_red and pc_red:
+        red.append("옵션구조")
+
+    # ── 차원 3: 스마트머니 이탈 (내부자 대규모 순매도) ──────────────
+    if insider_net_sell_usd is not None and insider_net_sell_usd > st.RRE_D3_INSIDER_SELL_MIN:
+        red.append("스마트머니이탈")
+
+    # ── 차원 4: 촉매 소진 (다음 촉매 공백 AND 최근 급등) ────────────
+    catalyst_gap = next_catalyst_days is None or next_catalyst_days > st.RRE_D4_CATALYST_GAP_DAYS
+    if catalyst_gap and return_1m_pct is not None and return_1m_pct > st.RRE_D4_RETURN_1M_MIN:
+        red.append("촉매소진")
+
+    # ── 차원 5: 펀더멘털 괴리 (GAAP 악화 AND DCF 거품) ──────────────
+    gaap_bad = gaap_growth is not None and gaap_growth < st.RRE_D5_GAAP_DECLINE_MAX
+    dcf_bad = dcf_cagr is not None and dcf_cagr > st.RRE_D5_DCF_CAGR_BUBBLE
+    if gaap_bad and dcf_bad:
+        red.append("펀더멘털괴리")
+
+    # ── 차원 6: 수급 군집 (검증됨: RVOL<1.2 AND 1M>+30%) ────────────
+    rvol_red = rel_volume is not None and rel_volume < st.RRE_D6_RVOL_MAX
+    ret_red = return_1m_pct is not None and return_1m_pct > st.RRE_D6_RETURN_1M_MIN
+    if rvol_red and ret_red:
+        red.append("수급군집")
+
+    # ── 차원 7: 멀티TF 역배열 (검증됨: 주봉상승 AND 일봉 MACD<0) ─────
+    weekly_bullish = (weekly_di_p is not None and weekly_di_n is not None
+                      and weekly_adx is not None
+                      and weekly_di_p > weekly_di_n
+                      and weekly_adx > st.RRE_D7_WEEKLY_ADX_MIN)
+    if weekly_bullish and macd_hist_d is not None and macd_hist_d < 0:
+        red.append("멀티TF역배열")
+
+    return len(red), red
+
+
+# ─────────────────────────────────────────────────────────────
 # 8. 종목 필터링 (Step 3)
 # ─────────────────────────────────────────────────────────────
 
@@ -1416,6 +1613,7 @@ def apply_filters(
     summary: SummaryData,
     earnings_tickers: list[str],
     target_tickers: list[str] | None = None,
+    skip_f1_f3: bool = False,
 ) -> tuple[list[str], dict[str, list[str]], dict[str, str]]:
     """
     필터 적용 (섹션 9.2 기준)
@@ -1448,27 +1646,23 @@ def apply_filters(
         ticker_data = summary.tickers.get(ticker)
         opt_data = summary.options.get(ticker)
 
-        # F1: RVOL (summary에 있을 때만 적용)
-        if ticker_data is not None:
+        # F1: RVOL (skip_f1_f3=True 시 Step 4 실시간으로 처리)
+        if not skip_f1_f3 and ticker_data is not None:
             rvol = ticker_data.technical.avg_volume_ratio
             if rvol < cfg.RVOL_MIN:
                 codes.append("F1_RVOL_LOW")
                 detail_parts.append(f"RVOL {rvol:.2f} < {cfg.RVOL_MIN} 기준")
 
-        # F2: OI (summary options에 있을 때만 적용)
-        if opt_data is not None:
-            total_oi = opt_data.total_call_oi + opt_data.total_put_oi
-            if total_oi < cfg.OI_MIN:
-                codes.append("F2_OI_LOW")
-                detail_parts.append(f"총OI {total_oi:,} < {cfg.OI_MIN:,} 기준")
+        # F2: OI — Summary OI는 생성 시각 데이터 소스 문제로 신뢰 불가.
+        #          Step 7 option_validity(yfinance 실시간 체인)가 OI 유효성을 담당.
 
-        # F3: 가격·시가총액 (summary technical 기반)
+        # F3: 가격 (skip_f1_f3=True 시 Step 4 실시간으로 처리)
         if ticker_data is not None:
             price = ticker_data.technical.price or 0.0
-            if price > 0 and price < cfg.PRICE_TRADE_MIN:
+            if not skip_f1_f3 and price > 0 and price < cfg.PRICE_TRADE_MIN:
                 codes.append("F3_LIQUIDITY_LOW")
                 detail_parts.append(f"주가 ${price:.2f} < ${cfg.PRICE_TRADE_MIN} 기준")
-            # F4: 주가 $5 미만 (상장폐지 위험)
+            # F4: 주가 $5 미만 (상장폐지 위험) — 항상 적용
             if price > 0 and price < cfg.PRICE_MIN:
                 codes.append("F4_DELISTING_RISK")
                 detail_parts.append(f"주가 ${price:.2f} < ${cfg.PRICE_MIN} (상장폐지 위험)")

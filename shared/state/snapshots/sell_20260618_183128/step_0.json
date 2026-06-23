@@ -1,0 +1,11 @@
+{
+  "execution_id": "sell_20260618_183128",
+  "step": 0,
+  "completed_at": "2026-06-18T18:32:11.898420",
+  "duration_ms": 18625,
+  "data": {
+    "positions": [
+      "LRCX"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "execution_id": "buy_20260615_202459",
+  "step": 10,
+  "completed_at": "2026-06-15T20:27:42.809103",
+  "duration_ms": 0,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "LRCX",
+        "action": "관찰"
+      },
+      {
+        "rank": 2,
+        "ticker": "ARM",
+        "action": "관찰"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "LRCX",
+        "action": "관찰"
+      },
+      {
+        "rank": 2,
+        "ticker": "ARM",
+        "action": "관찰"
+      }
+    ],
+    "high_downside": [
+      "LRCX",
+      "ARM"
+    ]
+  }
+}

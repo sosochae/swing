@@ -1,0 +1,14 @@
+{
+  "execution_id": "buy_20260617_183421",
+  "step": 6,
+  "completed_at": "2026-06-17T18:39:08.908995",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "LRCX",
+      "ARM"
+    ],
+    "warned": [],
+    "da_deductions": {}
+  }
+}

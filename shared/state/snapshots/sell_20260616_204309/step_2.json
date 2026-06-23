@@ -1,0 +1,12 @@
+{
+  "execution_id": "sell_20260616_204309",
+  "step": 2,
+  "completed_at": "2026-06-16T20:43:55.144689",
+  "duration_ms": 20204,
+  "data": {
+    "regime": "",
+    "regime_flags": {
+      "MU_2026-08-21_1090.0": "REGIME_UNKNOWN"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "execution_id": "sell_20260617_234417",
+  "step": 10,
+  "completed_at": "2026-06-17T23:50:05.460218",
+  "duration_ms": 22968,
+  "data": [
+    {
+      "ticker": "MU",
+      "action": "FULL_EXIT"
+    }
+  ]
+}

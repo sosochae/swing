@@ -1,0 +1,201 @@
+{
+  "execution_id": "buy_20260619_002515",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "ARM",
+      "direction": "long_call",
+      "action": "관찰",
+      "final_score": 68.8,
+      "conviction": {
+        "technical_signals": 7,
+        "timing_conditions": 3,
+        "total_signals": 10,
+        "rr_ratio": 0.69,
+        "ivr": 45.8,
+        "level": "medium",
+        "trend_confidence": 0.667,
+        "news_confidence": 0.572,
+        "thesis_confidence": 0.229,
+        "execution_confidence": 0.7,
+        "total_conviction": 0.52
+      },
+      "capital_allocation": 6650.5,
+      "contracts": 1,
+      "strike": 420.0,
+      "expiry": "2026-07-17",
+      "rationale": "확신도 0.52 (medium) | 신호수 7/8, 시나리오R/R 0.7, EV $8,016 | [ADX:25 RSI:25 MACD:25 RVOL:0] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $156.0 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "ARM",
+        "direction": "long_call",
+        "strike": 420.0,
+        "expiry": "2026-07-17",
+        "contracts": 1,
+        "total_investment": 6650.5,
+        "commission_total": 0.5,
+        "implied_move_pct": 36.18454399026819,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.47500000000000003,
+          "stock_move_pct": 54.27681598540228,
+          "target_stock_price": 684.8425,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 214.21787641226672,
+          "gross_profit": 14771.787641226672,
+          "net_profit": 14771.287641226672,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.3999999999999999,
+          "stock_move_pct": 18.092271995134094,
+          "target_stock_price": 524.2175,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 112.29006391226672,
+          "gross_profit": 4579.006391226671,
+          "net_profit": 4578.506391226671,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.12499999999999997,
+          "stock_move_pct": -54.27681598540228,
+          "target_stock_price": 202.96749999999997,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -6650.0,
+          "net_profit": -6650.5,
+          "rationale": ""
+        },
+        "expected_value": 8016.451686073338,
+        "stop_loss_premium": 33.25,
+        "target_premium_1st": 99.75,
+        "target_premium_2nd": 133.0,
+        "target_premium_3rd": 166.25,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(110%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": [
+        "내부자 순매도 $52.7M (최근 거래 집계)"
+      ]
+    },
+    {
+      "rank": 2,
+      "ticker": "LRCX",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 84.80000000000001,
+      "conviction": {
+        "technical_signals": 10,
+        "timing_conditions": 4,
+        "total_signals": 14,
+        "rr_ratio": 0.67,
+        "ivr": 54.7,
+        "level": "low",
+        "trend_confidence": 0.667,
+        "news_confidence": 0.612,
+        "thesis_confidence": 0.224,
+        "execution_confidence": 0.4,
+        "total_conviction": 0.496
+      },
+      "capital_allocation": 4400.5,
+      "contracts": 1,
+      "strike": 380.0,
+      "expiry": "2026-07-17",
+      "rationale": "확신도 0.50 (low) | 신호수 10/8, 시나리오R/R 0.7, EV $5,844 | [ADX:25 RSI:25 MACD:25 RVOL:10] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $156.0 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "LRCX",
+        "direction": "long_call",
+        "strike": 380.0,
+        "expiry": "2026-07-17",
+        "contracts": 1,
+        "total_investment": 4400.5,
+        "commission_total": 0.5,
+        "implied_move_pct": 26.82387153875332,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.55,
+          "stock_move_pct": 40.23580730812996,
+          "target_stock_price": 554.5624999999999,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 139.47665559548406,
+          "gross_profit": 9547.665559548406,
+          "net_profit": 9547.165559548406,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.35,
+          "stock_move_pct": 13.411935769376665,
+          "target_stock_price": 448.4875,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 73.52197809548414,
+          "gross_profit": 2952.1978095484146,
+          "net_profit": 2951.6978095484146,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.1,
+          "stock_move_pct": -40.23580730812997,
+          "target_stock_price": 236.3375,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -4400.0,
+          "net_profit": -4400.5,
+          "rationale": ""
+        },
+        "expected_value": 5843.985291093569,
+        "stop_loss_premium": 22.0,
+        "target_premium_1st": 66.0,
+        "target_premium_2nd": 88.0,
+        "target_premium_3rd": 110.0,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(81%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": [
+        "내부자 순매도 $481.2M (최근 거래 집계)"
+      ]
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "borderline",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 331.7,
+  "summary": {
+    "filtered_tickers": [
+      "LRCX",
+      "ARM"
+    ],
+    "regime": "borderline"
+  }
+}

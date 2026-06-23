@@ -1,7 +1,6 @@
 // =============================================
 // CONFIG
 // =============================================
-const TICKER = "NVDA";
 const FINNHUB_KEY = " ";
 const FRED_KEY = " ";
 const ALPHA_KEY = " "
@@ -16,7 +15,7 @@ const TARGET_HOLD_DAYS = "3~5일";
 // =============================================
 function getTickerList() {
   // 다른 스프레드시트 접근
-  const ss = SpreadsheetApp.openById("1PIhnvgTh7ZmjiQa4RJ958Iejj2gjcO7TN745fmZYw4U");
+  const ss = SpreadsheetApp.openById("1PIhnvgTh7~~");
   let sheet = ss.getSheetByName("종목");
   
   if (!sheet) {
@@ -291,7 +290,8 @@ function runAll() {
 // 웹훅용
 function doPost(e) {
   try {
-    const result = runAll();
+    const type   = e?.parameter?.type || "buy";
+    const result = type === "sell" ? runSell() : runAll();
     return ContentService.createTextOutput(result);
   } catch (err) {
     return ContentService.createTextOutput("ERROR: " + err.message);
@@ -380,11 +380,11 @@ function fetchMacro(crumbObj) {
   }
 
   try {
-    const altRes = JSON.parse(UrlFetchApp.fetch("https://api.alternative.me/fng/?limit=1&format=json", {
+    const cnnRes = JSON.parse(UrlFetchApp.fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
       headers: { "User-Agent": "Mozilla/5.0" }, muteHttpExceptions: true
     }).getContentText());
-    const d = altRes.data[0];
-    sheet.appendRow(["Fear & Greed", d.value, d.value_classification, "", "", "", new Date()]);
+    const fg = cnnRes.fear_and_greed;
+    sheet.appendRow(["Fear & Greed", Math.round(fg.score), fg.rating, "", "", "", new Date()]);
   } catch(e) {
     sheet.appendRow(["Fear & Greed", "N/A", "API 불가", "", "", "", ""]);
   }
@@ -688,29 +688,28 @@ function fetchOptions(ticker, crumbObj) {
     exp, dte: Math.round((exp - nowSec) / 86400)
   }));
 
-  // ── 만기 선택: DTE 4일 이하 제외, 20~40일 우선 ──
+  // ── 만기 선택: Python 파이프라인 DTE 범위에 맞춤 ──
+  // 단기(25~40) + 중기(45~90) + 단초단기(4~24) 포함, 최대 5개 수집
   const validExp = expWithDTE.filter(e => e.dte >= 4);
 
-  const mainCandidates  = validExp.filter(e => e.dte >= 20 && e.dte <= 40).sort((a, b) => a.dte - b.dte);
-  const midCandidates   = validExp.filter(e => e.dte >= 14 && e.dte < 20).sort((a, b) => a.dte - b.dte);
-  const shortCandidates = validExp.filter(e => e.dte >= 4  && e.dte < 14).sort((a, b) => a.dte - b.dte);
+  const midLongCandidates = validExp.filter(e => e.dte >= 25 && e.dte <= 90).sort((a, b) => a.dte - b.dte);  // 단기+중기 통합
+  const shortCandidates   = validExp.filter(e => e.dte >= 4  && e.dte < 25).sort((a, b) => a.dte - b.dte);
 
   let selectedExpiries = [];
-  if (mainCandidates.length > 0) {
-    selectedExpiries.push(mainCandidates[0]);
-    if (shortCandidates.length > 0)     selectedExpiries.push(shortCandidates[0]);
-    else if (midCandidates.length > 0)  selectedExpiries.push(midCandidates[0]);
-  } else if (midCandidates.length > 0) {
-    selectedExpiries.push(midCandidates[0]);
+  if (midLongCandidates.length > 0) {
+    // DTE 25~90 내 최대 4개 수집 (단기·중기 양쪽 커버)
+    selectedExpiries = midLongCandidates.slice(0, 4);
     if (shortCandidates.length > 0) selectedExpiries.push(shortCandidates[0]);
+  } else if (shortCandidates.length > 0) {
+    selectedExpiries = shortCandidates.slice(0, 2);
   } else {
     selectedExpiries = validExp.sort((a, b) => a.dte - b.dte).slice(0, 2);
   }
 
   const r         = 0.045;
-  const lower     = spot ? spot * 0.95 : 0;   // ±5% 이내
-  const upper     = spot ? spot * 1.05 : Infinity;
-  const ATM_COUNT = 5;                          // ATM 근접 순 상위 5개
+  const lower     = spot ? spot * 0.90 : 0;   // ±10% 이내 — Python api_fetcher와 일치
+  const upper     = spot ? spot * 1.10 : Infinity;
+  const ATM_COUNT = 8;                          // ±10% 범위 커버리지 확보
   const newOIMap  = {};
   const allRows   = [];
 
@@ -786,7 +785,7 @@ function fetchOptions(ticker, crumbObj) {
     const allVols  = [...(chain.calls || []), ...(chain.puts || [])].map(o => o.volume || 0);
     const avgVolOI = allVols.length > 0 ? allVols.reduce((a, b) => a + b, 0) / allVols.length : 1;
 
-    // ── processChain: ±5% 필터 + ATM 근접 순 상위 ATM_COUNT개 ──
+    // ── processChain: ±10% 필터 + ATM 근접 순 상위 ATM_COUNT개 ──
     const processChain = (arr, isCall) => {
       if (!arr) return [];
       return dedup(arr.filter(o => o.strike >= lower && o.strike <= upper))
@@ -1459,12 +1458,19 @@ function buildSummary(tickers) {
     optLines.push("");
     [...new Set(validOpts.map(r => r[0]))].forEach(exp => {
       optLines.push("  [만기 " + exp + "]");
-      validOpts.filter(r => r[0] === exp && r[1] === "CALL").forEach(r =>
-        optLines.push("    CALL  Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + r[9] + "  IVR " + r[10] + "  Mid " + r[6] + "  Sprd% " + r[8] + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15])
-      );
-      validOpts.filter(r => r[0] === exp && r[1] === "PUT").forEach(r =>
-        optLines.push("    PUT   Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + r[9] + "  IVR " + r[10] + "  Mid " + r[6] + "  Sprd% " + r[8] + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15])
-      );
+      validOpts.filter(r => r[0] === exp && r[1] === "CALL").forEach(r => {
+        // IV/IVR/Sprd%에서 '%' 제거 — parsers.py 정규식 ([\d.]+) 호환
+        const iv_n   = String(r[9]  ?? "N/A").replace("%","");
+        const ivr_n  = String(r[10] ?? "N/A").replace("%","");
+        const sprd_n = String(r[8]  ?? "N/A").replace("%","");
+        optLines.push("    CALL  Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + iv_n + "  IVR " + ivr_n + "  Mid " + r[6] + "  Sprd% " + sprd_n + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15]);
+      });
+      validOpts.filter(r => r[0] === exp && r[1] === "PUT").forEach(r => {
+        const iv_n   = String(r[9]  ?? "N/A").replace("%","");
+        const ivr_n  = String(r[10] ?? "N/A").replace("%","");
+        const sprd_n = String(r[8]  ?? "N/A").replace("%","");
+        optLines.push("    PUT   Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + iv_n + "  IVR " + ivr_n + "  Mid " + r[6] + "  Sprd% " + sprd_n + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15]);
+      });
     });
     optLines.push("");
     optLines.push("END");
@@ -1534,7 +1540,7 @@ function exportSummaryRows() {
 
   // 실행 시각 기반 파일명 생성 (예: summary_20250506_143022.json)
   const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
-  const fileName = `summary_${timestamp}.json`;
+  const fileName = `summary_buy_${timestamp}.json`;
 
   // 항상 신규 파일 생성 (타임스탬프로 고유성 보장)
   folder.createFile(fileName, output, MimeType.PLAIN_TEXT);
@@ -1552,21 +1558,23 @@ function getOrCreateSheet(name) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("📊 Market Snapshot")
-    .addItem("▶ 전체 실행 (전체 종목)", "runAll")
+    .addItem("▶ 매수 전체 실행 (관심종목)", "runAll")
     .addSeparator()
-    .addItem("MACRO (공통)",           "fetchMacro_menu")
-    .addItem("EVENTS (공통)",          "fetchEvents_menu")
-    .addItem("STOCK (전체 종목)",       "fetchStock_menu")
-    .addItem("OPTIONS (전체 종목)",     "fetchOptions_menu")
-    .addItem("NEWS (전체 종목)",        "fetchNews_menu")
-    .addItem("INSIDER (전체 종목)",     "fetchInsider_menu")
-    .addItem("EARNINGS (전체 종목)",    "fetchEarnings_menu")
-    .addItem("FINVIZ (전체 종목)",      "fetchFinviz_menu")
-    .addItem("POSITIONS 갱신 (전체)",   "fetchPositions_menu")
+    .addItem("MACRO (공통)",              "fetchMacro_menu")
+    .addItem("EVENTS (공통)",             "fetchEvents_menu")
+    .addItem("STOCK (전체 종목)",          "fetchStock_menu")
+    .addItem("OPTIONS (전체 종목)",        "fetchOptions_menu")
+    .addItem("NEWS (전체 종목)",           "fetchNews_menu")
+    .addItem("INSIDER (전체 종목)",        "fetchInsider_menu")
+    .addItem("EARNINGS (전체 종목)",       "fetchEarnings_menu")
+    .addItem("FINVIZ (전체 종목)",         "fetchFinviz_menu")
+    .addItem("POSITIONS 갱신 (전체)",      "fetchPositions_menu")
     .addSeparator()
-    .addItem("SUMMARY 생성",           "buildSummary_menu")
+    .addItem("SUMMARY 생성 (매수)",        "buildSummary_menu")
+    .addItem("SUMMARY 내보내기 (매수)",    "exportSummaryRows")
     .addSeparator()
-    .addItem("SUMMARY 내보내기 (JSON)", "exportSummaryRows")  // ← 추가
+    .addItem("▶ 매도 전체 실행 (보유종목)", "runSell")
+    .addItem("SUMMARY 내보내기 (매도)",    "exportSellSummaryRows")
     .addToUi();
 }
 function fetchMacro_menu()     { fetchMacro(getYahooCrumb()); }
@@ -1579,3 +1587,622 @@ function fetchEarnings_menu()  { getTickerList().forEach(t => { fetchEarnings(t)
 function fetchFinviz_menu()    { getTickerList().forEach(t => { fetchFinviz(t);   Utilities.sleep(300); }); }
 function fetchPositions_menu() { getTickerList().forEach(t => fetchPositions(t)); }
 function buildSummary_menu()   { buildSummary(getTickerList()); }
+
+// =============================================
+// 12. POSITION LIST (매도용 — "포지션" 탭)
+// =============================================
+function getPositionList() {
+  const ss = SpreadsheetApp.openById("1PIhnvgTh7~~");
+  const sheet = ss.getSheetByName("포지션");
+  if (!sheet) throw new Error("'포지션' 탭을 찾을 수 없습니다. 스프레드시트에 '포지션' 탭이 있는지 확인하세요.");
+
+  const values = sheet.getRange("A1:G" + sheet.getLastRow()).getValues();
+  const positions = [];
+
+  for (let i = 0; i < values.length; i++) {
+    const row = values[i];
+    const ticker = String(row[0]).trim().toUpperCase();
+    if (!ticker || ticker === "티커" || ticker === "" || ticker.startsWith("//")) continue;
+
+    positions.push({
+      ticker:       ticker,
+      type:         String(row[1]).trim().toUpperCase(),
+      strike:       Number(row[2]),
+      expiry:       String(row[3] instanceof Date
+                      ? Utilities.formatDate(row[3], "Asia/Seoul", "yyyy-MM-dd")
+                      : row[3]).trim(),
+      entryPremium: Number(row[4]),
+      contracts:    Number(row[5]),
+      entryDate:    String(row[6] instanceof Date
+                      ? Utilities.formatDate(row[6], "Asia/Seoul", "yyyy-MM-dd")
+                      : row[6]).trim(),
+    });
+  }
+
+  if (positions.length === 0) throw new Error("포지션 탭에 데이터가 없습니다. A~G열에 보유 포지션을 입력하세요.");
+  return positions;
+}
+
+// =============================================
+// 13. 매도용 OPTIONS fetch (보유 strike 중심)
+// =============================================
+function fetchOptionsSell(ticker, crumbObj, heldPositions) {
+  if (!crumbObj) crumbObj = getYahooCrumb();
+
+  let spot = null;
+  let hvArr = [];
+  try {
+    const chartRes = JSON.parse(yahooFetch(
+      "https://query1.finance.yahoo.com/v8/finance/chart/" + ticker + "?interval=1d&range=1y&includePrePost=false",
+      crumbObj
+    ).getContentText());
+    const result = chartRes.chart?.result?.[0];
+    spot = result?.meta?.regularMarketPrice ?? null;
+    const rawCloses = (result?.indicators?.quote?.[0]?.close || []).filter(v => v != null);
+    if (rawCloses.length >= 21) {
+      for (let i = 20; i < rawCloses.length; i++) {
+        const slice   = rawCloses.slice(i - 20, i + 1);
+        const logRets = [];
+        for (let j = 1; j < slice.length; j++) logRets.push(Math.log(slice[j] / slice[j - 1]));
+        const mean     = logRets.reduce((a, b) => a + b, 0) / logRets.length;
+        const variance = logRets.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (logRets.length - 1);
+        hvArr.push(Math.sqrt(variance * 252));
+      }
+    }
+  } catch(e) { Logger.log("spot/HV ERR: " + e); }
+
+  const hvMin = hvArr.length ? Math.min(...hvArr) : null;
+  const hvMax = hvArr.length ? Math.max(...hvArr) : null;
+
+  function getIVRank(currentIV) {
+    if (!hvArr.length || hvMin == null || hvMax == null || hvMax === hvMin) return null;
+    return ((currentIV - hvMin) / (hvMax - hvMin) * 100).toFixed(0) + "%";
+  }
+  function getIVPct(currentIV) {
+    if (!hvArr.length) return null;
+    return (hvArr.filter(v => v < currentIV).length / hvArr.length * 100).toFixed(0) + "%";
+  }
+
+  // 보유 strike 기반 범위: spot ±10% 또는 보유 strike ±15% 중 더 넓은 쪽
+  const heldStrikes  = heldPositions.map(p => Number(p.strike));
+  const heldExpiries = heldPositions.map(p => p.expiry);
+  const spotLower = spot ? spot * 0.90 : 0;
+  const spotUpper = spot ? spot * 1.10 : Infinity;
+  const heldLower = heldStrikes.length ? Math.min(...heldStrikes) * 0.85 : spotLower;
+  const heldUpper = heldStrikes.length ? Math.max(...heldStrikes) * 1.15 : spotUpper;
+  const lower = Math.min(spotLower, heldLower);
+  const upper = Math.max(spotUpper, heldUpper);
+
+  const sheet = getOrCreateSheet(sheetName("OPTIONS", ticker));
+  sheet.clearContents();
+  sheet.appendRow([
+    "만기일","타입","Strike","Last","Bid","Ask","Mid","Spread","Spread%",
+    "IV","IV Rank","IV Pct",
+    "OI","Volume","Vol/OI","이상플로우",
+    "Delta","Theta","Vega","Gamma","OI 변화"
+  ]);
+
+  const props = PropertiesService.getScriptProperties();
+  const prevOIKey = "OPTIONS_PREV_OI_" + ticker;
+  let prevOIMap = {};
+  try {
+    const raw = props.getProperty(prevOIKey);
+    if (raw) prevOIMap = JSON.parse(raw);
+  } catch(e) { Logger.log("prevOI load ERR: " + e); }
+
+  let allExpiries = [];
+  try {
+    const parsed = JSON.parse(yahooFetch(
+      "https://query1.finance.yahoo.com/v7/finance/options/" + ticker,
+      crumbObj
+    ).getContentText());
+    allExpiries = parsed.optionChain?.result?.[0]?.expirationDates || [];
+  } catch(e) {
+    Logger.log("Options index ERR: " + e);
+    sheet.appendRow(["ERR", "OPTIONS API 응답 없음"]);
+    return;
+  }
+
+  const nowSec = Date.now() / 1000;
+  const expWithDTE = allExpiries.map(exp => ({
+    exp,
+    dte: Math.round((exp - nowSec) / 86400),
+    dateStr: new Date(exp * 1000).toISOString().split("T")[0]
+  }));
+
+  const validExp = expWithDTE.filter(e => e.dte >= 4);
+
+  // 보유 만기 우선 포함, 나머지는 DTE 25~90 중 최대 3개
+  const heldExpItems   = validExp.filter(e => heldExpiries.includes(e.dateStr));
+  const otherCandidates = validExp
+    .filter(e => !heldExpiries.includes(e.dateStr) && e.dte >= 25 && e.dte <= 90)
+    .sort((a, b) => a.dte - b.dte)
+    .slice(0, 3);
+  const selectedExpiries = [...heldExpItems, ...otherCandidates];
+  if (selectedExpiries.length === 0)
+    selectedExpiries.push(...validExp.sort((a, b) => a.dte - b.dte).slice(0, 2));
+
+  const r         = 0.045;
+  const ATM_COUNT = 10;
+  const newOIMap  = {};
+  const allRows   = [];
+  const impliedMoveByExp = {};
+  const maxPainByExp     = {};
+
+  for (const { exp, dte, dateStr } of selectedExpiries) {
+    Utilities.sleep(600);
+    let chainRes = null;
+    try {
+      chainRes = JSON.parse(yahooFetch(
+        "https://query1.finance.yahoo.com/v7/finance/options/" + ticker + "?date=" + exp,
+        crumbObj
+      ).getContentText());
+    } catch(e2) { continue; }
+
+    if (!chainRes?.optionChain?.result?.[0]?.options?.[0]) continue;
+
+    const chain   = chainRes.optionChain.result[0].options[0];
+    const expDate = dateStr;
+    const T       = (exp - nowSec) / (365 * 24 * 60 * 60);
+
+    // Implied Move
+    if (spot && chain.calls && chain.puts) {
+      const allStrikes = [...new Set([
+        ...(chain.calls || []).map(o => o.strike),
+        ...(chain.puts  || []).map(o => o.strike)
+      ])];
+      const atmStrike = allStrikes.reduce((best, s) =>
+        Math.abs(s - spot) < Math.abs(best - spot) ? s : best, Infinity);
+      const atmCall = (chain.calls || []).find(o => o.strike === atmStrike);
+      const atmPut  = (chain.puts  || []).find(o => o.strike === atmStrike);
+      if (atmCall && atmPut) {
+        const callMid  = atmCall.bid > 0 && atmCall.ask > 0 ? (atmCall.bid + atmCall.ask) / 2 : atmCall.lastPrice ?? 0;
+        const putMid   = atmPut.bid  > 0 && atmPut.ask  > 0 ? (atmPut.bid  + atmPut.ask)  / 2 : atmPut.lastPrice  ?? 0;
+        const straddle = callMid + putMid;
+        if (spot > 0)
+          impliedMoveByExp[expDate] = "±$" + straddle.toFixed(2) + "  (±" + (straddle / spot * 100).toFixed(2) + "%)  [ATM Strike: " + atmStrike + "]";
+      }
+    }
+
+    // Max Pain
+    const allStrikesSorted = [...new Set([
+      ...(chain.calls || []).map(o => o.strike),
+      ...(chain.puts  || []).map(o => o.strike)
+    ])].sort((a, b) => a - b);
+    if (allStrikesSorted.length > 0) {
+      let minPain = Infinity, maxPainStrike = null;
+      for (const testPrice of allStrikesSorted) {
+        let totalPain = 0;
+        for (const o of (chain.calls || [])) {
+          if (testPrice > o.strike) totalPain += (testPrice - o.strike) * (o.openInterest || 0);
+        }
+        for (const o of (chain.puts || [])) {
+          if (testPrice < o.strike) totalPain += (o.strike - testPrice) * (o.openInterest || 0);
+        }
+        if (totalPain < minPain) { minPain = totalPain; maxPainStrike = testPrice; }
+      }
+      maxPainByExp[expDate] = maxPainStrike;
+    }
+
+    const dedup = (arr) => {
+      const map = {};
+      arr.forEach(o => {
+        const k = String(o.strike);
+        if (!map[k] || (o.volume || 0) > (map[k].volume || 0)) map[k] = o;
+      });
+      return Object.values(map);
+    };
+
+    const allVols  = [...(chain.calls || []), ...(chain.puts || [])].map(o => o.volume || 0);
+    const avgVolOI = allVols.length > 0 ? allVols.reduce((a, b) => a + b, 0) / allVols.length : 1;
+
+    const processChain = (arr, isCall) => {
+      if (!arr) return [];
+      return dedup(arr.filter(o => o.strike >= lower && o.strike <= upper))
+        .map(o => {
+          const iv     = o.impliedVolatility ?? 0;
+          const greeks = spot && T > 0 && iv > 0
+            ? calcGreeks(spot, o.strike, T, r, iv, isCall)
+            : { delta: null, theta: null, vega: null, gamma: null };
+          return { o, iv, greeks };
+        })
+        .sort((a, b) => Math.abs(a.o.strike - spot) - Math.abs(b.o.strike - spot))
+        .slice(0, ATM_COUNT);
+    };
+
+    const callItems = processChain(chain.calls, true);
+    const putItems  = processChain(chain.puts,  false);
+
+    [...callItems.map(x => ({ ...x, type: "CALL" })), ...putItems.map(x => ({ ...x, type: "PUT" }))]
+      .forEach(({ o, iv, greeks, type }) => {
+        const bid       = o.bid       ?? 0;
+        const ask       = o.ask       ?? 0;
+        const last      = o.lastPrice ?? 0;
+        const mid       = bid > 0 && ask > 0 ? (bid + ask) / 2 : null;
+        const spread    = bid > 0 && ask > 0 ? ask - bid        : null;
+        const spreadPct = mid && mid > 0 ? (spread / mid * 100).toFixed(1) + "%" : "N/A";
+        const oi        = o.openInterest ?? 0;
+        const vol       = o.volume       ?? 0;
+        const volOI     = oi > 0 ? (vol / oi).toFixed(3) : "N/A";
+        const voiNum    = oi > 0 ? vol / oi : 0;
+        const unusualFlag = voiNum >= 5 && vol >= avgVolOI * 3 ? "⚠️ 급등" : "";
+        const ivRank = iv > 0 ? getIVRank(iv) : null;
+        const ivPct  = iv > 0 ? getIVPct(iv)  : null;
+        const key    = expDate + "_" + type + "_" + o.strike;
+        newOIMap[key] = oi;
+        const prevOI  = prevOIMap[key] ?? null;
+        const oiChg   = prevOI != null
+          ? (oi - prevOI >= 0 ? "+" : "") + (oi - prevOI).toLocaleString()
+          : "N/A";
+
+        allRows.push({
+          vol,
+          row: [
+            expDate, type, o.strike,
+            last   > 0    ? last.toFixed(3)   : "N/A",
+            bid    > 0    ? bid.toFixed(3)     : "N/A",
+            ask    > 0    ? ask.toFixed(3)     : "N/A",
+            mid   != null ? mid.toFixed(3)     : "N/A",
+            spread != null ? spread.toFixed(3) : "N/A",
+            spreadPct,
+            iv     > 0    ? (iv * 100).toFixed(1) + "%" : "N/A",
+            ivRank != null ? ivRank : "N/A",
+            ivPct  != null ? ivPct  : "N/A",
+            oi, vol, volOI, unusualFlag,
+            greeks.delta  != null ? greeks.delta.toFixed(3)  : "N/A",
+            greeks.theta  != null ? greeks.theta.toFixed(3)  : "N/A",
+            greeks.vega   != null ? greeks.vega.toFixed(3)   : "N/A",
+            greeks.gamma  != null ? greeks.gamma.toFixed(4)  : "N/A",
+            oiChg
+          ]
+        });
+      });
+  }
+
+  allRows.sort((a, b) => b.vol - a.vol);
+  allRows.forEach(({ row }) => sheet.appendRow(row));
+
+  const optMeta = getOrCreateSheet(sheetName("OPTIONS_META", ticker));
+  optMeta.clearContents();
+  optMeta.appendRow(["만기일", "DTE", "Implied Move (ATM 스트래들)", "Max Pain Strike"]);
+  const allExpDates = [...new Set(allRows.map(r => r.row[0]))];
+  allExpDates.forEach(ed => {
+    const expTs  = allExpiries.find(e => new Date(e * 1000).toISOString().split("T")[0] === ed);
+    const dte    = expTs ? Math.round((expTs - nowSec) / 86400) : "N/A";
+    optMeta.appendRow([
+      ed, dte,
+      impliedMoveByExp[ed] ?? "N/A",
+      maxPainByExp[ed] != null ? "$" + maxPainByExp[ed].toFixed(2) : "N/A"
+    ]);
+  });
+
+  PropertiesService.getScriptProperties().setProperty("IMPLIED_MOVE_" + ticker, JSON.stringify(impliedMoveByExp));
+  PropertiesService.getScriptProperties().setProperty("MAX_PAIN_" + ticker,     JSON.stringify(maxPainByExp));
+  try {
+    props.setProperty(prevOIKey, JSON.stringify(newOIMap));
+  } catch(e) { Logger.log("prevOI save ERR: " + e); }
+}
+
+// =============================================
+// 14. 매도용 SUMMARY 생성
+// =============================================
+function buildSellSummary(positions) {
+  const tickers = [...new Set(positions.map(p => p.ticker))];
+
+  const sum = getOrCreateSheet("SELL_SUMMARY");
+  sum.clearContents();
+
+  const macro  = getOrCreateSheet("MACRO").getDataRange().getValues().slice(1);
+  const events = getOrCreateSheet("EVENTS").getDataRange().getValues().slice(1);
+  const now    = Utilities.formatDate(new Date(), "Asia/Seoul", "yyyy-MM-dd HH:mm");
+
+  // ── A1: 공통 (MACRO + EVENTS + RISK) ──
+  const commonLines = [];
+  commonLines.push("MARKET SNAPSHOT [" + now + " KST]");
+  commonLines.push("처리 종목 (보유): " + tickers.join(", "));
+  commonLines.push("------------------------------------------------------------");
+  commonLines.push("");
+
+  commonLines.push("[ MACRO ]");
+  macro.forEach(r => {
+    if (r[0] && r[1] && r[1] !== "ERR") {
+      const ma    = r[3] ? "  20MA:" + r[3] : "";
+      const maPos = r[4] ? "  " + r[4] : "";
+      const trend = r[5] ? "  추세:" + r[5] : "";
+      commonLines.push("  " + String(r[0]).padEnd(20) + ": " + r[1] + "  " + (r[2] || "") + ma + maPos + trend);
+    }
+  });
+  commonLines.push("");
+
+  commonLines.push("[ EVENTS (향후 14일) ]");
+  events.slice(0, 20).forEach(r => {
+    if (r[0] && r[2]) {
+      const dStr = r[5] ? "  " + r[5] : "";
+      commonLines.push("  " + String(r[0]).padEnd(12) + " " + r[1] + "  " + r[2] + "  " + (r[3] || "") + dStr);
+    }
+  });
+  commonLines.push("");
+
+  commonLines.push("[ RISK PARAMETERS ]");
+  commonLines.push("  총 자본                : $" + TOTAL_CAPITAL.toLocaleString());
+  commonLines.push("  포지션당 최대 한도      : $" + MAX_PER_POSITION.toLocaleString());
+  commonLines.push("  계약당 수수료           : $" + COMMISSION_PER_CONTRACT);
+  commonLines.push("  목표 보유 기간          : " + TARGET_HOLD_DAYS);
+  const totalUsed = positions.reduce((s, p) => s + (p.entryPremium * p.contracts * 100), 0);
+  commonLines.push("  사용 중 자본 (전체)     : $" + totalUsed.toLocaleString());
+  commonLines.push("  잔여 현금 (추정)        : $" + (TOTAL_CAPITAL - totalUsed).toFixed(0));
+
+  sum.getRange(1, 1).setValue(commonLines.join("\n"));
+  sum.getRange(2, 1).setValue("[ OPTIONS ]");
+
+  // ── B열~: 티커별 ──
+  tickers.forEach((ticker, idx) => {
+    const col = idx + 2;
+    const tickerPositions = positions.filter(p => p.ticker === ticker);
+
+    const stock    = (() => { try { return getOrCreateSheet(sheetName("STOCK",        ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const opts     = (() => { try { return getOrCreateSheet(sheetName("OPTIONS",      ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const optMeta  = (() => { try { return getOrCreateSheet(sheetName("OPTIONS_META", ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const news     = (() => { try { return getOrCreateSheet(sheetName("NEWS",         ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const insider  = (() => { try { return getOrCreateSheet(sheetName("INSIDER",      ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const earnings = (() => { try { return getOrCreateSheet(sheetName("EARNINGS",     ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+    const finviz   = (() => { try { return getOrCreateSheet(sheetName("FINVIZ",       ticker)).getDataRange().getValues().slice(1); } catch(e) { return []; } })();
+
+    // 1행: 기본정보
+    const mainLines = [];
+    mainLines.push("[ " + ticker + " ]");
+    mainLines.push("------------------------------------------------------------");
+    mainLines.push("");
+
+    const techStart = stock.findIndex(r => r[0]?.toString().startsWith("--- 기술"));
+    const analStart = stock.findIndex(r => r[0]?.toString().startsWith("--- 애널"));
+    const srStart   = stock.findIndex(r => r[0]?.toString().startsWith("--- 지지"));
+    const ohlcStart = stock.findIndex(r => r[0]?.toString().startsWith("--- 최근"));
+
+    mainLines.push("[ STOCK ]");
+    (techStart > -1 ? stock.slice(0, techStart) : stock).forEach(r => {
+      if (r[0] && r[1] && r[1] !== "ERR") mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+    });
+    mainLines.push("");
+
+    mainLines.push("[ TECHNICAL ]");
+    if (techStart > -1) {
+      const techEnd = analStart > -1 ? analStart : (srStart > -1 ? srStart : (ohlcStart > -1 ? ohlcStart : stock.length));
+      stock.slice(techStart + 1, techEnd).forEach(r => {
+        if (r[0] && r[1]) mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+      });
+    }
+    mainLines.push("");
+
+    if (srStart > -1) {
+      mainLines.push("[ 지지/저항 ]");
+      const srEnd = ohlcStart > -1 ? ohlcStart : (analStart > -1 ? analStart : stock.length);
+      stock.slice(srStart + 1, srEnd).forEach(r => {
+        if (r[0] && r[1]) mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+      });
+      mainLines.push("");
+    }
+
+    if (ohlcStart > -1) {
+      mainLines.push("[ 최근 3일 OHLC ]");
+      stock.slice(ohlcStart + 1).forEach(r => {
+        if (r[0]?.toString().startsWith("OHLC")) mainLines.push("  " + r[0] + ": " + r[1]);
+      });
+      mainLines.push("");
+    }
+
+    mainLines.push("[ ANALYST ]");
+    if (analStart > -1) {
+      const analEnd = srStart > -1 ? srStart : (ohlcStart > -1 ? ohlcStart : stock.length);
+      stock.slice(analStart + 1, analEnd).forEach(r => {
+        if (r[0] && r[1]) mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+      });
+    }
+    mainLines.push("");
+
+    mainLines.push("[ VALUATION ]");
+    finviz.forEach(r => {
+      if (r[0] && r[1] && r[1] !== "N/A" && r[1] !== "ERR")
+        mainLines.push("  " + String(r[0]).padEnd(24) + ": " + r[1]);
+    });
+    mainLines.push("");
+
+    mainLines.push("[ EARNINGS ]");
+    earnings.forEach(r => {
+      if (r[0]?.toString().startsWith("[다음")) {
+        mainLines.push("  [다음 어닝 예정]");
+      } else if (r[0] && !r[0].toString().startsWith("ERR")) {
+        mainLines.push("  " + r[0] + "  Q" + r[1] + "  EPS예상 " + r[2] + "  EPS실제 " + r[3] + "  서프라이즈 " + r[4] + "  매출 " + r[5] + "  YoY " + r[6] + "  " + (r[7] || ""));
+      }
+    });
+    mainLines.push("");
+
+    mainLines.push("[ INSIDER ]");
+    insider.slice(0, 8).forEach(r => {
+      if (r[0] && r[3]) mainLines.push("  " + r[0] + "  " + r[1] + "(" + r[2] + ")  " + r[3] + "  " + r[4] + "주  @" + r[5] + "  총 " + r[6]);
+    });
+    mainLines.push("");
+
+    mainLines.push("[ NEWS ]");
+    const structNews = news.filter(r => r[4] === "⭐ 구조적");
+    const normalNews = news.filter(r => r[4] !== "⭐ 구조적");
+    [...structNews, ...normalNews].slice(0, 8).forEach((r, i) => {
+      if (r[2]) mainLines.push("  " + (i + 1) + ". [" + r[1] + "] " + (r[4] || "") + "  " + r[2]);
+    });
+    mainLines.push("");
+
+    // ── 핵심 차이: 보유 포지션 섹션 ──
+    mainLines.push("[ HELD POSITIONS ]");
+    const validOpts = opts.filter(r => r[1] === "CALL" || r[1] === "PUT");
+    const nowMs = Date.now();
+
+    tickerPositions.forEach(pos => {
+      const heldRow = validOpts.find(r =>
+        r[0] === pos.expiry &&
+        r[1] === pos.type &&
+        Math.abs(Number(r[2]) - pos.strike) < 0.01
+      );
+      const currMid   = heldRow ? Number(heldRow[6]) : null;
+      const pnlDollar = currMid != null
+        ? ((currMid - pos.entryPremium) * pos.contracts * 100 - COMMISSION_PER_CONTRACT * pos.contracts).toFixed(0)
+        : "N/A";
+      const pnlPct = currMid != null && pos.entryPremium > 0
+        ? ((currMid - pos.entryPremium) / pos.entryPremium * 100).toFixed(1) + "%"
+        : "N/A";
+      let dte = "N/A";
+      try { dte = Math.round((new Date(pos.expiry).getTime() - nowMs) / (1000 * 60 * 60 * 24)); } catch(e) {}
+
+      mainLines.push("  " + pos.ticker + " " + pos.type + " Strike:" + pos.strike + "  만기:" + pos.expiry + "  DTE:" + dte);
+      mainLines.push("    진입가:$" + pos.entryPremium + "  현재Mid:" + (currMid != null ? "$" + currMid.toFixed(3) : "N/A") + "  계약:" + pos.contracts);
+      mainLines.push("    미실현:$" + pnlDollar + "(" + pnlPct + ")  진입일:" + pos.entryDate);
+      mainLines.push("    IV:" + (heldRow ? heldRow[9] : "N/A") + "  Delta:" + (heldRow ? heldRow[16] : "N/A") + "  Theta:" + (heldRow ? heldRow[17] : "N/A") + "  Vega:" + (heldRow ? heldRow[18] : "N/A"));
+    });
+    mainLines.push("");
+    mainLines.push("END");
+
+    // 2행: OPTIONS 정보
+    const optLines = [];
+    optLines.push("[ " + ticker + " — OPTIONS ]");
+    optLines.push("------------------------------------------------------------");
+    optLines.push("");
+
+    const callOI = validOpts.filter(r => r[1] === "CALL").reduce((s, r) => s + (Number(r[12]) || 0), 0);
+    const putOI  = validOpts.filter(r => r[1] === "PUT").reduce((s, r)  => s + (Number(r[12]) || 0), 0);
+    optLines.push("  P/C Ratio (OI 기준)          : " + (callOI > 0 ? (putOI / callOI).toFixed(3) : "N/A"));
+    optLines.push("  Total Call OI                : " + callOI.toLocaleString());
+    optLines.push("  Total Put OI                 : " + putOI.toLocaleString());
+
+    if (optMeta.length > 0) {
+      optLines.push("  ---- Implied Move / Max Pain ----");
+      optMeta.forEach(r => {
+        if (r[0]) optLines.push("  [" + r[0] + " DTE:" + r[1] + "]  Implied Move: " + r[2] + "  Max Pain: " + r[3]);
+      });
+    }
+
+    const unusualFlows = validOpts.filter(r => r[15] === "⚠️ 급등");
+    if (unusualFlows.length > 0) {
+      optLines.push("  ---- 이상 옵션 플로우 ----");
+      unusualFlows.slice(0, 5).forEach(r =>
+        optLines.push("    " + r[1] + " Strike " + r[2] + " (" + r[0] + ")  Vol " + r[13] + "  OI " + Number(r[12]).toLocaleString() + "  V/OI " + r[14] + "  IV " + r[9])
+      );
+    }
+
+    const oiChangers = validOpts
+      .filter(r => r[20] && r[20] !== "N/A" && r[20] !== "")
+      .map(r => {
+        const val = parseInt(String(r[20]).replace("+", ""));
+        return isNaN(val) ? null : { exp: r[0], type: r[1], strike: r[2], oiChg: val };
+      })
+      .filter(Boolean)
+      .sort((a, b) => Math.abs(b.oiChg) - Math.abs(a.oiChg))
+      .slice(0, 3);
+    if (oiChangers.length > 0) {
+      optLines.push("  ---- OI 변화 상위 ----");
+      oiChangers.forEach(o =>
+        optLines.push("    " + o.type + " Strike " + o.strike + " (" + o.exp + ")  OI변화 " + (o.oiChg > 0 ? "+" : "") + o.oiChg.toLocaleString())
+      );
+    }
+
+    optLines.push("");
+    [...new Set(validOpts.map(r => r[0]))].forEach(exp => {
+      const isHeldExp = tickerPositions.some(p => p.expiry === exp);
+      optLines.push("  [만기 " + exp + (isHeldExp ? " ★보유" : "") + "]");
+      validOpts.filter(r => r[0] === exp && r[1] === "CALL").forEach(r => {
+        const isHeld = tickerPositions.some(p => p.type === "CALL" && Math.abs(Number(p.strike) - Number(r[2])) < 0.01 && p.expiry === exp);
+        const iv_n   = String(r[9]  ?? "N/A").replace("%","");
+        const ivr_n  = String(r[10] ?? "N/A").replace("%","");
+        const sprd_n = String(r[8]  ?? "N/A").replace("%","");
+        optLines.push("    " + (isHeld ? "★" : " ") + "CALL  Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + iv_n + "  IVR " + ivr_n + "  Mid " + r[6] + "  Sprd% " + sprd_n + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15]);
+      });
+      validOpts.filter(r => r[0] === exp && r[1] === "PUT").forEach(r => {
+        const isHeld = tickerPositions.some(p => p.type === "PUT" && Math.abs(Number(p.strike) - Number(r[2])) < 0.01 && p.expiry === exp);
+        const iv_n   = String(r[9]  ?? "N/A").replace("%","");
+        const ivr_n  = String(r[10] ?? "N/A").replace("%","");
+        const sprd_n = String(r[8]  ?? "N/A").replace("%","");
+        optLines.push("    " + (isHeld ? "★" : " ") + "PUT   Strike " + r[2] + "  OI " + Number(r[12]).toLocaleString() + "  Vol " + r[13] + "  IV " + iv_n + "  IVR " + ivr_n + "  Mid " + r[6] + "  Sprd% " + sprd_n + "  Delta " + r[16] + "  Theta " + r[17] + "  OI변화 " + r[20] + "  " + r[15]);
+      });
+    });
+    optLines.push("");
+    optLines.push("END");
+
+    sum.getRange(1, col).setValue(mainLines.join("\n"));
+    sum.getRange(2, col).setValue(optLines.join("\n"));
+  });
+
+  // 서식
+  sum.setColumnWidth(1, 600);
+  tickers.forEach((_, idx) => sum.setColumnWidth(idx + 2, 750));
+  const totalCols = tickers.length + 1;
+  sum.getRange(1, 1, 1, totalCols).setWrap(true).setFontFamily("Courier New").setFontSize(10).setVerticalAlignment("top");
+  sum.getRange(2, 1, 1, totalCols).setWrap(true).setFontFamily("Courier New").setFontSize(10).setVerticalAlignment("top");
+}
+
+// =============================================
+// 15. 매도용 SUMMARY 내보내기
+// =============================================
+function exportSellSummaryRows() {
+  const ss    = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("SELL_SUMMARY");
+  if (!sheet) throw new Error("SELL_SUMMARY 탭을 찾을 수 없습니다. runSell()을 먼저 실행하세요.");
+
+  const lastCol   = sheet.getLastColumn();
+  const rawValues = sheet.getRange(1, 1, 2, lastCol).getValues();
+  const row1      = rawValues[0];
+  const row2      = rawValues[1];
+
+  const output = [
+    JSON.stringify(row1[0]),
+    JSON.stringify(row1.slice(1).filter(c => c !== "")),
+    JSON.stringify(row2.slice(1).filter(c => c !== "")),
+  ].join("\n");
+
+  const folderIter = DriveApp.getFoldersByName("마켓 수치");
+  if (!folderIter.hasNext()) throw new Error("'마켓 수치' 폴더를 찾을 수 없습니다.");
+  const folder    = folderIter.next();
+  const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
+  const fileName  = `summary_sell_${timestamp}.json`;
+  folder.createFile(fileName, output, MimeType.PLAIN_TEXT);
+  Logger.log("매도 summary 저장 완료: " + fileName);
+}
+
+// =============================================
+// 16. 매도 MAIN
+// =============================================
+function runSell() {
+  const positions = getPositionList();
+  const tickers   = [...new Set(positions.map(p => p.ticker))];
+
+  if (tickers.length === 0) {
+    SpreadsheetApp.getUi().alert("포지션 탭에 데이터가 없습니다.");
+    return;
+  }
+
+  let crumbObj = null;
+  try {
+    crumbObj = getYahooCrumb();
+    Logger.log("Crumb 획득 성공: " + crumbObj.crumb);
+  } catch(e) {
+    Logger.log("Crumb 획득 실패: " + e);
+  }
+
+  fetchMacro(crumbObj);
+  fetchEvents(tickers);
+
+  for (const ticker of tickers) {
+    Logger.log("▶ [매도] 처리 중: " + ticker);
+    const heldPositions = positions.filter(p => p.ticker === ticker);
+    fetchStock(ticker, crumbObj);
+    fetchAnalyst(ticker);
+    fetchOptionsSell(ticker, crumbObj, heldPositions);
+    fetchNews(ticker);
+    fetchInsider(ticker);
+    fetchEarnings(ticker);
+    fetchFinviz(ticker);
+    Utilities.sleep(500);
+  }
+
+  buildSellSummary(positions);
+  exportSellSummaryRows();
+
+  return "✅ 매도 분석 완료! SELL_SUMMARY 탭 확인 (종목: " + tickers.join(", ") + ")";
+}

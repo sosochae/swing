@@ -149,7 +149,7 @@ class SellSteps:
 
         # Summary (가장 최근 파일)
         try:
-            ctx.summary_data = load_latest_summary(ctx.paths.summary_dir)
+            ctx.summary_data = load_latest_summary(ctx.paths.summary_dir, kind="sell")
             log.info("sell_summary_loaded", tickers=len(ctx.summary_data.tickers))
         except Exception as exc:
             log.warning("sell_summary_warn", error=str(exc))
@@ -444,6 +444,29 @@ class SellSteps:
                 if urgency == "위급":
                     flags.append("청산_권고_신호")
 
+                # ── extrinsic / delta_category (ROLL 판단용) ─────────────────
+                _curr_prem_s1 = current_premium if current_premium is not None else pos.entry_premium
+                _intrinsic_s1 = (
+                    max(0.0, (current_price or 0.0) - pos.strike)
+                    if pos.option_type == "롱콜"
+                    else max(0.0, pos.strike - (current_price or 0.0))
+                )
+                _extrinsic_s1 = max(0.0, _curr_prem_s1 - _intrinsic_s1)
+                _extrinsic_ratio_s1 = (
+                    _extrinsic_s1 / pos.entry_premium if pos.entry_premium > 0 else 1.0
+                )
+                _delta_abs_s1 = abs(greeks.delta if hasattr(greeks, "delta") else 0.5)
+                if _delta_abs_s1 >= st.ROLL_DELTA_DEEP_ITM:
+                    _delta_cat_s1 = "deep_itm"
+                elif _delta_abs_s1 >= 0.60:
+                    _delta_cat_s1 = "itm"
+                elif _delta_abs_s1 >= 0.40:
+                    _delta_cat_s1 = "atm"
+                elif _delta_abs_s1 >= st.ROLL_DELTA_DEEP_OTM:
+                    _delta_cat_s1 = "otm"
+                else:
+                    _delta_cat_s1 = "deep_otm"
+
                 health_results[_pos_key(pos)] = {
                     "delta_pnl": round(delta_pnl, 2),
                     "theta_pnl": round(theta_pnl, 2),
@@ -456,6 +479,9 @@ class SellSteps:
                     "current_premium": current_premium,
                     "premium_source": "bs_estimate" if _bs_used else "chain",
                     "greeks": greeks.model_dump() if hasattr(greeks, "model_dump") else vars(greeks),
+                    "extrinsic": round(_extrinsic_s1, 2),
+                    "extrinsic_ratio": round(_extrinsic_ratio_s1, 4),
+                    "delta_category": _delta_cat_s1,
                 }
 
             except Exception as exc:
@@ -481,6 +507,9 @@ class SellSteps:
                         "delta": 0.5, "gamma": 0.02, "theta": -0.05,
                         "vega": 0.10, "rho": 0.01, "ivr": 50.0,
                     },
+                    "extrinsic": 0.0,
+                    "extrinsic_ratio": 1.0,
+                    "delta_category": "atm",
                 }
 
         # Step 4·7·8·11에서 참조할 수 있도록 전용 필드에 저장
@@ -1689,13 +1718,20 @@ class SellSteps:
                             (_r_mid - _rpos.entry_premium)
                             * 100 * _rpos.remaining_contracts
                         )
+                        # Step 1의 greeks 기반 귀인값 보존 후 vega만 잔차 재계산
+                        # delta_pnl = Step 1 greeks.delta × stock_move (그대로 유지)
+                        # theta_pnl = Step 1 greeks.theta × days_held (그대로 유지)
+                        # vega_pnl  = total_pnl − delta_pnl − theta_pnl (chain 갱신으로 정확해짐)
+                        _old_delta_pnl = _rh.get("delta_pnl", 0.0) or 0.0
+                        _old_theta_pnl = _rh.get("theta_pnl", 0.0) or 0.0
+                        _new_vega_pnl  = _new_pnl_total - _old_delta_pnl - _old_theta_pnl
                         ctx.sell_health[_pos_key(_rpos)] = {
                             **_rh,
                             "current_premium": round(_r_mid, 2),
                             "premium_source":  "chain_refreshed",
-                            "delta_pnl":       round(_new_pnl_total, 2),
-                            "theta_pnl":       0.0,
-                            "vega_pnl":        0.0,
+                            "delta_pnl":       round(_old_delta_pnl, 2),
+                            "theta_pnl":       round(_old_theta_pnl, 2),
+                            "vega_pnl":        round(_new_vega_pnl, 2),
                         }
                         log.info("sell_health_premium_refreshed",
                                  ticker=_rpos.ticker,
@@ -1738,6 +1774,14 @@ class SellSteps:
                             )
                         except Exception:
                             pass
+                        # IV Crush 청산 압력 플래그 → Step 7 action 결정에 반영
+                        _h_iv = ctx.sell_health.get(_pos_key(pos), {})
+                        _fl_iv = list(_h_iv.get("flags", []))
+                        if "IV크러쉬_청산권고" not in _fl_iv:
+                            _fl_iv.append("IV크러쉬_청산권고")
+                        ctx.sell_health[_pos_key(pos)] = {**_h_iv, "flags": _fl_iv}
+                        log.info("sell_iv_crush_flag_set",
+                                 ticker=pos.ticker, ivr=round(ivr, 1))
                     else:
                         # 실적 없음: IV 높음 = Vega 수혜 중 (정보성 메모만)
                         warning = (
@@ -1795,6 +1839,9 @@ class SellSteps:
                 flags.append("레짐역전_청산권고")
             # Step 5 Devil's Advocate: 이벤트 "청산_유리"이면 액션 강화
             dv = devils.get(_pos_key(pos), {})
+            # Step 5 LLM iv_crush_risk → flags에 반영 (Step 6 결정론적 검사의 보완)
+            if dv.get("iv_crush_risk") and "IV크러쉬_청산권고" not in flags:
+                flags.append("IV크러쉬_청산권고")
 
             # ── 트레일링 스탑 트리거 체크 (최우선) ──────────────────────
             current_prem = h.get("current_premium")
@@ -1914,6 +1961,97 @@ class SellSteps:
                                  current=round(_stock_price, 2),
                                  target=round(fvd.target_price, 2))
 
+            # ── P&L 긴급도 보정: DTE 안정이어도 손실·청산 플래그면 urgency 상향 ──
+            # 투자자가 Slack/Obsidian에서 FULL_EXIT [stable]을 보면 혼란스러움
+            if urgency == "안정" and (
+                "스탑로스_도달"    in flags
+                or "트레일링스탑_발동" in flags
+                or "청산_권고_신호"  in flags
+            ):
+                urgency = "주의"
+                log.info("urgency_pnl_override",
+                         ticker=pos.ticker,
+                         flags=[f for f in flags if "스탑" in f or "청산" in f])
+
+            # ── ROLL 트리거 플래그 ─────────────────────────────────────────
+            _delta_cat_7  = h.get("delta_category", "atm")
+            _extrinsic_r7 = h.get("extrinsic_ratio", 1.0)
+            _pnl_pct_7 = (
+                (current_prem / pos.entry_premium - 1.0)
+                if (current_prem is not None and pos.entry_premium > 0)
+                else 0.0
+            )
+
+            # ① 외재가치_소진_롤권고: Deep ITM + 시간가치 90% 소진 → OTM으로 롤해 레버리지 복원
+            if (
+                _delta_cat_7 == "deep_itm"
+                and _extrinsic_r7 < st.ROLL_EXTRINSIC_MIN
+                and pos.dte >= st.ROLL_EARLY_DTE
+                and "청산_권고_신호" not in flags
+                and "스탑로스_도달" not in flags
+                and "트레일링스탑_발동" not in flags
+            ):
+                flags.append("외재가치_소진_롤권고")
+                log.info("roll_flag_itm_leverage",
+                         ticker=pos.ticker,
+                         delta_cat=_delta_cat_7,
+                         extrinsic_ratio=round(_extrinsic_r7, 3))
+
+            # ② OTM_행사가조정_롤권고: Deep OTM + thesis 유효 (엄격 다중 조건)
+            # 리스크가 높은 조치(averaging down)이므로 가장 엄격한 조건 적용
+            _otm_roll_ok = (
+                "청산_권고_신호"        not in flags
+                and "레짐역전_청산권고"  not in flags
+                and "주봉역방향_청산권고" not in flags
+                and "스탑로스_도달"      not in flags
+                and "트레일링스탑_발동"  not in flags
+                and "OI역방향_청산압력"  not in flags
+                and current_prem is not None               # 프리미엄 데이터 필수
+                and tech is not None
+                and tech.signal_count >= st.ROLL_OTM_MIN_SIGNALS  # 기술 신호 최소 3개
+            )
+            if (
+                _delta_cat_7 == "deep_otm"
+                and _pnl_pct_7 > -st.ROLL_OTM_LOSS_MAX   # 손실 < 40% (엄격)
+                and pos.dte >= st.ROLL_EARLY_DTE
+                and _otm_roll_ok
+            ):
+                flags.append("OTM_행사가조정_롤권고")
+                log.info("roll_flag_otm_strike",
+                         ticker=pos.ticker,
+                         pnl_pct=round(_pnl_pct_7 * 100, 1),
+                         dte=pos.dte,
+                         signal_count=tech.signal_count if tech else 0)
+
+            # ③ 만기임박_롤권고: DTE 7~21일 + 방향성 유효 + 손실 < 50%
+            if (
+                st.SELL_DTE_FORCE_EXIT < pos.dte <= st.ROLL_EARLY_DTE
+                and tech and tech.trend_confirmed
+                and _pnl_pct_7 > -st.SELL_STOP_LOSS_RATIO  # 손실 < 50%
+                and "청산_권고_신호" not in flags
+                and "스탑로스_도달" not in flags
+                and "트레일링스탑_발동" not in flags
+            ):
+                flags.append("만기임박_롤권고")
+                log.info("roll_flag_near_expiry",
+                         ticker=pos.ticker, dte=pos.dte,
+                         pnl_pct=round(_pnl_pct_7 * 100, 1))
+
+            # ④ IV급등_Vega수익실현: IVR 높음(이벤트 없음) + 수익 중 → 부분 청산으로 Vega 수익 확정
+            _high_ivr_no_event_7 = any(
+                pos.ticker in _w7 and "Vega 수혜" in _w7
+                for _w7 in ctx.sell_iv_warnings
+            )
+            if (
+                _high_ivr_no_event_7
+                and _pnl_pct_7 > 0
+                and "IV크러쉬_청산권고" not in flags
+            ):
+                flags.append("IV급등_Vega수익실현")
+                log.info("roll_flag_iv_vega",
+                         ticker=pos.ticker,
+                         pnl_pct=round(_pnl_pct_7 * 100, 1))
+
             # 규칙 기반 예비 결정 (§9.4 Step 10 우선순위 규칙)
             regime_reversed = "레짐역전_청산권고" in flags
             if trailing_hit or "청산_권고_신호" in flags or urgency == "위급" or "스탑로스_도달" in flags:
@@ -1932,10 +2070,22 @@ class SellSteps:
                   or "목표주가_초과" in flags):
                 # 이벤트 청산 유리 or 50% 수익 or 목표주가 근접/초과 → 부분 확정
                 action = "PARTIAL_EXIT"
-            elif "주봉역방향_청산권고" in flags or "OI역방향_청산압력" in flags:
-                # Step 3 주봉 역전 또는 Step 6 반대방향 OI 급증 → 부분 청산
+            elif "주봉역방향_청산권고" in flags or "OI역방향_청산압력" in flags or "IV크러쉬_청산권고" in flags:
+                # Step 3 주봉 역전 / Step 6 반대방향 OI 급증 / IV Crush 위험 → 부분 청산
                 action = "PARTIAL_EXIT"
             elif tech and not tech.trend_confirmed:
+                action = "PARTIAL_EXIT"
+            elif "외재가치_소진_롤권고" in flags:
+                # Deep ITM 레버리지 소진 → 행사가 조정 ROLL (자본 회수 + 레버리지 복원)
+                action = "ROLL"
+            elif "만기임박_롤권고" in flags:
+                # DTE 21일 이하 감마 구간 → 만기 연장 ROLL (유리한 조건에서 미리)
+                action = "ROLL"
+            elif "OTM_행사가조정_롤권고" in flags:
+                # Deep OTM + thesis 유효 → ATM 행사가 조정 ROLL (LLM 최종 판단에 위임)
+                action = "ROLL"
+            elif "IV급등_Vega수익실현" in flags:
+                # IV 급등 Vega 수혜 중 → 부분 청산으로 수익 실현
                 action = "PARTIAL_EXIT"
             else:
                 action = "HOLD"
@@ -2018,8 +2168,26 @@ class SellSteps:
                     )
 
                 bull_case = _make_sell_case("bullish", bull_p,  implied_move_pct)
-                base_case = _make_sell_case("base",    base_p,  0.0)
                 bear_case = _make_sell_case("bearish",  bear_p, -implied_move_pct)
+
+                # base case: 주가 무이동 + Theta 소멸 반영 (DTE 절반 기준)
+                # _make_sell_case(move_pct=0)은 gross=0으로 theta를 무시함 → 직접 계산
+                _theta_day_val = h.get("greeks", {}).get("theta", 0.0) or 0.0
+                _base_theta_days = max(1, pos.dte // 2)
+                _base_theta_total = _theta_day_val * _base_theta_days  # 음수 (소멸 비용)
+                _base_opt_val = max(0.0, current_premium_val + _base_theta_total)
+                _base_gross = (_base_opt_val - current_premium_val) * 100 * contracts
+                _base_net = _base_gross - commission_total
+                base_case = ScenarioCase(
+                    name="base",  # type: ignore
+                    probability=base_p,
+                    stock_move_pct=0.0,
+                    target_stock_price=stock_price,
+                    iv_change_assumption=f"IV 유지 + Theta {_base_theta_days}일 소멸",
+                    expected_option_value=_base_opt_val,
+                    gross_profit=_base_gross,
+                    net_profit=_base_net,
+                )
                 ev = (
                     bull_case.net_profit * bull_p
                     + base_case.net_profit * base_p
@@ -2205,49 +2373,160 @@ class SellSteps:
             flags = d.get("flags", [])
             urgency = d.get("urgency", "안정")
 
-            # ROLL 조건: 방향은 맞으나 DTE 부족
+            # ── ROLL 유형 결정 ─────────────────────────────────────────────
             tech = ctx.technical_scores.get(_pos_key(pos))
-            if (action == "FULL_EXIT" and pos.dte <= 7
+            _h10_roll = ctx.sell_health.get(_pos_key(pos), {})
+            _spot10 = _h10_roll.get("current_price", pos.entry_stock_price) or pos.entry_stock_price
+
+            # 기존 조건 유지: FULL_EXIT + DTE ≤ 7 + trend_confirmed → 만기 연장 ROLL로 격상
+            if (action == "FULL_EXIT" and pos.dte <= st.SELL_DTE_FORCE_EXIT
                     and tech and tech.trend_confirmed):
                 action = "ROLL"
-                # ⑳ 실시간 chain에서 ATM OI 기준 최적 만기 선택 (폴백: _nearest_friday)
-                roll_expiry = None
-                try:
-                    _roll_opt = ctx.summary_data.options.get(pos.ticker) if ctx.summary_data else None
-                    _roll_chain = _roll_opt.chain if _roll_opt else []
-                    _roll_spot = (
-                        ctx.summary_data.tickers[pos.ticker].technical.price
-                        if ctx.summary_data and pos.ticker in ctx.summary_data.tickers else 0.0
+
+            roll_type: str | None = None
+            roll_expiry: date | None = None
+            roll_strike: float | None = None
+
+            if action == "ROLL":
+                _roll_opt10 = ctx.summary_data.options.get(pos.ticker) if ctx.summary_data else None
+                _roll_chain10 = _roll_opt10.chain if _roll_opt10 else []
+
+                def _chain_best_expiry_10(
+                    dte_min: int, dte_max: int, strike_ref: float, delta_target: float = 0.50
+                ) -> "tuple[date | None, int, float]":
+                    """OI + 레버리지 복합 점수로 최적 만기 선택 (ATM 윈도우 ±10%)"""
+                    _exp_data10: dict[str, dict] = {}
+                    for _re10 in _roll_chain10:
+                        _re10_dte = int(_re10.get("dte", 0) or 0)
+                        if not (dte_min <= _re10_dte <= dte_max):
+                            continue
+                        _re10_exp = str(_re10.get("expiry", ""))
+                        _re10_str = float(_re10.get("strike", 0) or 0)
+                        if strike_ref > 0 and abs(_re10_str - strike_ref) / strike_ref > 0.10:
+                            continue
+                        _re10_oi  = int(_re10.get("oi", 0) or 0)
+                        _re10_bid = float(_re10.get("bid", 0) or 0)
+                        _re10_ask = float(_re10.get("ask", 0) or 0)
+                        _re10_mid = (_re10_bid + _re10_ask) / 2 if (_re10_bid > 0 or _re10_ask > 0) else 0.0
+                        _re10_dist = abs(_re10_str - strike_ref) if strike_ref > 0 else 0.0
+                        if _re10_exp not in _exp_data10:
+                            _exp_data10[_re10_exp] = {"atm_oi": 0, "best_mid": 0.0, "best_dist": float("inf")}
+                        _exp_data10[_re10_exp]["atm_oi"] += _re10_oi
+                        if _re10_mid > 0 and _re10_dist < _exp_data10[_re10_exp]["best_dist"]:
+                            _exp_data10[_re10_exp]["best_mid"] = _re10_mid
+                            _exp_data10[_re10_exp]["best_dist"] = _re10_dist
+
+                    _best_combined10, _best_exp10 = -1.0, None
+                    _best_oi10, _best_mid10 = 0, 0.0
+                    for _exp10k, _dat10 in _exp_data10.items():
+                        _lev10 = (delta_target * _spot10 / _dat10["best_mid"]) if _dat10["best_mid"] > 0 else 1.0
+                        _combined10 = _dat10["atm_oi"] * 0.6 + min(_lev10, 15.0) * 300
+                        if _combined10 > _best_combined10:
+                            _best_combined10 = _combined10
+                            _best_exp10      = _exp10k
+                            _best_oi10       = _dat10["atm_oi"]
+                            _best_mid10      = _dat10["best_mid"]
+
+                    if _best_exp10:
+                        try:
+                            return datetime.fromisoformat(_best_exp10[:10]).date(), _best_oi10, _best_mid10
+                        except Exception:
+                            pass
+                    return None, 0, 0.0
+
+                # ROLL 공통: 선택된 옵션 메타데이터 (BEP·OI 경고용)
+                _roll_selected_oi:   int   = 0
+                _roll_selected_prem: float = 0.0
+
+                if "외재가치_소진_롤권고" in flags:
+                    # 레버리지 복원: Deep ITM → delta 0.50 타겟 행사가, 기존 만기 유지
+                    roll_type = "레버리지_복원"
+                    _opt_type_str10 = "call" if pos.option_type == "롱콜" else "put"
+                    _d_tgt10 = st.DELTA_MID_TARGET  # 0.50
+                    _strike_cands10: list[tuple[float, float]] = []
+                    for _rc10 in _roll_chain10:
+                        _rc10_dte = int(_rc10.get("dte", 0) or 0)
+                        if not (max(1, pos.dte - 5) <= _rc10_dte <= pos.dte + 15):
+                            continue
+                        _rc10_str = float(_rc10.get("strike", 0) or 0)
+                        _rc10_iv  = float(_rc10.get("impliedVolatility", 0) or _rc10.get("iv", 0) or 0)
+                        if _rc10_str <= 0 or _rc10_iv <= 0:
+                            continue
+                        try:
+                            _rc10_g = calculate_greeks(
+                                _spot10, _rc10_str, max(1, _rc10_dte), _rc10_iv, _opt_type_str10
+                            )
+                            _strike_cands10.append((_rc10_str, abs(abs(_rc10_g.delta) - _d_tgt10)))
+                        except Exception:
+                            pass
+                    if _strike_cands10:
+                        roll_strike = round(min(_strike_cands10, key=lambda x: x[1])[0], 1)
+                        log.debug("sell_roll_strike_delta_target",
+                                  ticker=pos.ticker, roll_strike=roll_strike, delta_target=_d_tgt10)
+                    else:
+                        roll_strike = round(
+                            _spot10 * (1 + st.ROLL_STRIKE_OTM_PCT) if pos.option_type == "롱콜"
+                            else _spot10 * (1 - st.ROLL_STRIKE_OTM_PCT), 1,
+                        )
+                        log.debug("sell_roll_strike_fallback_pct",
+                                  ticker=pos.ticker, roll_strike=roll_strike)
+                    _exp10, _roll_selected_oi, _roll_selected_prem = _chain_best_expiry_10(
+                        dte_min=max(1, pos.dte - 5),
+                        dte_max=pos.dte + 15,
+                        strike_ref=roll_strike,
+                        delta_target=st.DELTA_MID_TARGET,
                     )
-                    if _roll_chain and _roll_spot > 0:
-                        from datetime import datetime as _rdt
-                        # 45~90일 범위 만기별 ATM OI 집계
-                        _roll_exp_oi: dict[str, int] = {}
-                        for _re in _roll_chain:
-                            _re_dte = int(_re.get("dte", 0) or 0)
-                            if 45 <= _re_dte <= 90:
-                                _re_exp = str(_re.get("expiry", ""))
-                                _re_strike = float(_re.get("strike", 0) or 0)
-                                if abs(_re_strike - _roll_spot) / _roll_spot <= 0.05:
-                                    _roll_exp_oi[_re_exp] = (
-                                        _roll_exp_oi.get(_re_exp, 0)
-                                        + int(_re.get("oi", 0) or 0)
-                                    )
-                        if _roll_exp_oi:
-                            _best_exp = max(_roll_exp_oi, key=lambda k: _roll_exp_oi[k])
-                            roll_expiry = _rdt.fromisoformat(_best_exp[:10]).date()
-                            log.info("sell_roll_expiry_from_chain",
-                                     ticker=pos.ticker, expiry=str(roll_expiry),
-                                     atm_oi=_roll_exp_oi[_best_exp])
-                except Exception as _roll_exc:
-                    log.debug("sell_roll_expiry_chain_failed",
-                              ticker=pos.ticker, error=str(_roll_exc))
-                if roll_expiry is None:
-                    roll_expiry = _nearest_friday(date.today(), target_dte=35)
-                roll_strike = pos.strike
-            else:
-                roll_expiry = None
-                roll_strike = None
+                    roll_expiry = _exp10 if _exp10 else pos.expiry
+                    log.info("sell_roll_leverage_restore",
+                             ticker=pos.ticker, old_strike=pos.strike,
+                             new_strike=roll_strike, expiry=str(roll_expiry),
+                             roll_oi=_roll_selected_oi, roll_prem=round(_roll_selected_prem, 2))
+
+                elif "OTM_행사가조정_롤권고" in flags:
+                    # 손익분기 조정: Deep OTM → ATM(현재가) + 30~60일 만기 연장
+                    roll_type = "손익분기점_조정"
+                    roll_strike = round(_spot10, 1)
+                    _exp10, _roll_selected_oi, _roll_selected_prem = _chain_best_expiry_10(
+                        dte_min=30, dte_max=60, strike_ref=roll_strike,
+                        delta_target=st.DELTA_MID_TARGET,
+                    )
+                    roll_expiry = _exp10 if _exp10 else _nearest_friday(date.today(), target_dte=35)
+                    log.info("sell_roll_strike_adjust",
+                             ticker=pos.ticker, old_strike=pos.strike,
+                             new_strike=roll_strike, expiry=str(roll_expiry),
+                             roll_oi=_roll_selected_oi, roll_prem=round(_roll_selected_prem, 2))
+
+                elif "만기임박_롤권고" in flags or pos.dte <= st.SELL_DTE_FORCE_EXIT:
+                    # 만기 연장: 동일 행사가 + 45~90일 (감마 위험 구간 탈출)
+                    roll_type = "만기_연장"
+                    roll_strike = pos.strike
+                    _cur_delta10 = abs(
+                        (_h10_roll.get("greeks") or {}).get("delta", st.DELTA_MID_TARGET)
+                    )
+                    _exp10, _roll_selected_oi, _roll_selected_prem = _chain_best_expiry_10(
+                        dte_min=45, dte_max=90, strike_ref=roll_strike,
+                        delta_target=_cur_delta10,
+                    )
+                    roll_expiry = _exp10 if _exp10 else _nearest_friday(date.today(), target_dte=35)
+                    log.info("sell_roll_time_extend",
+                             ticker=pos.ticker, strike=roll_strike, expiry=str(roll_expiry),
+                             roll_oi=_roll_selected_oi, roll_prem=round(_roll_selected_prem, 2))
+
+                else:
+                    # 기본 만기 연장 (DTE ≤ 7 + trend_confirmed 케이스 등)
+                    roll_type = "만기_연장"
+                    roll_strike = pos.strike
+                    _cur_delta10 = abs(
+                        (_h10_roll.get("greeks") or {}).get("delta", st.DELTA_MID_TARGET)
+                    )
+                    _exp10, _roll_selected_oi, _roll_selected_prem = _chain_best_expiry_10(
+                        dte_min=45, dte_max=90, strike_ref=roll_strike,
+                        delta_target=_cur_delta10,
+                    )
+                    roll_expiry = _exp10 if _exp10 else _nearest_friday(date.today(), target_dte=35)
+                    log.info("sell_roll_default",
+                             ticker=pos.ticker, strike=roll_strike, expiry=str(roll_expiry),
+                             roll_oi=_roll_selected_oi, roll_prem=round(_roll_selected_prem, 2))
 
             # ── LLM 최종 결정 (sell_step3_decision) ──────────────────
             llm_rationale = ""
@@ -2371,11 +2650,15 @@ class SellSteps:
                 unrealized_pnl=unrealized_pnl,
                 roll_strike=roll_strike,
                 roll_expiry=roll_expiry,
+                roll_type=roll_type,  # type: ignore
+                roll_new_oi=_roll_selected_oi if action == "ROLL" and _roll_selected_oi > 0 else None,
+                roll_new_premium=_roll_selected_prem if action == "ROLL" and _roll_selected_prem > 0 else None,
                 rationale=(
                     llm_rationale
                     or f"플래그: {', '.join(flags)} | DTE: {pos.dte}일 ({urgency})"
                 ),
                 risk_factors=[w for w in iv_warnings if pos.ticker in w],
+                flags=list(flags),  # Step 7 decision flags
                 urgency=urgency.replace("위급", "critical").replace("주의", "warning")
                         .replace("보통", "normal").replace("안정", "stable"),  # type: ignore
             )

@@ -1,0 +1,15 @@
+{
+  "execution_id": "sell_20260613_014605",
+  "step": 5,
+  "completed_at": "2026-06-13T01:48:27.339802",
+  "duration_ms": 21968,
+  "data": {
+    "MU_2026-08-21_1090.0": {
+      "event_judgment": "청산_유리",
+      "iv_crush_risk": true,
+      "iv_crush_estimated_loss": 0.2,
+      "recommendation": "IV crush 위험이 높아 장 포지션보다 단기 매도 전략을 고려하거나, 이벤트 전 포지션 축소를 권장합니다.",
+      "da_reasons": []
+    }
+  }
+}

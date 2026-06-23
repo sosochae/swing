@@ -125,7 +125,7 @@ def print_report(ctx: Any, result: Any) -> None:
         print(f"  {'티커':<6} {'점수':>6} {'방향':<12} {'신호':>4} {'추세':>6} {'자금':>6}")
         print(f"  {'-'*50}")
         for t, s in sorted_scores[:5]:
-            print(f"  {t:<6} {s.final_score:>5.1f}  {s.direction:<12} {s.signal_count:>3}/7 "
+            print(f"  {t:<6} {s.final_score:>5.1f}  {s.direction:<12} {s.signal_count:>3}/8 "
                   f"  {'✓' if s.trend_confirmed else '✗':<5}  {'✓' if s.capital_flow_confirmed else '✗'}")
 
     # 옵션 유효성
@@ -171,7 +171,7 @@ def print_report(ctx: Any, result: Any) -> None:
             print(f"  확신도  : {c.total_conviction:.2f} ({c.level})")
             print(f"    추세 {c.trend_confidence:.2f} × 0.4  뉴스 {c.news_confidence:.2f} × 0.2")
             print(f"    thesis {c.thesis_confidence:.2f} × 0.3  실행 {c.execution_confidence:.2f} × 0.1")
-            print(f"  신호수  : {c.technical_signals}/7  R/R: {c.rr_ratio:.1f}")
+            print(f"  신호수  : {c.technical_signals}/8  R/R: {c.rr_ratio:.1f}")
             print(f"  판단    : {r.rationale}")
             if r.risk_factors:
                 print(f"  리스크  : {'; '.join(r.risk_factors[:2])}")

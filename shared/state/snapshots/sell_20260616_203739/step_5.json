@@ -1,0 +1,15 @@
+{
+  "execution_id": "sell_20260616_203739",
+  "step": 5,
+  "completed_at": "2026-06-16T20:39:07.701982",
+  "duration_ms": 11468,
+  "data": {
+    "MU_2026-08-21_1090.0": {
+      "event_judgment": "중립",
+      "iv_crush_risk": false,
+      "iv_crush_estimated_loss": 0.0,
+      "recommendation": "LLM 분석 실패 — 수동 확인 필요",
+      "da_reasons": []
+    }
+  }
+}

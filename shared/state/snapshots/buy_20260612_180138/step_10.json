@@ -1,0 +1,25 @@
+{
+  "execution_id": "buy_20260612_180138",
+  "step": 10,
+  "completed_at": "2026-06-12T18:04:09.924531",
+  "duration_ms": 0,
+  "data": {
+    "balanced": [
+      {
+        "rank": 1,
+        "ticker": "LRCX",
+        "action": "보류"
+      }
+    ],
+    "aggressive": [
+      {
+        "rank": 1,
+        "ticker": "LRCX",
+        "action": "보류"
+      }
+    ],
+    "high_downside": [
+      "LRCX"
+    ]
+  }
+}

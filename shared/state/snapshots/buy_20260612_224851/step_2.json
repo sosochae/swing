@@ -1,0 +1,19 @@
+{
+  "execution_id": "buy_20260612_224851",
+  "step": 2,
+  "completed_at": "2026-06-12T22:49:14.974491",
+  "duration_ms": 10186,
+  "data": {
+    "regime_status": "borderline",
+    "allowed_direction": "both",
+    "regime_confidence": 0.67,
+    "trend_confidence": 1.0,
+    "risk_factors": [
+      "SPY 20MA 아래 — 하락 추세",
+      "QQQ 20MA 아래 — 기술주 약세"
+    ],
+    "trend_strength": "MA 구조: SPY·QQQ 모두 20MA 아래 (하락 추세)",
+    "volatility": "VIX 19.33 ≤ 20.0 (옵션 매수 유리)",
+    "index_trend": "방향 스코어 -2.5 (혼조 구간 -3~3) | SPY < MA20 (-1), QQQ < MA20 (-1), SPY 4H DI-26>DI+15 (-0.5)"
+  }
+}

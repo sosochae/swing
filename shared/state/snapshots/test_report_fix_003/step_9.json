@@ -1,0 +1,13 @@
+{
+  "execution_id": "test_report_fix_003",
+  "step": 9,
+  "completed_at": "2026-06-03T15:52:48.771169",
+  "duration_ms": 890,
+  "data": {
+    "remaining_cash": 601.0,
+    "warnings": [
+      "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+      "일일 세타 비용 $5.0 — 무방향 보유 시 빠른 손실"
+    ]
+  }
+}

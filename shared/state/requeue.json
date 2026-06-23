@@ -1,7 +1,7 @@
 [
   {
     "ticker": "MU",
-    "registered_at": "2026-06-11T08:32:44.396212",
+    "registered_at": "2026-06-12T17:53:39.146314",
     "failed_filters": [
       "F1_RVOL_LOW"
     ],
@@ -247,7 +247,7 @@
   },
   {
     "ticker": "MRVL",
-    "registered_at": "2026-06-05T13:32:48.457475",
+    "registered_at": "2026-06-23T00:46:15.966103",
     "failed_filters": [
       "F1_RVOL_LOW"
     ],
@@ -1462,6 +1462,44 @@
   {
     "ticker": "CTRA",
     "registered_at": "2026-06-03T17:16:04.148955",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "LRCX",
+    "registered_at": "2026-06-19T00:30:00.484338",
+    "failed_filters": [
+      "F1_RVOL_LOW"
+    ],
+    "failure_reasons": [
+      "필터 탈락: F1_RVOL_LOW"
+    ],
+    "threshold": {
+      "ivr_max": null,
+      "price_drop_pct": null,
+      "rvol_min": 1.5,
+      "custom": ""
+    },
+    "status": "waiting",
+    "last_checked": null,
+    "ready_date": null
+  },
+  {
+    "ticker": "ARM",
+    "registered_at": "2026-06-19T00:30:00.596537",
     "failed_filters": [
       "F1_RVOL_LOW"
     ],

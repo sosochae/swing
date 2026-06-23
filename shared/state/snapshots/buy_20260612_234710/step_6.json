@@ -1,0 +1,17 @@
+{
+  "execution_id": "buy_20260612_234710",
+  "step": 6,
+  "completed_at": "2026-06-12T23:48:59.000263",
+  "duration_ms": 16,
+  "data": {
+    "surviving": [
+      "LRCX"
+    ],
+    "warned": [],
+    "da_deductions": {
+      "LRCX": [
+        "내부자 순매도 $48.7M (최근 거래 집계)"
+      ]
+    }
+  }
+}

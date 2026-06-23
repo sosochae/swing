@@ -1,0 +1,14 @@
+{
+  "execution_id": "buy_20260612_180138",
+  "step": 3,
+  "completed_at": "2026-06-12T18:01:44.898993",
+  "duration_ms": 1436,
+  "data": {
+    "all_tickers": [
+      "LRCX"
+    ],
+    "filter_pass": [],
+    "filter_fail_count": 1,
+    "hard_stopped": []
+  }
+}

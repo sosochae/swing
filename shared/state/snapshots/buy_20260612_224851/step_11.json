@@ -1,0 +1,9 @@
+{
+  "execution_id": "buy_20260612_224851",
+  "step": 11,
+  "completed_at": "2026-06-12T22:49:33.679101",
+  "duration_ms": 14,
+  "data": {
+    "requeue_count": 1
+  }
+}

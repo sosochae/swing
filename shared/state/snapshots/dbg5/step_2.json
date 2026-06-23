@@ -1,0 +1,12 @@
+{
+  "execution_id": "dbg5",
+  "step": 2,
+  "completed_at": "2026-06-18T23:59:18.039795",
+  "duration_ms": 11608,
+  "data": {
+    "regime": "favorable",
+    "regime_flags": {
+      "LRCX_2026-09-17_400.0": "REGIME_UNKNOWN"
+    }
+  }
+}

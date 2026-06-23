@@ -1,0 +1,197 @@
+{
+  "execution_id": "buy_20260617_002951",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "ARM",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 80.4,
+      "conviction": {
+        "technical_signals": 8,
+        "timing_conditions": 4,
+        "total_signals": 12,
+        "rr_ratio": 0.48,
+        "ivr": 40.2,
+        "level": "medium",
+        "trend_confidence": 1.0,
+        "news_confidence": 0.501,
+        "thesis_confidence": 0.159,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.548
+      },
+      "capital_allocation": 6772.5,
+      "contracts": 1,
+      "strike": 450.0,
+      "expiry": "2026-08-21",
+      "rationale": "확신도 0.55 (medium) | 신호수 8/8, 시나리오R/R 0.5, EV $6,156 | [ADX:25 RSI:25 MACD:0 RVOL:18] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $95.0 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "ARM",
+        "direction": "long_call",
+        "strike": 450.0,
+        "expiry": "2026-08-21",
+        "contracts": 1,
+        "total_investment": 6772.5,
+        "commission_total": 0.5,
+        "implied_move_pct": 35.030124185417435,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.55,
+          "stock_move_pct": 52.545186278126145,
+          "target_stock_price": 620.3249999999999,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 171.33715287269789,
+          "gross_profit": 10361.715287269788,
+          "net_profit": 10361.215287269788,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.35,
+          "stock_move_pct": 17.515062092708725,
+          "target_stock_price": 477.875,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 100.1296778726979,
+          "gross_profit": 3240.96778726979,
+          "net_profit": 3240.46778726979,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.1,
+          "stock_move_pct": -52.545186278126145,
+          "target_stock_price": 192.97500000000002,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -6772.0,
+          "net_profit": -6772.5,
+          "rationale": ""
+        },
+        "expected_value": 6155.582133542811,
+        "stop_loss_premium": 33.86,
+        "target_premium_1st": 101.58,
+        "target_premium_2nd": 135.44,
+        "target_premium_3rd": 169.3,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(99%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": []
+    },
+    {
+      "rank": 2,
+      "ticker": "LRCX",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 71.6,
+      "conviction": {
+        "technical_signals": 9,
+        "timing_conditions": 4,
+        "total_signals": 13,
+        "rr_ratio": 0.43,
+        "ivr": 56.6,
+        "level": "medium",
+        "trend_confidence": 1.0,
+        "news_confidence": 0.479,
+        "thesis_confidence": 0.144,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.539
+      },
+      "capital_allocation": 5154.5,
+      "contracts": 1,
+      "strike": 400.0,
+      "expiry": "2026-08-21",
+      "rationale": "확신도 0.54 (medium) | 신호수 9/8, 시나리오R/R 0.4, EV $4,331 | [ADX:25 RSI:10 MACD:25 RVOL:0] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $95.0 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "LRCX",
+        "direction": "long_call",
+        "strike": 400.0,
+        "expiry": "2026-08-21",
+        "contracts": 1,
+        "total_investment": 5154.5,
+        "commission_total": 0.5,
+        "implied_move_pct": 25.637795693221598,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.5750000000000001,
+          "stock_move_pct": 38.45669353983239,
+          "target_stock_price": 522.0925,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 123.24235600608901,
+          "gross_profit": 7170.235600608902,
+          "net_profit": 7169.735600608902,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.32499999999999996,
+          "stock_move_pct": 12.818897846610794,
+          "target_stock_price": 425.41749999999996,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 73.806083506089,
+          "gross_profit": 2226.6083506089,
+          "net_profit": 2226.1083506089,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.1,
+          "stock_move_pct": -38.45669353983239,
+          "target_stock_price": 232.0675,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -5154.0,
+          "net_profit": -5154.5,
+          "rationale": ""
+        },
+        "expected_value": 4330.633184298012,
+        "stop_loss_premium": 25.77,
+        "target_premium_1st": 77.31,
+        "target_premium_2nd": 103.08,
+        "target_premium_3rd": 128.85,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(81%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": []
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "favorable",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 88.2,
+  "summary": {
+    "filtered_tickers": [
+      "LRCX",
+      "ARM"
+    ],
+    "regime": "favorable"
+  }
+}

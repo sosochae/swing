@@ -1,0 +1,22 @@
+{
+  "execution_id": "sell_20260613_023108",
+  "step": 4,
+  "completed_at": "2026-06-13T02:34:28.573971",
+  "duration_ms": 111046,
+  "data": {
+    "MU_2026-08-21_1090.0": {
+      "flags": [
+        "주의_신호"
+      ],
+      "dte_urgency": "안정",
+      "condition_checks": [],
+      "pnl_attribution": {
+        "delta_pnl": 79.7,
+        "theta_pnl": -204.47,
+        "vega_pnl": 0.0,
+        "total_estimated_pnl": -124.77,
+        "actual_pnl": -124.77
+      }
+    }
+  }
+}

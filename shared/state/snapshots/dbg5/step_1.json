@@ -1,0 +1,33 @@
+{
+  "execution_id": "dbg5",
+  "step": 1,
+  "completed_at": "2026-06-18T23:59:06.430400",
+  "duration_ms": 16,
+  "data": {
+    "LRCX_2026-09-17_400.0": {
+      "delta_pnl": -111.97,
+      "theta_pnl": -69.68,
+      "vega_pnl": 1294.65,
+      "vega_exposure_per_pct": 77.63,
+      "iv_used": 0.769,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 398.42,
+      "current_premium": 61.83,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.5831616964114609,
+        "gamma": 0.0025508985185450023,
+        "theta": -0.3483917332489823,
+        "vega": 0.7763370473834555,
+        "iv": 0.769,
+        "ivr": 0.0
+      },
+      "extrinsic": 61.83,
+      "extrinsic_ratio": 1.2195,
+      "delta_category": "atm"
+    }
+  }
+}

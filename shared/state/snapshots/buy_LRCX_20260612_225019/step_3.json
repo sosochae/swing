@@ -1,0 +1,16 @@
+{
+  "execution_id": "buy_LRCX_20260612_225019",
+  "step": 3,
+  "completed_at": "2026-06-12T22:50:33.719298",
+  "duration_ms": 828,
+  "data": {
+    "all_tickers": [
+      "LRCX"
+    ],
+    "filter_pass": [
+      "LRCX"
+    ],
+    "filter_fail_count": 0,
+    "hard_stopped": []
+  }
+}

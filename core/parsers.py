@@ -898,31 +898,36 @@ def _parse_summary_dict_format(raw: dict, file_path: Path) -> SummaryData:
     )
 
 
-def load_latest_summary(summary_dir: Path) -> SummaryData:
+def load_latest_summary(summary_dir: Path, *, kind: str = "buy") -> SummaryData:
     """
-    디렉토리에서 가장 최근 summary_*.json 파일 로드
+    디렉토리에서 가장 최근 summary_{kind}_*.json 파일 로드
 
     Args:
         summary_dir: summary 파일이 있는 디렉토리
-
-    Returns:
-        SummaryData
+        kind: "buy" → summary_buy_*.json, "sell" → summary_sell_*.json
 
     Raises:
-        FileNotFoundError: 디렉토리에 summary 파일이 없을 때
+        FileNotFoundError: 해당 kind의 summary 파일이 없을 때
     """
     summary_dir = Path(summary_dir)
 
-    # 로컬 테스트용: 현재 디렉토리에서도 탐색
-    candidates = list(summary_dir.glob("summary_*.json"))
+    candidates = list(summary_dir.glob(f"summary_{kind}_*.json"))
+
+    # fallback: 구버전 파일명 (prefix 없는 summary_*.json) — buy 한정 이행기 호환
+    if not candidates and kind == "buy":
+        candidates = [
+            p for p in summary_dir.glob("summary_*.json")
+            if not p.name.startswith("summary_buy_")
+            and not p.name.startswith("summary_sell_")
+        ]
 
     if not candidates:
         raise FileNotFoundError(
-            f"No summary_*.json files found in: {summary_dir}"
+            f"No summary_{kind}_*.json files found in: {summary_dir}"
         )
 
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
-    log.info("summary_loaded", file=latest.name)
+    log.info("summary_loaded", file=latest.name, kind=kind)
     return parse_summary(latest)
 
 
@@ -1085,8 +1090,8 @@ def parse_positions(file_path: Path) -> list[Position]:
 
 
 def _parse_position_yaml(block: str) -> Position | None:
-    """YAML 블록에서 Position 생성 — 단일행 및 | 블록 스칼라 멀티라인 지원"""
-    data: dict[str, str] = {}
+    """YAML 블록에서 Position 생성 — 단일행, | 블록 스칼라, 리스트 형식 지원"""
+    data: dict = {}
     lines = block.strip().split("\n")
     i = 0
     while i < len(lines):
@@ -1103,6 +1108,20 @@ def _parse_position_yaml(block: str) -> Position | None:
                     i += 1
                 data[key] = "\n".join(parts).strip()
                 continue
+            elif val == "" or val == "[]":
+                # 리스트 형식: 후속 줄이 "  - " 로 시작하면 리스트 수집
+                items: list[str] = []
+                j = i + 1
+                while j < len(lines) and re.match(r"\s+- ", lines[j]):
+                    item = re.sub(r'^\s+- ', '', lines[j]).strip().strip('"\'')
+                    items.append(item)
+                    j += 1
+                if items:
+                    data[key] = items
+                    i = j
+                    continue
+                else:
+                    data[key] = [] if val == "[]" else ""
             else:
                 data[key] = val
         i += 1
@@ -1110,20 +1129,35 @@ def _parse_position_yaml(block: str) -> Position | None:
     if "ticker" not in data:
         return None
 
+    def _float(key: str, default: float = 0.0) -> float:
+        v = data.get(key, default)
+        try:
+            return float(v) if v not in ("", "?", None) else default
+        except (ValueError, TypeError):
+            return default
+
+    inv_raw = data.get("invalidation_conditions", [])
+    inv_list: list[str] = inv_raw if isinstance(inv_raw, list) else []
+
     return Position(
         ticker=data["ticker"].upper(),
         option_type=data.get("option_type", "롱콜"),  # type: ignore
-        strike=float(data.get("strike", 0)),
+        strike=_float("strike"),
         expiry=date.fromisoformat(data.get("expiry", date.today().isoformat())),
         entry_date=date.fromisoformat(data.get("entry_date", date.today().isoformat())),
-        entry_premium=float(data.get("entry_premium", 0)),
-        entry_stock_price=float(data.get("entry_stock_price", 0)),
+        entry_premium=_float("entry_premium"),
+        entry_stock_price=_float("entry_stock_price"),
         original_contracts=int(data.get("original_contracts", 1)),
         remaining_contracts=int(data.get("remaining_contracts", 1)),
-        trailing_stop=float(data.get("trailing_stop", 0)),
+        trailing_stop=_float("trailing_stop"),
+        entry_regime=data.get("entry_regime", ""),
+        entry_vix=_float("entry_vix"),
+        entry_iv=_float("entry_iv"),
+        peak_premium=_float("peak_premium"),
         entry_rationale=data.get("entry_rationale", ""),
         thesis=data.get("thesis", ""),
-        conviction_score=float(data.get("conviction_score", 0.5)),
+        invalidation_conditions=inv_list,
+        conviction_score=_float("conviction_score", 0.5),
     )
 
 

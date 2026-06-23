@@ -1,0 +1,9 @@
+{
+  "execution_id": "sell_check_20260618_193131",
+  "step": 6,
+  "completed_at": "2026-06-18T19:32:41.262511",
+  "duration_ms": 1358,
+  "data": {
+    "iv_crush_warnings": []
+  }
+}

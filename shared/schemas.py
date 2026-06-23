@@ -73,6 +73,21 @@ class SummaryMacro(BaseModel):
     spy_di_plus_4h: float | None = None    # SPY 4H DI+ (단기 상승 모멘텀)
     spy_di_minus_4h: float | None = None   # SPY 4H DI- (단기 하락 모멘텀)
     spy_macd_hist_4h: float | None = None  # SPY 4H MACD 히스토그램
+    # ── RRE 매크로/섹터 보강 (docs/reversal_risk_engine_design.md §8) ──
+    smh: float | None = None                    # 반도체 ETF 가격
+    smh_ma20: float | None = None               # SMH 20일 SMA
+    smh_rs_20d: float | None = None             # SMH 20일 - SPY 20일 수익률 (%p)
+    smh_return_1m: float | None = None          # SMH 1개월 수익률 (%) — 종목 섹터 상대강도용
+    sector_rotation_10d: float | None = None    # 방어주 − 성장주 10일 수익률 (%p, +면 리스크오프)
+    hyg: float | None = None                    # 하이일드 채권 ETF 가격
+    hyg_ief_chg_20d: float | None = None        # HYG/IEF 비율 20일 변화 (%)
+    vix9d: float | None = None                  # 9일 VIX
+    vix_backwardation: float | None = None      # VIX9D / VIX (>1 = 백워데이션)
+    bpspx: float | None = None                  # ^BPSPX 시장 폭 (Bullish %)
+    yield_10y_chg_20d: float | None = None      # 10년물 금리 20일 변화 (%p)
+    skew: float | None = None                   # ^SKEW (기관 하락 헤지)
+    sector_peer_weak_ratio: float | None = None # 반도체 피어 약세 비율 (0~1)
+    sector_peer_detail: str | None = None       # 약세 피어 상세
 
 
 class TickerTechnical(BaseModel):
@@ -184,6 +199,8 @@ class StockDetail(BaseModel):
     ticker: str
     forward_pe: float | None = None
     peg: float | None = None
+    peg_forward: float | None = None
+    implied_eps_growth_pct: float | None = None  # 역산 내재 EPS CAGR (5년, %)
     target_price: float | None = None      # 애널리스트 목표주가 (컨센서스 평균/중간)
     target_price_high: float | None = None  # 애널리스트 최고 목표주가 (Street-High)
     recom: float | None = None             # 1.0=Strong Buy ~ 5.0=Sell
@@ -426,6 +443,7 @@ class Position(BaseModel):
     trailing_stop: float = 0.0
     entry_regime: str = ""             # 진입 시 레짐 상태 (favorable/borderline/unfavorable)
     entry_vix: float = 0.0             # 진입 시 VIX
+    entry_iv: float = 0.0              # 진입 시 IV (IV crush 추적용)
     peak_premium: float = 0.0          # 프리미엄 고점 (트레일링 스탑 기준)
     entry_rationale: str = ""
     thesis: str = ""
@@ -702,10 +720,15 @@ class SellDecision(BaseModel):
     target_premium: float | None = None
     roll_strike: float | None = None
     roll_expiry: date | None = None
+    roll_type: Literal["레버리지_복원", "손익분기점_조정", "만기_연장"] | None = None
+    roll_new_premium: float | None = None  # 롤 후 예상 프리미엄 (BEP 계산용)
+    roll_new_oi: int | None = None          # 롤 후 선택 옵션 OI (유동성 경고용)
+    roll_new_delta: float | None = None     # 롤 후 예상 delta
     realized_pnl: float = 0.0
     unrealized_pnl: float = 0.0
     rationale: str = ""
     risk_factors: list[str] = Field(default_factory=list)
+    flags: list[str] = Field(default_factory=list)  # Step 7 decision flags
     urgency: Literal["critical", "warning", "normal", "stable"] = "normal"
 
 
@@ -760,6 +783,10 @@ class PipelineContext(BaseModel):
     stock_data: dict[str, "StockDetail"] = Field(default_factory=dict)
     # Step 6 DA 차감 이유 {ticker: ["이유1", "이유2"]}
     da_log: dict[str, list[str]] = Field(default_factory=dict)
+    # Step 6 RRE 결과 {ticker: (적색차원수, [차원이름...])} — Step 10 게이트에서 사용
+    rre_results: dict[str, Any] = Field(default_factory=dict)
+    # Step 6 감성 역발상 플래그 {ticker: bool} — Step 10 calculate_confidence 입력
+    sentiment_reversal_flags: dict[str, bool] = Field(default_factory=dict)
     # Step 3 필터 탈락 수치 근거 {ticker: "RVOL 0.8 < 1.5 기준 | 가격 $3.2 < $5.0 기준"}
     filter_details: dict[str, str] = Field(default_factory=dict)
     regime: MarketRegime | None = None
@@ -771,7 +798,9 @@ class PipelineContext(BaseModel):
     horizon_recommendations: dict[str, dict[str, "OptionValidity"]] = Field(default_factory=dict)
     # 투자 기간 분류 결과 {ticker: ["단기", "중기", "장기", "초장기"]}
     investment_horizons: dict[str, list[str]] = Field(default_factory=dict)
-    # 초장기 기준 제시 {ticker: {"direction": ..., "dte_range": ..., ...}}
+    # 기간별 우선 추천 {ticker: "단기"|"중기"|"장기"}
+    primary_horizons: dict[str, str] = Field(default_factory=dict)
+    # 초장기 기준 제시 {ticker: {"direction": ..., "dte": ..., ...}}
     # 체인 데이터가 없거나 LEAPS 미제공 종목에 대해 계약 대신 기준을 제시
     ultra_long_criteria: dict[str, dict] = Field(default_factory=dict)
     scenarios: dict[str, Scenario] = Field(default_factory=dict)

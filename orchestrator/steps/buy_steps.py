@@ -34,9 +34,11 @@ from core.analysis import (
     analyze_market_regime,
     apply_filters,
     calculate_confidence,
+    calculate_reversal_risk_score,
     calculate_scenario,
     calculate_technical_score,
     check_portfolio_exposure,
+    is_parabolic_top,
     validate_option,
 )
 from core.api_fetcher import fetch_stock_data_bulk
@@ -172,7 +174,7 @@ class BuySteps:
 
         # Summary 로드 (가장 최근 파일)
         try:
-            ctx.summary_data = load_latest_summary(ctx.paths.summary_dir)
+            ctx.summary_data = load_latest_summary(ctx.paths.summary_dir, kind="buy")
             log.info("summary_loaded", tickers=len(ctx.summary_data.tickers))
         except FileNotFoundError:
             # 로컬 테스트 폴백: 프로젝트 내 파일 탐색
@@ -375,6 +377,7 @@ class BuySteps:
             summary=ctx.summary_data,
             earnings_tickers=earnings_tickers,
             target_tickers=ctx.watchlist if ctx.watchlist else None,
+            skip_f1_f3=True,
         )
 
         # 나머지 필터는 참고 정보로 유지하되, F4(상장폐지 위험)만 hard stop 적용
@@ -430,9 +433,9 @@ class BuySteps:
             save_snapshot(ctx.execution_id, 4, {}, duration_ms)
             return
 
-        # ── yfinance 실시간 데이터 수집 (filtered_tickers 대상) ─────────
+        # ── yfinance 실시간 데이터 수집 (watchlist 전체 — F1/F3 실시간 필터용) ──
         try:
-            fresh_fv_map = await fetch_stock_data_bulk(ctx.filtered_tickers)
+            fresh_fv_map = await fetch_stock_data_bulk(ctx.watchlist)
             refreshed, failed = 0, 0
             for ticker, fresh_fv in fresh_fv_map.items():
                 old_fv = ctx.stock_data.get(ticker)
@@ -446,7 +449,7 @@ class BuySteps:
             append_audit(ctx.execution_id, 4, "info",
                          data={"yfinance_refresh": "ok", "refreshed": refreshed})
         except Exception as exc:
-            failed = len(ctx.filtered_tickers)
+            failed = len(ctx.watchlist)
             append_audit(ctx.execution_id, 4, "degraded",
                          data={"yfinance_refresh_failed": str(exc), "tickers": failed})
             # 실패해도 기존 stock_detail 유지 → 파이프라인 계속 진행
@@ -568,6 +571,41 @@ class BuySteps:
             log.info("technical_bridge_done", bridged=_bridge_count,
                      total=len(ctx.filtered_tickers))
 
+        # ── 실시간 F1/F3 필터 (yfinance 갱신 후 적용) ────────────────────
+        _rt_removed: list[str] = []
+        for _rt_tk in list(ctx.filtered_tickers):
+            _rt_fv = ctx.stock_data.get(_rt_tk)
+            if _rt_fv is None:
+                continue
+            _rt_codes: list[str] = []
+            _rt_details: list[str] = []
+            if _rt_fv.rel_volume is not None and _rt_fv.rel_volume < cfg.RVOL_MIN:
+                _rt_codes.append("F1_RVOL_LOW")
+                _rt_details.append(f"RVOL {_rt_fv.rel_volume:.2f} < {cfg.RVOL_MIN} (실시간)")
+            if _rt_fv.price is not None and 0 < _rt_fv.price < cfg.PRICE_TRADE_MIN:
+                _rt_codes.append("F3_LIQUIDITY_LOW")
+                _rt_details.append(f"주가 ${_rt_fv.price:.2f} < ${cfg.PRICE_TRADE_MIN} (실시간)")
+            # F8: 포물선 경고 (주봉 RSI/ADX 극단 과열) — hard stop 아님, 기록만(종목 유지)
+            if is_parabolic_top(getattr(_rt_fv, "weekly_rsi", None),
+                                getattr(_rt_fv, "weekly_adx", None)):
+                _rt_codes.append("F8_PARABOLIC_TOP")
+                _rt_details.append(
+                    f"포물선 경고 (주봉 RSI {_rt_fv.weekly_rsi:.0f} > {st.RRE_F8_WEEKLY_RSI_MIN:.0f}, "
+                    f"ADX {_rt_fv.weekly_adx:.0f} > {st.RRE_F8_WEEKLY_ADX_MIN:.0f})"
+                )
+            if _rt_codes:
+                ctx.filter_failures.setdefault(_rt_tk, []).extend(_rt_codes)
+                _existing = ctx.filter_details.get(_rt_tk, "")
+                ctx.filter_details[_rt_tk] = (
+                    (_existing + " | " if _existing else "") + " | ".join(_rt_details)
+                )
+                # Step 3와 동일: 탈락 코드만 기록, filtered_tickers는 유지 → 전체 분석 진행
+                _rt_removed.append(_rt_tk)
+        if _rt_removed:
+            append_audit(ctx.execution_id, 4, "info",
+                         data={"realtime_f1_f3_removed": _rt_removed})
+            log.info("realtime_filter_applied", removed=_rt_removed)
+
         macro_direction = ctx.regime.allowed_direction
         # "both"(혼조) / "none"(방향 불명확) → long_call 기본값으로 점수 계산
         # "long_put" → 그대로 유지 (확인된 하락 추세 시 analyze_market_regime이 반환)
@@ -590,6 +628,15 @@ class BuySteps:
             if wadx < st.STOCK_DIR_WEEKLY_ADX_MIN:
                 return macro_direction   # 주봉 추세 약함 → 매크로 따름
             if wdip > wdin * st.STOCK_DIR_WEEKLY_DI_RATIO:
+                # ── Category B 오버라이드 예외: 포물선 극단 구간 ──────────
+                # 주봉 RSI > 85 → blow-off top. 주봉 상승 추세여도 long_call
+                # 강제 오버라이드를 취소하고 매크로 방향을 따른다 (고점 매수 방지).
+                wrsi = getattr(fv, "weekly_rsi", None)
+                if wrsi is not None and wrsi > st.RRE_CATEGORY_B_RSI_OVERRIDE:
+                    log.info("stock_dir_override_cancelled_parabolic", ticker=ticker,
+                             weekly_rsi=round(wrsi, 1), weekly_adx=round(wadx, 1),
+                             macro=macro_direction)
+                    return macro_direction
                 # 주봉 강한 상승 추세 → long_call (매크로가 long_put이어도)
                 if macro_direction == "long_put":
                     log.info("stock_dir_override_call", ticker=ticker,
@@ -981,6 +1028,7 @@ class BuySteps:
             # 두 소스가 모두 해당돼도 최대 -10pt (동일 사건 이중 차감 방지)
             ticker_sd = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
             insider_deducted = False
+            insider_net_sell_usd: float | None = None   # RRE 차원3에서 재사용
 
             if ticker_sd and ticker_sd.insider:
                 net_sell = sum(
@@ -992,11 +1040,21 @@ class BuySteps:
                     for tx in ticker_sd.insider
                     if tx.get("type") == "매수"
                 )
-                if net_sell > st.DA_BUY_INSIDER_SELL_AMOUNT:
-                    deduction += abs(st.DA_BUY_INSIDER_SELL_PENALTY)
+                insider_net_sell_usd = net_sell
+                # 3단계 차등 차감: $10M~50M(-10) / $50M~100M(-20) / $100M+(-35)
+                if net_sell > st.RRE_INSIDER_TIER3_MIN:
+                    _ins_pen = abs(st.DA_BUY_INSIDER_TIER3_PENALTY)
+                elif net_sell > st.RRE_INSIDER_TIER2_MIN:
+                    _ins_pen = abs(st.DA_BUY_INSIDER_TIER2_PENALTY)
+                elif net_sell > st.RRE_INSIDER_TIER1_MIN:
+                    _ins_pen = abs(st.DA_BUY_INSIDER_TIER1_PENALTY)
+                else:
+                    _ins_pen = 0.0
+                if _ins_pen > 0:
+                    deduction += _ins_pen
                     insider_deducted = True
                     reasons.append(
-                        f"내부자 순매도 ${net_sell / 1e6:.1f}M (최근 거래 집계)"
+                        f"내부자 순매도 ${net_sell / 1e6:.1f}M (−{_ins_pen:.0f}pt)"
                     )
 
             # ── 최근 EPS 미스 차감 (-5점, summary EARNINGS 섹션) ────────
@@ -1037,6 +1095,174 @@ class BuySteps:
                     reasons.append(
                         f"EPS 서프라이즈 {fvd.eps_surprise_pct:.1f}% (미스)"
                     )
+
+            # ════════════════════════════════════════════════════════════
+            # RRE 보강 DA — 고점/반전 패턴 (docs/reversal_risk_engine_design.md)
+            # 롱콜(is_long) 종목에만 적용 (롱풋은 하락 베팅이므로 반전 위험 무관)
+            # ════════════════════════════════════════════════════════════
+            opt_rre = ctx.summary_data.options.get(ticker) if ctx.summary_data else None
+            _krow_rre = ctx.kavout_data.get(ticker)
+            return_1m = (float(_krow_rre.return_1m)
+                         if (_krow_rre and _krow_rre.return_1m is not None) else None)
+            cur_px   = getattr(fvd, "price", None) if fvd else None
+            change_pct = getattr(fvd, "change_pct", None) if fvd else None
+            wk_rsi   = getattr(fvd, "weekly_rsi", None) if fvd else None
+            macd_d   = getattr(fvd, "macd_hist", None) if fvd else None
+            macd_4h  = getattr(fvd, "macd_hist_4h", None) if fvd else None
+            rsi_1h   = getattr(fvd, "rsi_1h", None) if fvd else None
+            rvol_v   = getattr(fvd, "rel_volume", None) if fvd else None
+            wk_dip   = getattr(fvd, "weekly_di_plus", None) if fvd else None
+            wk_din   = getattr(fvd, "weekly_di_minus", None) if fvd else None
+            wk_adx   = getattr(fvd, "weekly_adx", None) if fvd else None
+            adx_now  = getattr(fvd, "adx", None) if fvd else None
+            adx_prev = getattr(fvd, "adx_prev", None) if fvd else None
+
+            # 다음 촉매(실적)까지 일수 (없으면 None=공백)
+            next_cat_days: int | None = None
+            _future_days = [(ea.date - today).days for ea in ctx.earnings_list
+                            if ea.ticker == ticker and (ea.date - today).days >= 0]
+            if _future_days:
+                next_cat_days = min(_future_days)
+
+            if is_long:
+                # ── F8 포물선 경고 (step_4 기록 플래그 기반) ──────────────
+                if "F8_PARABOLIC_TOP" in ctx.filter_failures.get(ticker, []):
+                    deduction += abs(st.DA_BUY_PARABOLIC_PENALTY)
+                    reasons.append("[🔴포물선경고] 주봉 RSI/ADX 극단 과열 (blow-off top)")
+
+                # ── 분포 패턴 (Wyckoff Distribution) ──────────────────────
+                _dist = 0
+                if return_1m is not None and return_1m > st.RRE_DIST_RETURN_1M_MIN:
+                    _dist += 1
+                if (insider_net_sell_usd is not None
+                        and insider_net_sell_usd > st.RRE_DIST_INSIDER_SELL_MIN):
+                    _dist += 1
+                if rvol_v is not None and rvol_v < st.RRE_DIST_RVOL_MAX:
+                    _dist += 1
+                # 모멘텀 이탈: 일봉/4H MACD<0 OR ADX 꺾임(추세 강도 약화)
+                if ((macd_d is not None and macd_d < 0)
+                        or (macd_4h is not None and macd_4h < 0)
+                        or (adx_now is not None and adx_prev is not None and adx_now < adx_prev)):
+                    _dist += 1
+                if _dist >= 4:
+                    deduction += abs(st.DA_BUY_DISTRIBUTION_CONFIRMED_PENALTY)
+                    reasons.append("[🔴분포패턴-확정] Wyckoff 4/4 조건 충족")
+                elif _dist >= st.RRE_DIST_MIN_CONDITIONS:
+                    deduction += abs(st.DA_BUY_DISTRIBUTION_PENALTY)
+                    reasons.append(f"[🔴분포패턴] Wyckoff {_dist}/4 조건 충족")
+
+                # ── UTAD (분포 후 가짜 돌파 — 단일세션 급등 함정) ─────────
+                if (change_pct is not None and change_pct > st.RRE_UTAD_SINGLE_DAY_RETURN_MIN
+                        and return_1m is not None and return_1m > st.RRE_DIST_RETURN_1M_MIN):
+                    deduction += abs(st.DA_BUY_UTAD_PENALTY)
+                    reasons.append(
+                        f"[⚠️UTAD주의] 단일세션 +{change_pct:.1f}% 급등 (이미 1M +{return_1m:.0f}% 연장)"
+                    )
+
+                # ── 멀티 TF 역배열 (주봉↑ / 단기 MACD↓ / 1H RSI 약세) ─────
+                _wk_bull = (wk_dip is not None and wk_din is not None and wk_adx is not None
+                            and wk_dip > wk_din and wk_adx > st.STOCK_DIR_WEEKLY_ADX_MIN)
+                _short_down = ((macd_4h is not None and macd_4h < 0)
+                               or (macd_d is not None and macd_d < 0))
+                _h1_weak = rsi_1h is not None and rsi_1h < st.RRE_D7_1H_RSI_MAX
+                if _wk_bull and _short_down and _h1_weak:
+                    deduction += abs(st.DA_BUY_TF_DIVERGENCE_PENALTY)
+                    reasons.append(f"[⚠️TF역배열] 주봉↑ / 단기 MACD↓ / 1H RSI {rsi_1h:.0f}")
+
+                # ── 옵션 구조: Max Pain 괴리 ──────────────────────────────
+                if (opt_rre and cur_px and opt_rre.max_pain_near
+                        and opt_rre.max_pain_near > 0):
+                    _gap = (cur_px - opt_rre.max_pain_near) / opt_rre.max_pain_near
+                    if _gap > st.RRE_MAX_PAIN_GAP_CRITICAL:
+                        deduction += abs(st.DA_BUY_MAX_PAIN_CRITICAL_PENALTY)
+                        reasons.append(f"[🔴MaxPain극단괴리] 현재가 Max Pain 대비 +{_gap*100:.1f}%")
+                    elif _gap > st.RRE_MAX_PAIN_GAP_WARNING:
+                        deduction += abs(st.DA_BUY_MAX_PAIN_WARNING_PENALTY)
+                        reasons.append(f"[⚠️MaxPain괴리] 현재가 Max Pain 대비 +{_gap*100:.1f}%")
+
+                # ── 옵션 구조: P/C 역발상 (콜 군집) ───────────────────────
+                if (opt_rre and opt_rre.pc_ratio is not None
+                        and 0 < opt_rre.pc_ratio < st.RRE_PC_RATIO_CROWD_WARNING):
+                    if opt_rre.pc_ratio < st.RRE_PC_RATIO_CROWD_EXTREME:
+                        deduction += abs(st.DA_BUY_PC_CROWD_EXTREME_PENALTY)
+                        reasons.append(f"[🔴군집리스크-극단] P/C {opt_rre.pc_ratio:.3f} (콜 극단 집중)")
+                    else:
+                        deduction += abs(st.DA_BUY_PC_CROWD_WARNING_PENALTY)
+                        reasons.append(f"[⚠️군집리스크] P/C {opt_rre.pc_ratio:.3f} (콜 우세 → 역발상)")
+
+                # ── 촉매 소진 (다음 촉매 공백 + 최근 급등 소화) ────────────
+                if ((next_cat_days is None or next_cat_days > st.RRE_CATALYST_GAP_DAYS)
+                        and return_1m is not None and return_1m > st.RRE_CATALYST_RETURN_MIN):
+                    _cat_str = f"{next_cat_days}일" if next_cat_days is not None else "공백"
+                    deduction += abs(st.DA_BUY_CATALYST_EXHAUSTION_PENALTY)
+                    reasons.append(
+                        f"[⚠️촉매소진] 다음 촉매 {_cat_str} + 최근 1M +{return_1m:.0f}%"
+                    )
+
+                # ── GAAP/DCF 펀더멘털 괴리 ────────────────────────────────
+                if fvd:
+                    _gaap = getattr(fvd, "net_income_growth_yoy", None)
+                    _dcf  = getattr(fvd, "implied_eps_growth_pct", None)
+                    if _gaap is not None and _gaap < st.RRE_GAAP_DECLINE_THRESHOLD:
+                        deduction += abs(st.DA_BUY_EARNINGS_QUALITY_PENALTY)
+                        reasons.append(f"[⚠️이익의質] GAAP 순이익 성장 {_gaap:.0f}% (Non-GAAP 과장 의심)")
+                    if _dcf is not None and _dcf > st.RRE_DCF_CAGR_BUBBLE:
+                        deduction += abs(st.DA_BUY_DCF_BUBBLE_PENALTY)
+                        reasons.append(f"[⚠️밸류거품] 역산 EPS CAGR {_dcf:.0f}% 필요")
+
+                # ── 종목별 섹터 상대강도 이탈 (2.9) ───────────────────────
+                # 종목 1M − 섹터(SMH) 1M 초과수익 > +30%p → 혼자 튄 종목
+                _smh_1m = (getattr(ctx.summary_data.macro, "smh_return_1m", None)
+                           if ctx.summary_data else None)
+                if return_1m is not None and _smh_1m is not None:
+                    _excess = return_1m - _smh_1m
+                    if _excess > st.RRE_STOCK_SECTOR_EXCESS_CRITICAL:
+                        deduction += abs(st.DA_BUY_SECTOR_DEVIATION_EXTREME_PENALTY)
+                        reasons.append(
+                            f"[🔴섹터극단이탈] SMH 대비 초과수익 +{_excess:.0f}%p (혼자 급등)"
+                        )
+                    elif _excess > st.RRE_STOCK_SECTOR_EXCESS_WARNING:
+                        deduction += abs(st.DA_BUY_SECTOR_DEVIATION_PENALTY)
+                        reasons.append(f"[⚠️섹터이탈] SMH 대비 초과수익 +{_excess:.0f}%p")
+
+            # ── 감성 역발상 플래그 (극단 구간 긍정 감성 = 반전) ──────────
+            # Step 10 calculate_confidence의 sentiment_reversal 입력으로 전달.
+            _sent_reversal = False
+            if is_long and ((wk_rsi is not None and wk_rsi > st.RRE_SENTIMENT_RSI_THRESHOLD)
+                            or (return_1m is not None and return_1m > st.RRE_SENTIMENT_RETURN_THRESHOLD)):
+                _ov = sentiment.get("overall_sentiment", "MIXED")
+                _cf = sentiment.get("confidence", "Low")
+                if _ov in {"BULLISH", "VERY_BULLISH"} and _cf == "High":
+                    _sent_reversal = True
+                    deduction += abs(st.DA_BUY_SENTIMENT_REVERSAL_PENALTY)
+                    reasons.append(f"[⚠️감성역발상] 극단 긍정 감성({_ov}/High) + 과열 → 반전 신호")
+            ctx.sentiment_reversal_flags[ticker] = _sent_reversal
+
+            # ════════════════════════════════════════════════════════════
+            # RRE 종합 — 7차원 독립 평가 (강제탈락은 Step 10 게이트에서 처리)
+            # ════════════════════════════════════════════════════════════
+            if is_long:
+                rre_red, rre_dims = calculate_reversal_risk_score(
+                    fv=fvd,
+                    opt=opt_rre,
+                    insider_net_sell_usd=insider_net_sell_usd,
+                    return_1m_pct=return_1m,
+                    next_catalyst_days=next_cat_days,
+                )
+                ctx.rre_results[ticker] = (rre_red, rre_dims)
+                if rre_red >= st.RRE_FORCE_REJECT_THRESHOLD:
+                    if "RRE_HIGH_REVERSAL_RISK" not in ctx.filter_failures.get(ticker, []):
+                        ctx.filter_failures.setdefault(ticker, []).append("RRE_HIGH_REVERSAL_RISK")
+                    deduction += abs(st.DA_BUY_RRE_HEAVY_PENALTY)
+                    reasons.append(
+                        f"[🔴고점형성위험-극단] RRE {rre_red}/7 적색({', '.join(rre_dims)}) → 강제탈락"
+                    )
+                elif rre_red >= st.RRE_HEAVY_PENALTY_THRESHOLD:
+                    deduction += abs(st.DA_BUY_RRE_HEAVY_PENALTY)
+                    reasons.append(f"[🔴고점형성위험] RRE {rre_red}/7 적색({', '.join(rre_dims)})")
+                elif rre_red >= st.RRE_LIGHT_PENALTY_THRESHOLD:
+                    deduction += abs(st.DA_BUY_RRE_LIGHT_PENALTY)
+                    reasons.append(f"[⚠️리버설주의] RRE {rre_red}/7 적색({', '.join(rre_dims)})")
 
             # ── 점수 조정 적용 ──────────────────────────────
             if deduction > 0:
@@ -1381,7 +1607,34 @@ class BuySteps:
                                     break
                             except Exception:
                                 pass
-                ctx.investment_horizons[_hz_tk] = _clz_hz(
+                # 미래 어닝까지 남은 일수
+                _days_until_earn: int | None = None
+                if ctx.summary_data and ctx.summary_data.events:
+                    for _ev in ctx.summary_data.events:
+                        if getattr(_ev, "ticker", None) == _hz_tk or getattr(_ev, "type", "") == "실적":
+                            try:
+                                _ev_dt = date.fromisoformat(str(getattr(_ev, "date", ""))[:10])
+                                _future = (_ev_dt - _hz_today).days
+                                if 1 <= _future <= 90:
+                                    _days_until_earn = _future
+                                    break
+                            except Exception:
+                                pass
+                # IVR: Phase 1 체인 ATM 평균 IVR (option_validity는 이 시점 아직 미생성)
+                _hz_ivr: float | None = None
+                _hz_opt_d = (ctx.summary_data.options if ctx.summary_data else {}).get(_hz_tk)
+                if _hz_opt_d and _hz_opt_d.chain:
+                    _hz_spot_tk = (ctx.summary_data.tickers.get(_hz_tk) if ctx.summary_data else None)
+                    _hz_spot_v = _hz_spot_tk.technical.price if _hz_spot_tk else 0.0
+                    _hz_atm_ivrs = [
+                        float(e.get("ivr", 0))
+                        for e in _hz_opt_d.chain
+                        if float(e.get("ivr", 0)) > 0
+                        and (_hz_spot_v <= 0 or abs(float(e.get("strike", _hz_spot_v)) / _hz_spot_v - 1.0) <= 0.05)
+                    ]
+                    if _hz_atm_ivrs:
+                        _hz_ivr = round(sum(_hz_atm_ivrs) / len(_hz_atm_ivrs), 1)
+                _hz_horizons, _hz_primary = _clz_hz(
                     _hz_tk,
                     rsi14=_hz_rsi,
                     adx14=_hz_adx,
@@ -1391,8 +1644,12 @@ class BuySteps:
                     peg_ratio=_hz_fv.peg if _hz_fv else None,
                     revenue_growth_yoy=_hz_fv.revenue_growth_yoy if _hz_fv else None,
                     days_since_earnings=_hz_earn_days,
+                    days_until_earnings=_days_until_earn,
                     forward_pe=_hz_fv.forward_pe if _hz_fv else None,
+                    ivr=_hz_ivr,
                 )
+                ctx.investment_horizons[_hz_tk] = _hz_horizons
+                ctx.primary_horizons[_hz_tk] = _hz_primary
             log.info("horizon_classified",
                      count=len(ctx.investment_horizons),
                      sample={tk: v for tk, v in list(ctx.investment_horizons.items())[:3]})
@@ -1672,8 +1929,8 @@ class BuySteps:
                 # 2순위: delta 범위 + OI≥OI_MIN
                 # 3순위: delta 범위만
                 # 4순위: delta 무관 (폴백)
-                def _score(e: dict, d_tgt: float) -> float:
-                    """낮을수록 좋음: delta 이격(주) + spread 패널티 - OI/volume 로그 보너스"""
+                def _score(e: dict, d_tgt: float, spot: float = 0.0) -> float:
+                    """낮을수록 좋음: delta 이격 + spread 패널티 - OI/volume 로그 보너스 - 레버리지 보너스"""
                     import math as _m
                     _d   = abs(float(e.get("delta", 0) or 0))
                     _oi  = int(e.get("oi", 0) or 0)
@@ -1683,10 +1940,13 @@ class BuySteps:
                     _mid_v = float(e.get("mid", 0) or e.get("mid_price", 0) or 0)
                     _mid = (_bid + _ask) / 2 if _bid > 0 and _ask > 0 else _mid_v
                     _spread = (_ask - _bid) / _mid if _mid > 0 and _bid > 0 and _ask > 0 else 0.0
+                    _lev = (_d * spot) / _mid if _mid > 0 and spot > 0 else 1.0
+                    _lev_bonus = min(_lev, 15.0) / 15.0 * 0.12
                     return (abs(_d - d_tgt)
                             - _m.log1p(_oi)  * 0.015
                             - _m.log1p(_vol) * 0.008
-                            + _spread * 0.25)
+                            + _spread * 0.25
+                            - _lev_bonus)
 
                 _pool = [e for e in chain if e.get("option_type", "").lower() == _hv_opt]
                 _cands = [e for e in _pool if _d_min <= abs(float(e.get("delta", 0) or 0)) <= _d_max
@@ -1701,7 +1961,7 @@ class BuySteps:
                     _cands = _pool
                 if not _cands:
                     continue
-                _best = min(_cands, key=lambda e: _score(e, _d_tgt))
+                _best = min(_cands, key=lambda e: _score(e, _d_tgt, _hv_spot))
                 try:
                     from core.analysis import validate_option as _vopt2, calculate_greeks as _cg2
                     from datetime import datetime as _dt3
@@ -1787,23 +2047,20 @@ class BuySteps:
             _ult_iv = 0.40
             if _ult_fv and _ult_fv.rsi14:
                 _ult_iv = min(0.80, _ult_fv.rsi14 / 100.0 * 0.6 + 0.25)
-            # strike 범위 = ATM ± (IV × √(DTE_min / 365))
-            _ult_move = _ult_iv * (st.DTE_ULTRA_MIN / 365.0) ** 0.5
-            _s_low  = round(_ult_spot * (1 - _ult_move), 0) if _ult_spot > 0 else 0.0
-            _s_high = round(_ult_spot * (1 + _ult_move), 0) if _ult_spot > 0 else 0.0
-            _s_range = f"${_s_low:,.0f} ~ ${_s_high:,.0f}" if _ult_spot > 0 else "N/A"
+            # strike 단일값 = ATM (현재가 기준)
+            _s_single = f"${_ult_spot:,.0f}" if _ult_spot > 0 else "N/A"
             ctx.ultra_long_criteria[_ult_tk] = {
-                "direction":       _ultra_dir,
-                "dte_range":       f"{st.DTE_ULTRA_MIN}~{st.DTE_ULTRA_MAX}일",
-                "delta_range":     f"{st.DELTA_ULTRA_MIN:.2f}~{st.DELTA_ULTRA_MAX:.2f}",
-                "delta_target":    st.DELTA_ULTRA_TARGET,
-                "strike_range":    _s_range,
+                "direction":    _ultra_dir,
+                "dte":          f"{st.DTE_ULTRA_MIN}일",
+                "delta":        f"{st.DELTA_ULTRA_TARGET:.2f}",
+                "delta_target": st.DELTA_ULTRA_TARGET,
+                "strike":       _s_single,
                 "min_oi":          st.ULTRA_MIN_OI,
                 "max_spread_pct":  st.ULTRA_MAX_SPREAD_PCT,
                 "note":            "체인 미제공 — 브로커에서 직접 확인 필요",
             }
             log.info("ultra_long_criteria_generated", ticker=_ult_tk,
-                     direction=_ultra_dir, strike_range=_s_range)
+                     direction=_ultra_dir, strike=_s_single)
 
         if ctx.horizon_recommendations:
             log.info("horizon_recommendations_done",
@@ -1993,6 +2250,7 @@ class BuySteps:
                 timing_conditions_met=min(4, tech.signal_count // 2),
                 regime_confidence=regime_confidence,
                 sentiment=ctx.sentiment_results.get(ticker),
+                sentiment_reversal=ctx.sentiment_reversal_flags.get(ticker, False),
             )
 
             bear_loss = abs(scenario.bearish.net_profit)
@@ -2057,6 +2315,17 @@ class BuySteps:
                 if scenario.contracts == 0:
                     action = "탈락"
 
+                # ── RRE 고점 회피 게이트 ──────────────────────────────
+                # 설계 §3.1: 최종 Action = min(매수신호, RRE판정)
+                # 5+ 적색 → 강제 탈락 / 3~4 적색 → 진입 금지(관찰 강등)
+                _rre = ctx.rre_results.get(ticker)
+                if _rre:
+                    _rre_red = _rre[0]
+                    if _rre_red >= st.RRE_FORCE_REJECT_THRESHOLD:
+                        action = "탈락"
+                    elif _rre_red >= st.RRE_HEAVY_PENALTY_THRESHOLD and action == "진입":
+                        action = "관찰"
+
                 # 티커별 관련 포트폴리오 경고만 포함
                 # (섹터 이름이 포함된 경고 → 해당 섹터 종목에만 표시)
                 sector = c["sector"]
@@ -2105,7 +2374,7 @@ class BuySteps:
                     expiry=validity.expiry,
                     rationale=(
                         f"확신도 {conv:.2f} ({confidence.level}) | "
-                        f"신호수 {c['signal_total']}/7, 시나리오R/R {c['rr_ratio']:.1f}, "
+                        f"신호수 {c['signal_total']}/8, 시나리오R/R {c['rr_ratio']:.1f}, "
                         f"EV ${scenario.expected_value:,.0f} | "
                         f"[{tech_detail}]"
                         + kavout_tag
@@ -2497,6 +2766,7 @@ class BuySteps:
                 portfolio_exposure=ctx.portfolio_exposure,
                 filter_details=dict(ctx.filter_details) if ctx.filter_details else None,
                 investment_horizons=dict(ctx.investment_horizons) if ctx.investment_horizons else None,
+                primary_horizons=dict(ctx.primary_horizons) if ctx.primary_horizons else None,
                 horizon_recommendations=dict(ctx.horizon_recommendations) if ctx.horizon_recommendations else None,
                 ultra_long_criteria=dict(ctx.ultra_long_criteria) if ctx.ultra_long_criteria else None,
                 options_analytics=_opt_analytics or None,
@@ -2517,6 +2787,12 @@ class BuySteps:
 
         # note_path를 컨텍스트에 저장 (Step 13에서 사용)
         ctx.obsidian_note_path = note_path
+
+        # ── 데이터 완전성 스냅샷 ────────────────────────────────────────────
+        try:
+            _save_completeness(ctx.execution_id, stock_detail_map, note_path)
+        except Exception as exc:
+            log.warning("completeness_save_failed", error=str(exc))
 
         # ── watchlist.md 자동 갱신 (파이프라인 전체 종목) ──────────────────
         if ctx.final_rankings:
@@ -2685,6 +2961,22 @@ async def _append_watchlist_md(
             if _macro:
                 _entry_vix_val = getattr(_macro, 'vix', 0.0)
 
+        # entry_iv: 진입 시 IV (매도 파이프라인 IV crush 감지용)
+        _entry_iv_val = validity.greeks.iv if validity else 0.0
+
+        # invalidation_conditions: Put Wall 기반 자동 생성, 없으면 빈 리스트
+        _inv_conditions: list[str] = []
+        if ctx.summary_data and ticker in ctx.summary_data.options:
+            _opt_data = ctx.summary_data.options[ticker]
+            _pw = getattr(_opt_data, "put_wall", 0.0) or 0.0
+            if _pw > 0:
+                _inv_conditions.append(f"주가 ${_pw:.0f} (Put Wall) 하회")
+        _inv_yaml = (
+            "[]"
+            if not _inv_conditions
+            else "\n" + "\n".join(f'  - "{c}"' for c in _inv_conditions)
+        )
+
         block = f"""
 ---
 ```yaml
@@ -2701,6 +2993,8 @@ remaining_contracts: {contracts}
 trailing_stop: 0.0
 entry_regime: {_entry_regime_val}
 entry_vix: {_entry_vix_val:.1f}
+entry_iv: {_entry_iv_val:.2f}
+invalidation_conditions: {_inv_yaml}
 entry_rationale: {entry_rationale_yaml}
 thesis: {thesis_yaml}
 conviction_score: {ranking.conviction.total_conviction:.2f}
@@ -2719,3 +3013,131 @@ conviction_score: {ranking.conviction.total_conviction:.2f}
 
 
 # _collect_rss_feeds는 core/llm.py로 이동됨 — import로 사용
+
+
+# ─────────────────────────────────────────────────────────────
+# 데이터 완전성 스냅샷
+# ─────────────────────────────────────────────────────────────
+
+def _save_completeness(
+    execution_id: str,
+    stock_detail_map: dict | None,
+    note_path: str,
+) -> None:
+    """
+    파이프라인 실행의 데이터 완전성을 completeness.json으로 저장.
+
+    - data_sources: yfinance 등 외부 데이터 소스 성공/실패 여부
+    - fields: 종목별 핵심 필드 실제값 (None이면 누락)
+    - sections: 보고서 섹션 작성 여부 및 누락 이유
+    - overall: ok | degraded
+    """
+    import json as _json
+    from datetime import date
+    from pathlib import Path as _Path
+
+    # ── 1. 데이터 소스 상태 (audit log에서 이번 실행 degraded 이벤트 수집) ──
+    audit_file = _Path(cfg.LOGS_DIR) / f"audit_{date.today()}.json"
+    data_sources: dict[str, str] = {}
+    try:
+        with open(audit_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                entry = _json.loads(line)
+                if entry.get("execution_id") != execution_id:
+                    continue
+                d = entry.get("data", {})
+                if "yfinance_refresh_failed" in d:
+                    data_sources["yfinance"] = f"failed: {str(d['yfinance_refresh_failed'])[:120]}"
+                elif entry.get("step") == 4 and entry.get("status") == "completed":
+                    data_sources.setdefault("yfinance", "ok")
+    except Exception:
+        data_sources.setdefault("yfinance", "unknown")
+
+    # ── 2. 필드별 실제값 ──────────────────────────────────────────────────
+    _KEY_FIELDS = [
+        ("adx",                   "ADX"),
+        ("di_plus",               "DI+"),
+        ("di_minus",              "DI-"),
+        ("weekly_adx",            "주봉ADX"),
+        ("weekly_di_plus",        "주봉DI+"),
+        ("weekly_di_minus",       "주봉DI-"),
+        ("weekly_rsi",            "주봉RSI"),
+        ("adx_4h",                "4H_ADX"),
+        ("di_plus_4h",            "4H_DI+"),
+        ("di_minus_4h",           "4H_DI-"),
+        ("trailing_pe",           "P/E"),
+        ("eps_ttm",               "EPS"),
+        ("roe_pct",               "ROE"),
+        ("fcf_ttm",               "FCF"),
+        ("revenue_growth_yoy",    "매출성장YoY"),
+        ("peg",                   "PEG"),
+        ("net_income_growth_yoy", "순이익성장YoY"),
+        ("analyst_buy",           "애널리스트매수"),
+        ("analyst_hold",          "애널리스트보유"),
+        ("analyst_sell",          "애널리스트매도"),
+    ]
+    fields_status: dict[str, dict] = {}
+    for ticker, fv in (stock_detail_map or {}).items():
+        row: dict = {}
+        for attr, label in _KEY_FIELDS:
+            val = getattr(fv, attr, None) if fv else None
+            row[label] = round(val, 4) if isinstance(val, float) else val
+        fields_status[ticker] = row
+
+    # ── 3. 섹션 작성 여부 (obsidian.py 조건과 동일하게 판별) ─────────────
+    _FUND_FIELDS = ["trailing_pe", "eps_ttm", "roe_pct", "fcf_ttm",
+                    "revenue_growth_yoy", "peg", "net_income_growth_yoy"]
+    sections_status: dict[str, dict] = {}
+    for ticker, fv in (stock_detail_map or {}).items():
+        secs: dict[str, str] = {}
+
+        # 장기 투자 관점 (주봉 ADX/DI+/DI-)
+        w_adx = getattr(fv, "weekly_adx",     None) if fv else None
+        w_dip = getattr(fv, "weekly_di_plus",  None) if fv else None
+        w_din = getattr(fv, "weekly_di_minus", None) if fv else None
+        if w_adx is not None and w_dip is not None and w_din is not None:
+            secs["장기_투자_관점"] = "ok"
+        else:
+            missing = [n for n, v in [
+                ("weekly_adx", w_adx), ("weekly_di_plus", w_dip), ("weekly_di_minus", w_din)
+            ] if v is None]
+            secs["장기_투자_관점"] = f"skipped: {', '.join(missing)}=None"
+
+        # 펀더멘털 분석 (PE/EPS/ROE/FCF/매출성장 중 하나 이상)
+        has_fund = fv and any(getattr(fv, f, None) is not None for f in _FUND_FIELDS)
+        secs["펀더멘털_분석"] = "ok" if has_fund else "skipped: 펀더멘털 데이터 없음"
+
+        # 애널리스트 컨센서스
+        ab  = (getattr(fv, "analyst_buy",  None) or 0) if fv else 0
+        ah  = (getattr(fv, "analyst_hold", None) or 0) if fv else 0
+        as_ = (getattr(fv, "analyst_sell", None) or 0) if fv else 0
+        secs["애널리스트_컨센서스"] = "ok" if (ab + ah + as_) > 0 else f"skipped: 총 {ab + ah + as_}명"
+
+        sections_status[ticker] = secs
+
+    # ── 4. 전체 판정 ──────────────────────────────────────────────────────
+    any_src_failed  = any("failed" in v for v in data_sources.values())
+    any_sec_skipped = any(
+        "skipped" in s
+        for secs in sections_status.values()
+        for s in secs.values()
+    )
+    overall = "degraded" if any_src_failed or any_sec_skipped else "ok"
+
+    # ── 5. 저장 ───────────────────────────────────────────────────────────
+    snap_dir = _Path(cfg.SNAPSHOTS_DIR) / execution_id
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    out = {
+        "execution_id": execution_id,
+        "note_path":    note_path,
+        "overall":      overall,
+        "data_sources": data_sources,
+        "fields":       fields_status,
+        "sections":     sections_status,
+    }
+    (snap_dir / "completeness.json").write_text(
+        _json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

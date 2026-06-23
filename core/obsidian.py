@@ -233,6 +233,7 @@ class ObsidianClient:
         portfolio_exposure: "PortfolioExposure | None" = None,
         filter_details: "dict[str, str] | None" = None,
         investment_horizons: "dict[str, list[str]] | None" = None,
+        primary_horizons: "dict[str, str] | None" = None,
         horizon_recommendations: "dict[str, dict[str, OptionValidity]] | None" = None,
         ultra_long_criteria: "dict[str, dict] | None" = None,
         options_analytics: "dict[str, dict] | None" = None,
@@ -332,6 +333,7 @@ class ObsidianClient:
                     r, ts, ov, sc, macro_score, macro_label, sent, fv=fv,
                     k_score=k_score, regime=regime,
                     investment_horizons=(investment_horizons or {}).get(r.ticker),
+                    primary_horizon=(primary_horizons or {}).get(r.ticker),
                     horizon_recs=(horizon_recommendations or {}).get(r.ticker),
                     ultra_long_criteria=(ultra_long_criteria or {}).get(r.ticker),
                     opt_analytics=(options_analytics or {}).get(r.ticker),
@@ -359,8 +361,8 @@ class ObsidianClient:
         if rankings_aggressive:
             lines += ["## 📈 수익성 최우선 순위 (EV 기준 재정렬)", ""]
             lines += [
-                "| 순위 | 티커 | 행동 | 방향 | EV ($) | R/R | 확신도 | Strike | 만기 |",
-                "|------|------|------|------|--------|-----|--------|--------|------|",
+                "| 순위 | 티커 | 행동 | 방향 | EV ($) | 시나리오R/R | 확신도 | Strike | 만기 |",
+                "|------|------|------|------|--------|------------|--------|--------|------|",
             ]
             for r in rankings_aggressive:
                 _sc = (scenarios or {}).get(r.ticker) or r.scenario
@@ -453,7 +455,8 @@ class ObsidianClient:
         total_realized = sum(d.realized_pnl for d in decisions)
         urgency_counts = {"critical": 0, "warning": 0, "normal": 0, "stable": 0}
         for d in decisions:
-            urgency_counts[d.urgency] = urgency_counts.get(d.urgency, 0) + 1
+            _eff_urgency = "critical" if d.action == "FULL_EXIT" else d.urgency
+            urgency_counts[_eff_urgency] = urgency_counts.get(_eff_urgency, 0) + 1
 
         lines += [
             "## 포트폴리오 요약",
@@ -492,7 +495,7 @@ class ObsidianClient:
                     devils=(sell_devils       or {}).get(_pk),
                     regime_flag=(sell_regime_flags or {}).get(_pk, ""),
                     fvd=(stock_data or {}).get(d.ticker),
-                    k_score_entry=(lambda _kr: float(_kr.k_score or 5.0) if hasattr(_kr, "k_score") else float((_kr or {}).get("k_score", 5.0)))((kavout_data or {}).get(d.ticker)) if kavout_data else None,
+                    kavout_entry=(kavout_data or {}).get(d.ticker) if kavout_data else None,
                     regime_infer=(regime_infer or {}).get(_pk),
                     opt_analytics=(options_analytics or {}).get(d.ticker),
                 )
@@ -1054,6 +1057,18 @@ def _format_type3_section(
         if nar_quality in ("Good", "Fair", "Poor"):
             entry_quality = nar_quality
 
+    # 과열 페널티 — RSI 과매수 + SMA20 이격 과도 시 entry_quality 강등
+    # LLM 캐시가 "Good"을 반환해도 현재 기술적 과열 상태는 물리적으로 적용
+    _rsi_actual   = fv.rsi14    if fv and fv.rsi14    else None
+    _sma20_pct_v  = fv.sma20_pct if fv and fv.sma20_pct else None  # % (e.g. +15.4)
+    _rsi_hot  = _rsi_actual  is not None and _rsi_actual  >= 70
+    _ma_hot   = _sma20_pct_v is not None and _sma20_pct_v >= 12.0
+    if entry_quality == "Good":
+        if _rsi_hot and _ma_hot:
+            entry_quality = "Poor"   # RSI 과매수 + MA 12%+ 이격 동시 → 추격 위험
+        elif _rsi_hot or _ma_hot:
+            entry_quality = "Fair"   # 하나만 해당 → 주의 구간
+
     # DI 방향을 최종 override로 재적용 — LLM 캐시가 구버전 결과를 반환해도 보정
     # (캐시된 내러티브가 regime_status 없이 생성된 경우 DI bearish임에도 BULLISH 반환 가능)
     if di_bearish and outlook == "BULLISH":
@@ -1191,9 +1206,9 @@ def _format_type3_section(
 
     # 중기 신호 (일봉 MA + DI 기반)
     _ma_align_v = ts.ma_alignment if ts else "mixed"
-    _adx_v      = getattr(fv, "adx",    0.0) if fv else 0.0
-    _dip_v      = getattr(fv, "di_plus", 0.0) if fv else 0.0
-    _din_v      = getattr(fv, "di_minus",0.0) if fv else 0.0
+    _adx_v      = (getattr(fv, "adx",     None) or 0.0) if fv else 0.0
+    _dip_v      = (getattr(fv, "di_plus",  None) or 0.0) if fv else 0.0
+    _din_v      = (getattr(fv, "di_minus", None) or 0.0) if fv else 0.0
     _mid_score  = 0
     _mid_signals: list[str] = []
     if _ma_align_v == "bullish":
@@ -1961,6 +1976,7 @@ def _format_integrated_buy_block(
     k_score: float = 5.0,
     regime: "MarketRegime | None" = None,
     investment_horizons: "list[str] | None" = None,
+    primary_horizon: "str | None" = None,
     horizon_recs: "dict[str, OptionValidity] | None" = None,
     ultra_long_criteria: "dict | None" = None,
     opt_analytics: "dict | None" = None,
@@ -2329,33 +2345,62 @@ def _format_integrated_buy_block(
 
     # TYPE 2: 투자 기간 & 기간별 옵션 추천 ──────────────────────────────────
     lines += ["## ━━━ TYPE 2 · 투자 기간 & 옵션 추천 ━━━", ""]
-    _hz_labels = {
-        "단기":  f"단기 (DTE {st.DTE_SHORT_MIN}-{st.DTE_SHORT_MAX})",
-        "중기":  f"중기 (DTE {st.DTE_MID_MIN}-{st.DTE_MID_MAX})",
-        "장기":  f"장기 (DTE {st.DTE_LONG_MIN}-{st.DTE_LONG_MAX})",
-        "초장기": f"초장기 LEAPS (DTE {st.DTE_ULTRA_MIN}-{st.DTE_ULTRA_MAX})",
-    }
     _hz_all = ["단기", "중기", "장기"]
     _active = set(investment_horizons or [])
+    _spot_px = fv.price if fv and fv.price else 100
+
+    # ── 세 기간 비교 테이블 ──────────────────────────────────────
+    import datetime as _hzdt
+    # 장기 IVR 추정: 중기/단기 옵션 validity에서 IVR 참고 (장기 제외 이유 판별용)
+    _long_ivr_est: float | None = None
+    for _oth_hz in ["중기", "단기"]:
+        _oth_r = (horizon_recs or {}).get(_oth_hz)
+        if _oth_r and getattr(_oth_r.greeks, "ivr", 0) and _oth_r.greeks.ivr > 0:
+            _long_ivr_est = _oth_r.greeks.ivr
+            break
+
+    _tbl_rows: list[str] = []
+    for _hz_t in _hz_all:
+        _rec_t = (horizon_recs or {}).get(_hz_t)
+        _star = "⭐ " if _hz_t == primary_horizon else ""
+        if _rec_t:
+            _t_dte = ((_rec_t.expiry - _hzdt.date.today()).days) if _rec_t.expiry else "?"
+            _t_exp = str(_rec_t.expiry) if _rec_t.expiry else "—"
+            _t_lev = round((abs(_rec_t.greeks.delta) * _spot_px) / _rec_t.mid_price, 1) if _rec_t.mid_price > 0 else "N/A"
+            _t_delta = abs(_rec_t.greeks.delta) if _rec_t.greeks else 0.0
+            _t_oi = getattr(_rec_t, "oi", 0) or 0
+            _oi_warn = " ⚠️" if 0 < _t_oi < st.OI_MIN else ""
+            _tbl_rows.append(
+                f"| {_star}{_hz_t} | ${_rec_t.strike:.0f} | {_t_exp} | {_t_dte}일"
+                f" | {_t_delta:.2f} | {_t_oi:,}{_oi_warn} | ~{_t_lev}배 | ${_rec_t.mid_price:.2f} |"
+            )
+        else:
+            _tbl_rows.append(f"| {_star}{_hz_t} | — | — | — | — | — | — | — |")
+    lines += [
+        "| 기간 | Strike | 만기 | DTE | Delta | OI | 레버리지 | 프리미엄 |",
+        "|------|--------|------|-----|-------|-----|---------|---------|",
+    ] + _tbl_rows + [""]
+
+    # ── 기간별 상세 ────────────────────────────────────────────
     for _hz in _hz_all:
         _ok = "✅" if _hz in _active else "❌"
         _rec = (horizon_recs or {}).get(_hz)
+        _star_h = " ⭐ 우선추천" if _hz == primary_horizon else ""
         if _hz in _active:
-            # 분류 근거 간략히
             if _hz == "단기":
-                _why = "강한 단기 모멘텀 (RSI≥75 + ADX≥30 + RVOL≥1.5 + 트리거)"
+                _why = "단기 모멘텀 (RSI 55~72 + ADX≥22 + RVOL≥1.3 + IVR<50)"
             elif _hz == "중기":
                 _why = "ADX 추세 + MA 정배열 확인"
             else:
-                _why = "구조적 성장 (PEG 또는 매출성장)"
-            lines.append(f"**{_ok} {_hz_labels[_hz]}** — {_why}")
+                _why = "구조적 성장 (PEG 또는 매출성장) + 저IVR"
+            lines.append(f"**{_ok} 단기**{_star_h} — {_why}" if _hz == "단기"
+                         else f"**{_ok} {_hz}**{_star_h} — {_why}")
         else:
-            lines.append(f"**{_ok} {_hz_labels[_hz]}**")
+            lines.append(f"**{_ok} {_hz}**{_star_h}")
 
         if _rec:
-            _spot_px = fv.price if fv and fv.price else 100
             _lev = round((abs(_rec.greeks.delta) * _spot_px) / _rec.mid_price, 1) if _rec.mid_price > 0 else "N/A"
-            _cost_1c = _rec.mid_price * 100  # 1계약 비용
+            _cost_1c = _rec.mid_price * 100
             _budget = 0.0
             _contracts_possible = 0
             _budget_warn = ""
@@ -2368,72 +2413,83 @@ def _format_integrated_buy_block(
                     _budget = _cfg2.budget_1st
                 else:
                     _budget = _cfg2.budget_2nd
-                # 계약 수 = 예산 내 최대 (최소 1계약)
                 _contracts_possible = max(1, int(_budget / (_cost_1c + _cfg2.COMMISSION_PER_CONTRACT)))
                 _actual_cost = _cost_1c * _contracts_possible + _cfg2.COMMISSION_PER_CONTRACT * _contracts_possible
                 if _actual_cost > _budget:
                     _budget_warn = f" ⚠️ 예산 초과 (1계약 ${_cost_1c:,.0f} > 배정 ${_budget:,.0f})"
             except Exception:
                 pass
-            import datetime as _hzdt
             _hz_dte = ((_rec.expiry - _hzdt.date.today()).days) if _rec.expiry else "?"
             _contract_str = f"{_contracts_possible}계약" if _contracts_possible else "?"
-            # 선택 이유: delta target 대비 이격, OI, 스프레드 표시
             _tgt_map = {"단기": st.DELTA_SHORT_TARGET, "중기": st.DELTA_MID_TARGET, "장기": st.DELTA_LONG_TARGET}
             _tgt = _tgt_map.get(_hz, 0.50)
             _rec_oi = getattr(_rec, 'oi', 0) or 0
             _rec_spread = getattr(_rec, 'spread_pct', None)
             _delta_gap = abs(abs(_rec.greeks.delta) - _tgt)
             _why_parts = [f"delta {abs(_rec.greeks.delta):.2f} (target {_tgt:.2f}, 이격 {_delta_gap:.2f})"]
-            if _rec_oi and _rec_oi > 0:
+            if _rec_oi > 0 and _rec_oi < st.OI_MIN:
+                _why_parts.append(f"⚠️ OI {_rec_oi:,}계약 — 유동성 주의 (기준 {st.OI_MIN} 미만)")
+            elif _rec_oi > 0:
                 _why_parts.append(f"OI {_rec_oi:,}계약")
             if _rec_spread:
                 _why_parts.append(f"spread {_rec_spread:.1f}%")
-            # 조정 제안: delta 바꾸면 어떤 Strike가 선택되는지
             _adj_hint = ""
             if _hz == "중기":
                 if abs(_rec.greeks.delta) > _tgt:
-                    _adj_hint = f" (더 OTM 원하면 delta target을 낮추면 됩니다)"
+                    _adj_hint = " (더 OTM 원하면 delta target을 낮추면 됩니다)"
                 else:
-                    _adj_hint = f" (더 ITM 원하면 delta target을 높이면 됩니다)"
+                    _adj_hint = " (더 ITM 원하면 delta target을 높이면 됩니다)"
+            # BEP (손익분기점)
+            if r.direction == "long_call":
+                _bep = _rec.strike + _rec.mid_price
+                _bep_pct = (_bep / _spot_px - 1.0) * 100 if _spot_px > 0 else 0.0
+                _bep_str = f"BEP ${_bep:.2f} (주가 +{_bep_pct:.1f}% 필요)"
+            else:
+                _bep = _rec.strike - _rec.mid_price
+                _bep_pct = (1.0 - _bep / _spot_px) * 100 if _spot_px > 0 else 0.0
+                _bep_str = f"BEP ${_bep:.2f} (주가 -{_bep_pct:.1f}% 필요)"
             lines += [
-                f"  - Strike **${_rec.strike:.0f}** | DTE {_hz_dte}일"
+                f"  - Strike **${_rec.strike:.0f}** | 만기 {_rec.expiry} | DTE {_hz_dte}일"
                 f" | Delta {abs(_rec.greeks.delta):.2f} | IV {_rec.greeks.iv * 100:.1f}%"
                 f" | IVR {_rec.greeks.ivr:.0f}",
                 f"  - 프리미엄 **${_rec.mid_price:.2f}** (1계약 ${_cost_1c:,.0f})"
-                f" | 레버리지 ~{_lev}배"
+                f" | 레버리지 ~{_lev}배 | {_bep_str}"
                 f" | 예산 **${_budget:,.0f}** → **{_contract_str}** 가능{_budget_warn}",
                 f"  - 선택 이유: {' / '.join(_why_parts)}{_adj_hint}",
             ]
-        elif _hz in _active:
-            lines.append("  - 체인 데이터 없음 (장외 시간 또는 OI 부족)")
+        else:
+            if _hz == "장기" and _hz not in _active and _long_ivr_est is not None and _long_ivr_est > st.HORIZON_LONG_IVR_MAX:
+                lines.append(
+                    f"  - IVR {_long_ivr_est:.0f}% 고평가 — 장기 매수 비효율"
+                    f" (기준 {st.HORIZON_LONG_IVR_MAX:.0f}% 초과, 프리미엄 과비쌈)"
+                )
+            else:
+                lines.append("  - 체인 데이터 없음 (장외 시간 또는 OI 부족)")
         lines.append("")
 
     # ── 초장기 (LEAPS) 섹션 ─────────────────────────────────────────────────
     _has_ultra = "초장기" in _active
     _ok_ultra = "✅" if _has_ultra else "❌"
-    _ultra_rec = (horizon_recs or {}).get("초장기")  # 체인 있으면 OptionValidity
-    lines.append(f"**{_ok_ultra} {_hz_labels['초장기']}**"
-                 + (" — LEAPS 베팅 (PEG/성장률/K-Score 기반)" if _has_ultra else ""))
+    _ultra_rec = (horizon_recs or {}).get("초장기")
+    lines.append(f"**{_ok_ultra} 초장기 LEAPS**"
+                 + (" — LEAPS 베팅 (PEG/성장률 기반)" if _has_ultra else ""))
     if _ultra_rec:
-        # 체인 데이터가 있어서 자동 선택된 계약
         import datetime as _uzdt
         _uz_dte = ((_ultra_rec.expiry - _uzdt.date.today()).days) if _ultra_rec.expiry else "?"
         lines += [
-            f"  - Strike **${_ultra_rec.strike:.0f}** | DTE {_uz_dte}일"
+            f"  - Strike **${_ultra_rec.strike:.0f}** | 만기 {_ultra_rec.expiry} | DTE {_uz_dte}일"
             f" | Delta {abs(_ultra_rec.greeks.delta):.2f} | IV {_ultra_rec.greeks.iv * 100:.1f}%",
             f"  - 프리미엄 **${_ultra_rec.mid_price:.2f}** (1계약 ${_ultra_rec.mid_price * 100:,.0f})",
             f"  - 유효성: {'✅ 유효' if _ultra_rec.is_valid else '⚠️ 무효 — ' + _ultra_rec.exclusion_reason}",
         ]
     elif ultra_long_criteria:
-        # 체인 없음 — 기준 제시 방식
         _uc = ultra_long_criteria
         lines += [
             f"  - 방향: **{_uc.get('direction', 'N/A')}**"
-            f" | DTE 범위: {_uc.get('dte_range', 'N/A')}",
-            f"  - Delta 범위: {_uc.get('delta_range', 'N/A')}"
+            f" | DTE: {_uc.get('dte', 'N/A')}",
+            f"  - Delta: {_uc.get('delta', 'N/A')}"
             f" (target {_uc.get('delta_target', 'N/A')})",
-            f"  - Strike 범위(추정): **{_uc.get('strike_range', 'N/A')}**",
+            f"  - Strike(ATM 기준): **{_uc.get('strike', 'N/A')}**",
             f"  - 최소 OI: {_uc.get('min_oi', 200)}계약"
             f" | 최대 Spread: {_uc.get('max_spread_pct', 10.0)}%",
             f"  - ⚠️ {_uc.get('note', '브로커에서 직접 확인 필요')}",
@@ -2948,7 +3004,7 @@ def _format_integrated_buy_block(
         f"| 진입 프리미엄 | {_pp(_ep_v)} |",
         f"| 손절 (Stop) | {_pp(_ns_v)} (진입 대비 -60%) |",
         f"| T1 목표 | {_pp(_nt1_v)} |",
-        f"| R/R | {_nt_rr_v}:1 |",
+        f"| R/R (프리미엄 기준) | {_nt_rr_v}:1 |",
         f"| Time Stop | {nt_time_stop}일 |",
         "",
     ]
@@ -2966,7 +3022,7 @@ def _format_integrated_buy_block(
         f"| 진입 프리미엄 | {_pp(_ep_v)} |",
         f"| 손절 (Stop) | {_pp(_ss_v)} (진입 대비 -50%) |",
         f"| T1 / T3 목표 | {_pp(_st1_v)} / {_pp(_st3_v)} |",
-        f"| R/R | {_sw_rr_v}:1 |",
+        f"| R/R (프리미엄 기준) | {_sw_rr_v}:1 |",
         f"| Time Stop | {sw_time_stop}일 |",
         "",
     ]
@@ -2985,7 +3041,7 @@ def _format_integrated_buy_block(
         f"| 설정 품질 | {nt_quality} | {sw_quality} |",
         f"| 손절 프리미엄 | {_pp(_ns_v)} | {_pp(_ss_v)} |",
         f"| T1 목표 프리미엄 | {_pp(_nt1_v)} | {_pp(_st1_v)} |",
-        f"| R/R | {_nt_rr_v}:1 | {_sw_rr_v}:1 |",
+        f"| R/R (프리미엄 기준) | {_nt_rr_v}:1 | {_sw_rr_v}:1 |",
         f"| 추천 | {nt_rec} | {sw_rec} |",
         "",
     ]
@@ -3220,6 +3276,22 @@ def _format_integrated_buy_block(
         "",
     ]
 
+    # 레짐 충돌 경고 — 거시 불리 + long_call 방향
+    if macro_score < 50 and r.direction == "long_call":
+        _inval_trigger = (
+            "SPY/QQQ 200일선 하향이탈 또는 VIX 30 돌파 시 즉시 청산"
+        )
+        lines += [
+            "**⚠️ 레짐 충돌 경고 (Regime Conflict Warning)**",
+            "",
+            f"> 거시 환경이 **{macro_label}({macro_score}점)**으로 불리하나 롱콜(상승) 방향으로 "
+            f"진입합니다. 이는 역추세 베팅으로 보유 기간을 짧게 제한하고 손절 규율을 반드시 "
+            f"지켜야 합니다.",
+            f">",
+            f"> **무효화 트리거**: {_inval_trigger}.",
+            "",
+        ]
+
     # 신뢰도 근거 설명
     _conv_val = r.conviction.total_conviction if r.conviction else 0
     _conf_reasons: list[str] = []
@@ -3249,6 +3321,8 @@ def _format_integrated_buy_block(
                or fv.revenue_growth_yoy or fv.peg or fv.net_income_growth_yoy):
         # 추가 포맷 변수
         peg_str = f"{fv.peg:.2f}" if fv.peg else "N/A"
+        peg_fwd_str = f"{fv.peg_forward:.2f}" if fv.peg_forward else "N/A"
+        implied_g_str = f"{fv.implied_eps_growth_pct:+.1f}%" if fv.implied_eps_growth_pct else "N/A"
         rev_g_str = f"{fv.revenue_growth_yoy:+.1f}%" if fv.revenue_growth_yoy else "N/A"
         ni_g_str = f"{fv.net_income_growth_yoy:+.1f}%" if fv.net_income_growth_yoy else "N/A"
         eps_surp_str = f"{fv.eps_surprise_pct:+.1f}%" if fv.eps_surprise_pct else "N/A"
@@ -3272,11 +3346,37 @@ def _format_integrated_buy_block(
             "| 지표 | 값 | 지표 | 값 |",
             "|------|-----|------|-----|",
             f"| P/E (TTM) | {trail_pe_str} | P/E (Fwd) | {fwd_pe_str} |",
-            f"| PEG | {peg_str} | EPS (TTM) | {eps_ttm_str} |",
-            f"| FCF (TTM) | {fcf_str} | 목표주가 | {target_str} |",
-            f"| 업사이드 | {upside_str} | | |",
+            f"| PEG (Trailing) | {peg_str} | PEG (Forward) | {peg_fwd_str} |",
+            f"| EPS (TTM) | {eps_ttm_str} | FCF (TTM) | {fcf_str} |",
+            f"| 목표주가 | {target_str} | 업사이드 | {upside_str} |",
             "",
         ]
+
+        # 역산 성장률 내재분석 (Reverse DCF)
+        if fv.implied_eps_growth_pct is not None:
+            _g = fv.implied_eps_growth_pct
+            _cur_g = fv.net_income_growth_yoy
+            if _cur_g is not None:
+                if _g > _cur_g:
+                    _interp = (
+                        f"> ⚠️ 현재 실적 성장률({_cur_g:+.1f}%) 상회 필요 — "
+                        "주가에 성장 가속 시나리오 반영됨"
+                    )
+                else:
+                    _interp = (
+                        f"> ✅ 현재 성장률({_cur_g:+.1f}%) 이하 달성으로도 정당화 가능"
+                    )
+            else:
+                _interp = None
+            lines += [
+                "**📐 역산 성장률 내재분석 (Reverse DCF)**",
+                "",
+                f"> 현재 주가가 정당화되려면 향후 5년 EPS CAGR이 **{_g:+.1f}%** 이어야 합니다.",
+                f"> (가정: WACC 10%, 영구성장률 3%, 2단계 DCF 역산)",
+                *([_interp] if _interp else []),
+                "",
+            ]
+
         # 펀더멘털 Bull vs Bear (rule-based)
         _fund_bull: list[str] = []
         _fund_bear: list[str] = []
@@ -3441,7 +3541,7 @@ def _format_integrated_buy_block(
         f"| 세타 (Theta/일) | {theta_str} |",
         f"| 계약 수 | {r.contracts}계약 |",
         f"| 투자금 | ${r.capital_allocation:,.0f} |",
-        f"| R/R 비율 | {t5_rr:.1f}:1 |",
+        f"| R/R 비율 (프리미엄 기준) | {t5_rr:.1f}:1 |",
         f"| 손절 프리미엄 (Stop) | {stop_str} |",
         f"| 1차 익절 (T1) | {t1_str} |",
         f"| 2차 익절 (T2) | {t2_str} |",
@@ -3794,7 +3894,7 @@ def _format_sell_position_block(
     devils: dict | None = None,
     regime_flag: str = "",
     fvd: StockDetail | None = None,
-    k_score_entry: float | None = None,
+    kavout_entry: "KavoutRow | dict | None" = None,
     regime_infer: dict | None = None,
     opt_analytics: dict | None = None,
 ) -> list[str]:
@@ -3826,10 +3926,22 @@ def _format_sell_position_block(
 
     pnl_sign = "+" if (pnl_pct or 0) >= 0 else ""
 
+    # BEP — 함수 전역 참조 (S1 테이블 + S7 브리지 공용)
+    _bep: float = 0.0
+    _bep_move_pct: float = 0.0
+    if pos and entry_premium > 0 and pos.strike > 0 and current_price > 0:
+        _option_type_str = pos.option_type if pos else ""
+        _is_call_global = "call" in _option_type_str.lower() or "콜" in _option_type_str
+        _bep = pos.strike + entry_premium if _is_call_global else pos.strike - entry_premium
+        _bep_move_pct = (_bep / current_price - 1.0) * 100 if _is_call_global else (1.0 - _bep / current_price) * 100
+
     # 아이콘 매핑
     urgency_icon  = {"critical": "🔴", "warning": "🟡", "normal": "🟠", "stable": "🟢"}.get(d.urgency, "⚪")
     urgency_label = {"critical": "CRITICAL", "warning": "WARNING", "normal": "NORMAL", "stable": "STABLE"}.get(d.urgency, d.urgency.upper())
     action_icon   = {"HOLD": "✋", "PARTIAL_EXIT": "⚡", "FULL_EXIT": "🚨", "ROLL": "🔄"}.get(d.action, "")
+    # FULL_EXIT 결정이면 표시용 긴급도를 CRITICAL로 override (스탑 돌파 = 즉시 실행)
+    _disp_urgency_icon  = "🔴" if d.action == "FULL_EXIT" else urgency_icon
+    _disp_urgency_label = "CRITICAL" if d.action == "FULL_EXIT" else urgency_label
     confidence_pct = _calc_confidence_pct(ts)
 
     # 문자열 포맷
@@ -3861,15 +3973,25 @@ def _format_sell_position_block(
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         f"[{d.ticker}]  {option_type}  {strike_str} / {expiry_str}         DTE: {dte_str}",
         f"진입 {entry_premium_str}  →  현재 {current_premium_str}    ({pnl_pct_str}  ${total_pnl:+,.0f})",
-        f"결정: {action_icon} {d.action:<14}  긴급도: {urgency_icon} {urgency_label}",
+        f"결정: {action_icon} {d.action:<14}  긴급도: {_disp_urgency_icon} {_disp_urgency_label}",
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "```",
         "",
     ]
 
     # ── TYPE S1: 포지션 현황 ─────────────────────────────────────
-    # K-Score 문자열 준비
-    _k_score_str = f"{k_score_entry:.1f} / 9" if k_score_entry is not None else "—"
+    # Kavout 접근 헬퍼 (KavoutRow Pydantic 또는 dict 모두 지원)
+    def _kget(attr: str, default=None):
+        if kavout_entry is None:
+            return default
+        if hasattr(kavout_entry, attr):
+            return getattr(kavout_entry, attr, default)
+        if isinstance(kavout_entry, dict):
+            return kavout_entry.get(attr, default)
+        return default
+
+    _k_score_raw = _kget("k_score")
+    _k_score_str = f"{float(_k_score_raw):.1f} / 9" if _k_score_raw is not None else "—"
 
     lines += [
         f"### 📊 TYPE S1 — 포지션 현황  [{d.ticker}]",
@@ -3885,6 +4007,11 @@ def _format_sell_position_block(
         f"| 진입일 | {entry_date_str} | — |",
         f"| 레짐 (진입 시) | {entry_regime_str} | — |",
         f"| K-Score (진입 시) | {_k_score_str} | — |",
+    ]
+    if _bep > 0:
+        _bep_dir = f"+{_bep_move_pct:.1f}%" if _is_call_global else f"-{abs(_bep_move_pct):.1f}%"
+        lines.append(f"| BEP (진입 기준) | ${_bep:.2f} | 현재가 {_bep_dir} 필요 |")
+    lines += [
         "",
         "**Greeks 현황**",
         "",
@@ -3913,11 +4040,143 @@ def _format_sell_position_block(
             lines += [
                 "> ⚠️ **BS 추정 기반**: 옵션 체인에서 해당 행사가/만기 데이터 미조회 → Black-Scholes 이론가 사용. 귀인 수치는 참고용 추정값이며 실제 청산 손익과 차이 있을 수 있음.",
             ]
+        if total_pnl < 0 and vega_pnl < 0 and abs(total_pnl) > 0:
+            _vega_ratio = abs(vega_pnl) / abs(total_pnl)
+            if _vega_ratio >= 0.5:
+                lines += [
+                    "",
+                    f"> 📌 **IV Crush 주요 손실**: Vega 기여 ${vega_pnl:+,.0f} (전체 손실의 {_vega_ratio*100:.0f}%). 주가 방향성은 맞았으나 (Delta {delta_pnl:+,.0f}) IV 급락으로 프리미엄 소멸. 조기 청산 여부 검토 권장.",
+                ]
     else:
         lines += ["> 귀인 데이터 없음 (현재 프리미엄 조회 실패 — 수동 확인 필요)"]
+    # 포지션 특성 (롤 판단 기준) — delta_category + extrinsic_ratio
+    _delta_cat  = h.get("delta_category", "")
+    _extrinsic  = h.get("extrinsic", None)
+    _ext_ratio  = h.get("extrinsic_ratio", None)
+    if _delta_cat or _ext_ratio is not None:
+        _ext_ratio_str = f"{_ext_ratio * 100:.1f}%" if _ext_ratio is not None else "N/A"
+        _delta_cat_label = {
+            "deep_itm": "Deep ITM (|δ|≥0.80) — 레버리지 소진 위험",
+            "itm":      "ITM (|δ|≥0.60) — 내재가치 우세",
+            "atm":      "ATM (|δ|≥0.40) — 감마 위험 구간",
+            "otm":      "OTM (|δ|≥0.20) — 시간가치 소멸 가속",
+            "deep_otm": "Deep OTM (|δ|<0.20) — 외재가치만 잔존",
+        }.get(_delta_cat, _delta_cat)
+        lines += [
+            "",  # blank line separator after attribution block
+            f"**포지션 특성 ({'현재 상태' if d.action == 'FULL_EXIT' else '롤 판단 기준'})**",
+            "",
+            f"| δ 카테고리 | 외재가치 잔존 비율 |",
+            f"|-----------|-----------------|",
+            f"| {_delta_cat_label} | {_ext_ratio_str} |",
+            "",
+        ]
+
     lines += [
         "",
     ]
+
+    # ── Kavout 레이더 섹션 ───────────────────────────────────────
+    if kavout_entry:
+        _ksr  = _kget("stock_rank_score")
+        _kq   = _kget("quality_score")
+        _kg   = _kget("growth_score")
+        _km   = _kget("momentum_score")
+        _kv   = _kget("value_score")
+        _kma  = _kget("ma_score_num")
+        _kosc = _kget("oscillator_score_num")
+        _ktr  = _kget("technical_rating_num")
+        _kroic = _kget("roic")
+        _kr12  = _kget("return_12m")
+        _kr3   = _kget("return_3m")
+        _kr1   = _kget("return_1m")
+
+        def _ks(v: float | None) -> str:
+            if v is None:
+                return "—"
+            icon = "🟢" if v >= 70 else ("🟡" if v >= 40 else "🔴")
+            return f"{v:.0f} {icon}"
+
+        lines += ["## ━━━ Kavout 종합 분석 ━━━", ""]
+
+        # 레이더 점수
+        lines += [
+            "**📊 레이더 점수 (0~100)**",
+            "",
+            "| Stock Rank | Quality | Growth | Momentum | Value |",
+            "|-----------|---------|--------|----------|-------|",
+            f"| {_ks(_ksr)} | {_ks(_kq)} | {_ks(_kg)} | {_ks(_km)} | {_ks(_kv)} |",
+            "",
+        ]
+
+        # 기술 신호 게이지
+        if any(v is not None for v in [_kma, _kosc, _ktr]):
+            lines += [
+                "**📡 기술 신호**",
+                "",
+                "| MA Score | Oscillator Score | Technical Rating |",
+                "|---------|-----------------|-----------------|",
+                f"| {_ks(_kma)} | {_ks(_kosc)} | {_ks(_ktr)} |",
+                "",
+            ]
+
+        # MA 방향 신호
+        _k_ema10  = _kget("ema10")
+        _k_sma20  = _kget("sma20")
+        _k_sma50  = _kget("sma50")
+        _k_sma200 = _kget("sma200")
+        if any(v is not None for v in [_k_ema10, _k_sma20, _k_sma50, _k_sma200]):
+            def _kma_icon(v: str | None) -> str:
+                if v is None:
+                    return "—"
+                icon = "🟢" if "Bullish" in (v or "") else ("🔴" if "Bearish" in (v or "") else "🟡")
+                return f"{icon} {v}"
+            lines += [
+                f"| EMA10 | SMA20 | SMA50 | SMA200 |",
+                f"|-------|-------|-------|--------|",
+                f"| {_kma_icon(_k_ema10)} | {_kma_icon(_k_sma20)} | {_kma_icon(_k_sma50)} | {_kma_icon(_k_sma200)} |",
+                "",
+            ]
+
+        # 수익률
+        if any(v is not None for v in [_kr1, _kr3, _kr12]):
+            def _kret(v: float | None) -> str:
+                if v is None:
+                    return "—"
+                icon = "🟢" if v > 0 else "🔴"
+                return f"{v:+.1f}% {icon}"
+            lines += [
+                "**📈 수익률**",
+                "",
+                "| 1개월 | 3개월 | 12개월 |",
+                "|------|------|-------|",
+                f"| {_kret(_kr1)} | {_kret(_kr3)} | {_kret(_kr12)} |",
+                "",
+            ]
+
+        # 핵심 펀더멘털
+        _kroa = _kget("roa")
+        _kev  = _kget("ev_ebitda")
+        _kopm = _kget("op_margin")
+        _keg  = _kget("eps_growth_1y")
+        _krg  = _kget("rev_growth_1y")
+        if any(v is not None for v in [_kroa, _kev, _kopm, _kroic, _keg, _krg]):
+            def _kfmt(v: float | None, pct: bool = False, x: bool = False) -> str:
+                if v is None:
+                    return "N/A"
+                if pct:
+                    return f"{v:+.1f}%"
+                if x:
+                    return f"{v:.1f}x"
+                return f"{v:.1f}"
+            lines += [
+                "**💼 핵심 펀더멘털**",
+                "",
+                "| ROA | EV/EBITDA | Op Margin | ROIC | Rev Growth 1Y | EPS Growth 1Y |",
+                "|-----|-----------|-----------|------|--------------|--------------|",
+                f"| {_kfmt(_kroa, pct=True)} | {_kfmt(_kev, x=True)} | {_kfmt(_kopm, pct=True)} | {_kfmt(_kroic, pct=True)} | {_kfmt(_krg, pct=True)} | {_kfmt(_keg, pct=True)} |",
+                "",
+            ]
 
     # Theta 소멸 경고: S4-C(DTE≤14)로 커버 안 되는 구간 포함
     if pos and current_premium is not None and dte_val > 0:
@@ -3958,9 +4217,13 @@ def _format_sell_position_block(
         # 진입 시 레짐 데이터 없음 → 판정 불가 (None==None을 ✅로 오판 방지)
         regime_icon = "⚪ 데이터 없음"
         current_regime_str = "—"
-    else:
+    elif regime_flag == "REGIME_OK":
         regime_icon = "✅ 일치"
         current_regime_str = entry_regime_str
+    else:
+        # "" 또는 "REGIME_UNKNOWN" → 현재 레짐 비교 불가 (LLM 조회 실패 또는 데이터 없음)
+        regime_icon = "⚪ 현재 데이터 없음 (레짐 비교 불가)"
+        current_regime_str = "N/A"
 
     lines += [
         f"**레짐**: 진입 시 `{entry_regime_str}` ↔ 현재 `{current_regime_str}` {regime_icon}",
@@ -4037,13 +4300,28 @@ def _format_sell_position_block(
             lines.append(f"**이벤트 리스크**: {ev_icon} {ev_judge_clean}")
         if iv_crush:
             lines.append(f"**IV Crush 위험**: ⚠️ 예상 손실 ${iv_loss:,.0f}")
+        da_reasons = devils.get("da_reasons", [])
+        if da_reasons:
+            lines += ["", "**⚠️ DA 기술점수 차감 내역**", ""]
+            for reason in da_reasons:
+                lines.append(f"- {reason}")
         lines.append("")
 
-    # DA / health 플래그
-    health_flags = h.get("flags", [])
-    if health_flags:
-        flag_icon = "🚨" if "청산_권고_신호" in health_flags else "⚠️" if "주의_신호" in health_flags else "✅"
-        lines += [f"**진단 플래그**: {flag_icon} `{'` · `'.join(health_flags)}`", ""]
+    # 결정 플래그 (Step 7) + 건전성 플래그 (Step 1)
+    _decision_flags = list(getattr(d, "flags", None) or [])
+    _health_flags   = list(h.get("flags", []))
+    # 중복 제거: decision flags 우선, health flags 중 미포함만 추가
+    all_flags = _decision_flags + [f for f in _health_flags if f not in _decision_flags]
+    if all_flags:
+        _critical_kw = {"청산_권고_신호", "스탑로스_도달", "트레일링스탑_발동", "레짐역전_청산권고", "IV크러쉬_청산권고"}
+        _warn_kw     = {"주의_신호", "외재가치_소진_롤권고", "OTM_행사가조정_롤권고", "만기임박_롤권고"}
+        if any(f in _critical_kw for f in all_flags):
+            flag_icon = "🚨"
+        elif any(f in _warn_kw for f in all_flags):
+            flag_icon = "⚠️"
+        else:
+            flag_icon = "✅"
+        lines += [f"**진단 플래그**: {flag_icon} `{'` · `'.join(all_flags)}`", ""]
 
     # ── TYPE S3: 기술 현황 ──────────────────────────────────────
     lines += [f"### 📈 TYPE S3 — 기술 현황  [{d.ticker}]", ""]
@@ -4068,6 +4346,46 @@ def _format_sell_position_block(
     else:
         lines += ["> 기술 점수 데이터 없음", ""]
 
+    # 3-2. 실제 지표값 (Live Indicators)
+    if fvd:
+        def _fv(v: float | None, fmt: str = ".1f") -> str:
+            return f"{v:{fmt}}" if v is not None else "—"
+        lines += [
+            "**📊 실제 지표값 (Live Indicators)**",
+            "",
+            "| 지표 | 값 | 지표 | 값 |",
+            "|------|-----|------|-----|",
+            f"| RSI(14) | {_fv(fvd.rsi14)} | ADX | {_fv(fvd.adx)} |",
+            f"| DI+ | {_fv(fvd.di_plus)} | DI- | {_fv(fvd.di_minus)} |",
+            f"| SMA5 | {_fv(fvd.sma5_val, '.2f')} | SMA20 | {_fv(fvd.sma20_val, '.2f')} |",
+            f"| SMA50 | {_fv(fvd.sma50_val, '.2f')} | ATR(14) | {_fv(fvd.atr, '.2f')} |",
+            f"| BB 상단 | {_fv(fvd.bb_upper, '.2f')} | BB 하단 | {_fv(fvd.bb_lower, '.2f')} |",
+            f"| Pivot | {_fv(fvd.pivot, '.2f')} | R1 / S1 | {_fv(fvd.pivot_r1, '.2f')} / {_fv(fvd.pivot_s1, '.2f')} |",
+        ]
+        # 주봉 지표
+        _w_adx  = getattr(fvd, "weekly_adx",      None)
+        _w_rsi  = getattr(fvd, "weekly_rsi",      None)
+        _w_dip  = getattr(fvd, "weekly_di_plus",  None)
+        _w_dim  = getattr(fvd, "weekly_di_minus", None)
+        if any(v is not None for v in [_w_adx, _w_rsi, _w_dip, _w_dim]):
+            lines += [
+                f"| 주봉 ADX | {_fv(_w_adx)} | 주봉 RSI | {_fv(_w_rsi)} |",
+                f"| 주봉 DI+ | {_fv(_w_dip)} | 주봉 DI- | {_fv(_w_dim)} |",
+            ]
+        # 4H 지표
+        _4h_dip  = getattr(fvd, "di_plus_4h",    None)
+        _4h_dim  = getattr(fvd, "di_minus_4h",   None)
+        _4h_rsi  = getattr(fvd, "rsi_4h",        None)
+        _4h_adx  = getattr(fvd, "adx_4h",        None)
+        _4h_mh   = getattr(fvd, "macd_hist_4h",  None)
+        if any(v is not None for v in [_4h_dip, _4h_dim, _4h_rsi, _4h_adx, _4h_mh]):
+            lines += [
+                f"| 4H DI+ | {_fv(_4h_dip)} | 4H DI- | {_fv(_4h_dim)} |",
+                f"| 4H RSI | {_fv(_4h_rsi)} | 4H ADX | {_fv(_4h_adx)} |",
+                f"| 4H MACD Hist | {_fv(_4h_mh, '.3f')} | | |",
+            ]
+        lines.append("")
+
     # 지지/저항 레벨
     if fvd:
         s1  = getattr(fvd, "pivot_s1",   None)
@@ -4079,14 +4397,32 @@ def _format_sell_position_block(
         def _p(v: float | None) -> str:
             return f"${v:.2f}" if v else "—"
 
-        lines += [
-            "**핵심 가격 레벨**",
-            "",
-            f"| S2 지지 | S1 지지 | **현재가** | R1 저항 | R2 저항 | 추세 붕괴선(MA200) |",
-            f"|---------|---------|-----------|---------|---------|------------------|",
-            f"| {_p(s2)} | {_p(s1)} | **{current_price_str}** | {_p(r1)} | {_p(r2)} | {_p(ma200)} |",
-            "",
-        ]
+        _cp_v = current_price or 0.0
+        if _cp_v > 0:
+            if r2 and _cp_v > r2:
+                _lctx = f"🟢 R1({_p(r1)}) · R2({_p(r2)}) 상향 돌파 — 강한 상승 추세"
+            elif r1 and _cp_v > r1:
+                _lctx = f"🟡 R1({_p(r1)}) 돌파 / R2({_p(r2)}) 테스트 중"
+            elif s1 and _cp_v >= s1:
+                _lctx = f"중립  S1({_p(s1)}) ~ R1({_p(r1)}) 구간"
+            elif s2 and _cp_v >= s2:
+                _lctx = f"🔴 S1({_p(s1)}) 이탈 / S2({_p(s2)}) 지지 테스트"
+            else:
+                _lctx = f"🔴 S2({_p(s2)}) 이하 — 강한 하락"
+            lines += [
+                "**핵심 가격 레벨**",
+                "",
+                f"> 현재가 **{current_price_str}**: {_lctx}",
+                f"> 추세 붕괴선(MA200): {_p(ma200)}",
+                "",
+            ]
+        if s1 and current_price > 0 and current_price < s1:
+            _supp_msg = f"> ⚠️ **지지선 하회**: 현재가 {current_price_str} < S1 ${s1:.2f}"
+            if s2 and current_price < s2:
+                _supp_msg += f" 및 S2 ${s2:.2f} 모두 하회 — 단기 하방 압력 구조"
+            else:
+                _supp_msg += " 하회 — S2 수준까지 추가 하락 가능"
+            lines += [_supp_msg, ""]
 
         # ── 확장 가격 레벨 통합 테이블 ──────────────────────────────
         _cur_sv = current_price
@@ -4131,9 +4467,20 @@ def _format_sell_position_block(
             _psar_sv     = getattr(fvd, "parabolic_sar",  None)
             _psar_dir_sv = getattr(fvd, "sar_direction",  None)
             if _psar_sv and abs(_psar_sv - _cur_sv) / _cur_sv < 0.15:
-                _psar_lbl_sv = (f"⑭ SAR ${_psar_sv:.2f} (↑ 이 아래 = 추세전환)" if _psar_dir_sv == "up"
-                                else f"⑭ SAR ${_psar_sv:.2f} (↓ 이 위 = 추세전환)")
+                _psar_lbl_sv = (f"⑭ SAR(4H) ${_psar_sv:.2f} (↑ 이 아래 = 추세전환)" if _psar_dir_sv == "up"
+                                else f"⑭ SAR(4H) ${_psar_sv:.2f} (↓ 이 위 = 추세전환)")
                 _sell_plevels.append((_psar_sv, _psar_lbl_sv))
+
+            # 4H Pivot (단기 지지/저항 — 데이트레이딩 진출입 기준)
+            for _4h_lv_sv, _4h_lbl_sv in [
+                (getattr(fvd, "pivot_r2_4h", None), "4H R2 — 단기 2차 저항"),
+                (getattr(fvd, "pivot_r1_4h", None), "4H R1 — 단기 1차 저항"),
+                (getattr(fvd, "pivot_p_4h",  None), "4H Pivot (P) — 단기 기준선"),
+                (getattr(fvd, "pivot_s1_4h", None), "4H S1 — 단기 1차 지지"),
+                (getattr(fvd, "pivot_s2_4h", None), "4H S2 — 단기 2차 지지"),
+            ]:
+                if _4h_lv_sv and abs(_4h_lv_sv - _cur_sv) / _cur_sv < 0.05:
+                    _sell_plevels.append((_4h_lv_sv, _4h_lbl_sv))
 
             # EMA
             for _ema_sv, _ema_lbl_sv, _ema_thr_sv in [
@@ -4146,6 +4493,14 @@ def _format_sell_position_block(
                 if _ema_sv and abs(_ema_sv - _cur_sv) / _cur_sv < _ema_thr_sv:
                     _sell_plevels.append((_ema_sv, _ema_lbl_sv))
 
+            # Bollinger Bands
+            _bbu_sv = getattr(fvd, "bb_upper", None)
+            _bbl_sv = getattr(fvd, "bb_lower", None)
+            if _bbu_sv and abs(_bbu_sv - _cur_sv) / _cur_sv < 0.15:
+                _sell_plevels.append((_bbu_sv, "볼린저밴드 상단 (과열 경계)"))
+            if _bbl_sv and abs(_bbl_sv - _cur_sv) / _cur_sv < 0.15:
+                _sell_plevels.append((_bbl_sv, "볼린저밴드 하단 (과매도 경계)"))
+
             # Keltner Channel
             _kcu_sv = getattr(fvd, "keltner_upper", None)
             _kcl_sv = getattr(fvd, "keltner_lower", None)
@@ -4153,6 +4508,14 @@ def _format_sell_position_block(
                 _sell_plevels.append((_kcu_sv, "Keltner 상단 (EMA20+2×ATR) — 채널 돌파 시 강세 가속"))
             if _kcl_sv and abs(_kcl_sv - _cur_sv) / _cur_sv < 0.15:
                 _sell_plevels.append((_kcl_sv, "Keltner 하단 (EMA20-2×ATR) — 채널 이탈 시 하락 가속"))
+
+            # Donchian Channel 20일
+            _dcu_sv = getattr(fvd, "donchian_20_upper", None)
+            _dcl_sv = getattr(fvd, "donchian_20_lower", None)
+            if _dcu_sv and abs(_dcu_sv - _cur_sv) / _cur_sv < 0.12:
+                _sell_plevels.append((_dcu_sv, "Donchian 20일 상단 — 20일 최고가 돌파선"))
+            if _dcl_sv and abs(_dcl_sv - _cur_sv) / _cur_sv < 0.12:
+                _sell_plevels.append((_dcl_sv, "Donchian 20일 하단 — 20일 최저가 지지선"))
 
             # FVG (Fair Value Gap)
             _fvg_bt_sv = getattr(fvd, "fvg_bull_top",    None)
@@ -4189,6 +4552,17 @@ def _format_sell_position_block(
             if _hvm15_sv:
                 _sell_plevels.append((round(_cur_sv + _hvm15_sv, 2), f"{_hv_lbl_sv} 15일 상단"))
                 _sell_plevels.append((round(_cur_sv - _hvm15_sv, 2), f"{_hv_lbl_sv} 15일 하단"))
+
+            # Weekly Pivot (스윙 손절·목표 핵심 기준)
+            for _wlv_sv, _wlbl_sv in [
+                (getattr(fvd, "weekly_pivot_r2", None), "주봉 R2 — 스윙 최대 목표"),
+                (getattr(fvd, "weekly_pivot_r1", None), "주봉 R1 — 스윙 1차 저항"),
+                (getattr(fvd, "weekly_pivot_p",  None), "주봉 Pivot (P) — 주간 기준선"),
+                (getattr(fvd, "weekly_pivot_s1", None), "주봉 S1 — 스윙 손절 기준"),
+                (getattr(fvd, "weekly_pivot_s2", None), "주봉 S2 — 스윙 최대 지지"),
+            ]:
+                if _wlv_sv and abs(_wlv_sv - _cur_sv) / _cur_sv < 0.15:
+                    _sell_plevels.append((_wlv_sv, _wlbl_sv))
 
             # Monthly Pivot
             for _mlv_sv, _mlbl_sv in [
@@ -4291,15 +4665,19 @@ def _format_sell_position_block(
     _t_label  = "부정적" if _t_score < 50  else "긍정적"
     _s_label  = "부정적" if _s_score < 40  else ("중립" if _s_score < 65 else "긍정적")
     _total_label = "SELL 신호" if _weighted < 40 else ("HOLD 신호" if _weighted < 65 else "BUY 신호")
+    _f_icon = "🟢" if _f_score >= 65 else ("🟡" if _f_score >= 40 else "🔴")
+    _t_icon = "🟢" if _t_score >= 65 else ("🟡" if _t_score >= 40 else "🔴")
+    _s_icon = "🟢" if _s_score >= 65 else ("🟡" if _s_score >= 40 else "🔴")
+    _w_icon = "🟢" if _weighted >= 65 else ("🟡" if _weighted >= 40 else "🔴")
     lines += [
-        "**차원별 점수 요약**", "",
-        "```",
-        f"기본적 분석:   {_f_score}/100 — {_f_label}  (비중 40%)",
-        f"기술적 분석:   {_t_score}/100 — {_t_label}  (비중 30%)",
-        f"센티멘트 분석: {_s_score}/100 — {_s_label}  (비중 30%)",
-        f"─────────────────────────────────────────────────",
-        f"종합 점수:     {_weighted}/100  →  {_total_label}",
-        "```", "",
+        "**차원별 점수 (3D 복합 스코어카드)**", "",
+        "| 차원 | 점수 | 가중치 | 기여 | 상태 |",
+        "|------|------|--------|------|------|",
+        f"| 펀더멘털 | {_f_score}/100 | 40% | {_f_score * 0.4:.1f}pt | {_f_icon} {_f_label} |",
+        f"| 기술적 | {_t_score}/100 | 30% | {_t_score * 0.3:.1f}pt | {_t_icon} {_t_label} |",
+        f"| 센티멘트 | {_s_score}/100 | 30% | {_s_score * 0.3:.1f}pt | {_s_icon} {_s_label} |",
+        f"| **복합** | **{_weighted}/100** | 100% | — | {_w_icon} **{_total_label}** |",
+        "",
     ]
 
     # 펀더멘털 지표 + 시장 포지셔닝
@@ -4333,9 +4711,15 @@ def _format_sell_position_block(
             _tp_warn    = ""
             if _tp and current_price:
                 _gap_pct = (_tp - current_price) / current_price * 100
-                _tp_gap_str = f"  ({_gap_pct:+.1f}% 여력)"
-                if _gap_pct < -25:
+                if _gap_pct >= 0:
+                    _tp_gap_str = f"  (+{_gap_pct:.1f}% 업사이드)"
+                else:
+                    _tp_gap_str = f"  ({_gap_pct:.1f}% — 현재가 목표가 초과)"
+                if _gap_pct < -50:
                     _tp_warn = "  ⚠️ 목표가 데이터 이상 (스테일/불일치 가능)"
+                elif _gap_pct < 0:
+                    _upside_over = -_gap_pct
+                    _tp_warn = f"  ⚠️ 현재가 컨센서스 +{_upside_over:.1f}% 상회 — 목표가 초과 구간"
             _tp_line = (f"컨센서스 목표가: ${_tp:.2f}{_tp_gap_str}{_tp_warn}" if _tp
                         else "컨센서스 목표가: N/A")
             _ana_line = (f"애널리스트:  Buy {_buy_n} / Hold {_hold_n} / Sell {_sell_n}  (총 {_total_a}명)"
@@ -4407,12 +4791,36 @@ def _format_sell_position_block(
             if _catalyst:
                 lines.append(f"- 핵심 촉매: {str(_catalyst)[:150]}")
             lines.append("")
+
+        # DTE 경고: 옵션 만기와 주식 catalyst 시간축 불일치
+        if dte_val < 90 and _bep > 0:
+            _bep_dir_s5 = f"+{_bep_move_pct:.1f}%" if _is_call_global else f"-{abs(_bep_move_pct):.1f}%"
+            lines += [
+                f"> ⚠️ **DTE 주의 ({dte_val}일)**: 위 촉매 분석은 주가 방향 기준입니다. 이 옵션은 {dte_val}일 후 만기 — 6개월+ 카탈리스트는 직접 적용 불가. BEP ${_bep:.2f} 달성까지 현재가 {_bep_dir_s5} 필요.",
+                "",
+            ]
     else:
         lines += ["> 감성 분석 데이터 없음 — 촉매 정보 수동 확인 필요", ""]
 
+    # S5 끝: bull/base/bear EV 분해 테이블
+    if sc:
+        _s5_bull_ev = sc.bullish.net_profit * sc.bullish.probability
+        _s5_base_ev = sc.base.net_profit    * sc.base.probability
+        _s5_bear_ev = sc.bearish.net_profit * sc.bearish.probability
+        lines += [
+            "**📊 시나리오별 기대값 (EV) 분해**", "",
+            "| 시나리오 | 확률 | 주가 이동 | 순손익 | EV 기여 |",
+            "|----------|------|----------|-------|---------|",
+            f"| 강세 (Bullish) | {sc.bullish.probability:.0%} | {sc.bullish.stock_move_pct:+.1f}% | ${sc.bullish.net_profit:+,.0f} | ${_s5_bull_ev:+,.0f} |",
+            f"| 기본 (Base) | {sc.base.probability:.0%} | {sc.base.stock_move_pct:+.1f}% | ${sc.base.net_profit:+,.0f} | ${_s5_base_ev:+,.0f} |",
+            f"| 약세 (Bearish) | {sc.bearish.probability:.0%} | {sc.bearish.stock_move_pct:+.1f}% | ${sc.bearish.net_profit:+,.0f} | ${_s5_bear_ev:+,.0f} |",
+            f"| **기대값 (EV)** | — | — | — | **${sc.expected_value:+,.0f}** |",
+            "",
+        ]
+
     # ── TYPE S6: 상황별 Appendix (조건부) ────────────────────────
     # S6-A: 수익 +50% 이상
-    if pnl_pct >= 50.0:
+    if pnl_pct is not None and pnl_pct >= 50.0:
         t1_prem = sc.target_premium_1st          if sc else entry_premium * 1.5
         t2_prem = sc.target_premium_2nd          if (sc and sc.target_premium_2nd) else entry_premium * 2.0
         t3_prem = sc.target_premium_3rd          if (sc and sc.target_premium_3rd) else entry_premium * 2.5
@@ -4449,26 +4857,40 @@ def _format_sell_position_block(
         ]
 
     # S4-B: 손실 -30% 이하
-    if pnl_pct <= -30.0 and pos:
+    if pnl_pct is not None and pnl_pct <= -30.0 and pos:
         stop_prem = sc.stop_loss_premium if sc else entry_premium * 0.5
-        stop_gap_dollar = (
-            (current_premium - stop_prem) * 100 * remaining
-            if current_premium is not None else 0.0
-        )
+        _stop_gap_raw = (current_premium - stop_prem) if current_premium is not None else 0.0
+        _stop_gap_pct = (_stop_gap_raw / current_premium * 100) if (current_premium and current_premium > 0) else 0.0
+        if _stop_gap_raw <= 0:
+            _gap_label = "🚨 스탑 이미 돌파됨 — 즉시 청산 필요"
+        elif _stop_gap_pct < 10:
+            _gap_label = f"⚠️ 위험 근접 — 즉시 모니터링 ({_stop_gap_pct:.1f}%)"
+        elif _stop_gap_pct < 20:
+            _gap_label = f"주의 구간 ({_stop_gap_pct:.1f}%)"
+        else:
+            _gap_label = f"여유 ({_stop_gap_pct:.1f}%)"
         cond_invalid  = sum(1 for cc in condition_checks if cc.get("status") == "무효")
         cond_weakened = sum(1 for cc in condition_checks if cc.get("status") == "약화")
 
         lines += [
-            f"### 🔴 TYPE S6-B — 손절 판단 가이드  (현재: {pnl_sign}{pnl_pct:.1f}%)",
+            f"### 🔴 TYPE S6-B — {'손절 이미 발동됨' if _stop_gap_raw <= 0 else '손절 판단 가이드'}  (현재: {pnl_sign}{pnl_pct:.1f}%)",
             "",
             "```",
             f"하드 스탑:  ${stop_prem:.2f}  (진입 × 0.50)",
             f"현재:       {current_premium_str}",
-            f"갭:         ${stop_gap_dollar:+,.0f}  ({'⚠️ 손절 선행 검토' if stop_gap_dollar < 50 else '여유 있음'})",
+            f"갭:         +{_stop_gap_pct:.1f}% (${_stop_gap_raw:.2f})  {_gap_label}",
             "```",
             "",
             f"**Thesis 진단**: ❌ 무효 {cond_invalid}개  ⚠️ 약화 {cond_weakened}개",
             "",
+        ]
+        if _stop_gap_raw <= 0 and cond_invalid == 0:
+            lines += [
+                "> ⚠️ **스탑 우선 원칙**: Thesis 무효화 조건은 충족되지 않았으나, **하드 스탑이 이미 돌파됨**. "
+                "손절 규칙은 thesis 상태와 무관하게 자동 발동 — 즉시 청산이 원칙입니다.",
+                "",
+            ]
+        lines += [
             "| 상황 | 권고 행동 |",
             "|------|---------|",
             "| Thesis ❌ 1개 이상 | 손절선 대기 없이 선제 청산 |",
@@ -4529,8 +4951,8 @@ def _format_sell_position_block(
         "",
         "```",
         f"최종 결정:  {action_icon} {d.action}",
-        f"확신도:     {confidence_pct}%   (신호 {ts.signal_count if ts else '—'}/8)",
-        f"긴급도:     {urgency_icon} {urgency_label}",
+        f"확신도:     {confidence_pct}%   (신호 {ts.signal_count if ts else 0}/8)",
+        f"긴급도:     {_disp_urgency_icon} {_disp_urgency_label}",
         "```",
         "",
         "**기존 보유자 행동 계획**",
@@ -4565,56 +4987,95 @@ def _format_sell_position_block(
     elif d.action == "FULL_EXIT":
         lines += [
             f"🚨 즉시: **전량 청산** ({remaining}계약 전부)",
-            f"   실현 손익 목표: ${d.realized_pnl:+,.0f}",
+            f"   청산 시 예상 손익: ${total_pnl:+,.0f}  (현재가 {current_premium_str} 기준)",
         ]
+        # Kavout BUY vs FULL_EXIT 브리지: 주가 방향 지표와 옵션 포지션 EXIT 결정의 괴리 설명
+        _ksr_val = _kget("stock_rank_score") if kavout_entry else None
+        if _ksr_val is not None and float(_ksr_val) >= 60:
+            _stop_prem_for_bridge = sc.stop_loss_premium if sc else entry_premium * 0.5
+            _bep_dir_bridge = f"+{_bep_move_pct:.1f}%" if _bep_move_pct >= 0 else f"{_bep_move_pct:.1f}%"
+            _ev_str = f"${sc.expected_value:+,.0f}" if sc else "산출 불가"
+            lines += [
+                "",
+                f"> ℹ️ **Kavout BUY vs FULL_EXIT**: Kavout 복합 점수(주가 방향 지표)는 강세이나, EXIT 결정은 주가 전망이 아닌 **옵션 포지션 구조** 문제입니다: ① 스탑 이미 돌파 ({current_premium_str} < ${_stop_prem_for_bridge:.2f}), ② BEP ${_bep:.2f} 달성까지 현재가 {_bep_dir_bridge} 필요, ③ EV {_ev_str} (보유 시 추가 기대손실). 주가 강세 뷰는 추후 신규 포지션으로 재접근하세요.",
+            ]
     elif d.action == "ROLL":
         new_strike = f"${d.roll_strike:.0f}" if d.roll_strike else "—"
         new_expiry = str(d.roll_expiry) if d.roll_expiry else "—"
+        _roll_type_labels = {
+            "레버리지_복원":   "레버리지 복원 (Deep ITM → delta 0.50 타겟)",
+            "손익분기점_조정": "손익분기점 조정 (Deep OTM → ATM 이동)",
+            "만기_연장":       "만기 연장 (동일 행사가 + 45~90일 연장)",
+        }
+        roll_type_str = _roll_type_labels.get(d.roll_type or "", d.roll_type or "만기_연장")
         lines += [
             f"🔄 즉시: 현재 포지션 청산 후 Roll",
+            f"   Roll 유형: **{roll_type_str}**",
             f"   새 Strike: {new_strike}  새 만기: {new_expiry}",
         ]
+        if d.roll_new_premium and d.roll_strike and current_price > 0:
+            _roll_bep = d.roll_strike + d.roll_new_premium
+            _roll_bep_pct = (_roll_bep / current_price - 1.0) * 100
+            lines.append(
+                f"   예상 프리미엄 ${d.roll_new_premium:.2f}"
+                f" | BEP ${_roll_bep:.2f} (주가 +{_roll_bep_pct:.1f}% 필요)"
+            )
+        if d.roll_new_oi is not None and 0 < d.roll_new_oi < st.OI_MIN:
+            lines.append(
+                f"   ⚠️ OI {d.roll_new_oi:,}계약 — 유동성 주의 (기준 {st.OI_MIN} 미만)"
+            )
 
     lines.append("")
 
-    # 즉시 청산 트리거
-    lines += ["**🚨 즉시 재분석·청산 트리거 (Key Inflection Points)**", ""]
-    triggers: list[str] = []
-    if fvd and getattr(fvd, "sma200_val", None):
-        triggers.append(f"주가 ${fvd.sma200_val:.2f} 하향 종가 → 추세 붕괴 → FULL EXIT 검토")
+    # 즉시 청산 트리거 — 코드블록 형식
+    lines += ["**🚨 즉시 재분석·청산 트리거 (Key Inflection Points)**", "", "```"]
+    if d.action == "FULL_EXIT":
+        lines.append("# FULL EXIT 결정됨 — 즉시 실행, 아래 트리거 참고 불필요")
     if sc and sc.stop_loss_premium:
-        triggers.append(f"프리미엄 ${sc.stop_loss_premium:.2f} 이하 → 스탑 발동 → FULL EXIT")
+        lines.append(f"스탑 발동    : 프리미엄 ${sc.stop_loss_premium:.2f} (-50%) 이하 → FULL EXIT")
+    if d.action != "FULL_EXIT":
+        if sc and sc.target_premium_1st:
+            lines.append(f"1차 익절     : 프리미엄 ${sc.target_premium_1st:.2f} (+50%) 도달 → 50% PARTIAL EXIT")
+        if sc and sc.target_premium_2nd:
+            lines.append(f"2차 익절     : 프리미엄 ${sc.target_premium_2nd:.2f} (+100%) 도달 → 잔여 익절")
+    if fvd and getattr(fvd, "sma200_val", None):
+        lines.append(f"추세 붕괴    : 주가 ${fvd.sma200_val:.2f}(MA200) 일봉 종가 하회 → FULL EXIT 검토")
+    if fvd and getattr(fvd, "cam_l4", None):
+        lines.append(f"CAM L4 이탈  : ${fvd.cam_l4:.2f} 하향 → 추세 전환 경고")
     if condition_checks:
-        triggers.append("Thesis 무효(❌) 조건 2개 이상 → 손절선 대기 없이 선제 청산")
+        lines.append("Thesis 무효  : 조건 ❌ 2개 이상 → 손절선 대기 없이 선제 청산")
     if dte_val > 7:
-        triggers.append(f"DTE 7일 도달 → Roll 또는 EXIT 최종 결정 데드라인")
-    triggers.append("레짐 Bearish 전환 → PARTIAL EXIT 75% 즉시")
-    triggers.append("뉴스 감성 NEGATIVE 전환 → Thesis 재점검")
+        lines.append(f"DTE 임박     : 7일 이하 → Roll 또는 EXIT 최종 결정 데드라인")
+    lines += [
+        "레짐 역전    : Bearish 전환 → PARTIAL EXIT 75% 즉시",
+        "감성 역전    : 뉴스 NEGATIVE 전환 → Thesis 재점검",
+        "```",
+        "",
+    ]
 
-    for t in triggers:
-        lines.append(f"- {t}")
-    lines.append("")
-
-    # P&L 시나리오 표
-    lines += ["**P&L 시나리오**", ""]
+    # P&L 레벨 테이블 (진입 기준 실손익)
     if sc and pos:
         stop_pnl = (sc.stop_loss_premium - entry_premium) * 100 * remaining
         t1_pnl   = (sc.target_premium_1st - entry_premium) * 100 * remaining if sc.target_premium_1st else 0.0
         t2_pnl   = (sc.target_premium_2nd - entry_premium) * 100 * remaining if sc.target_premium_2nd else 0.0
         lines += [
-            "| 시나리오 | 확률 | 예상 P&L |",
-            "|----------|------|----------|",
-            f"| 지금 전량 청산 | — | ${total_pnl:+,.0f} |",
-            f"| 스탑 발동 | — | ${stop_pnl:+,.0f} |",
-            f"| T1 달성 | — | ${t1_pnl:+,.0f} |",
-            f"| T2 달성 | — | ${t2_pnl:+,.0f} |",
-            f"| 강세 시나리오 | {sc.bullish.probability:.0%} | ${sc.bullish.net_profit:+,.0f} |",
-            f"| 기본 시나리오 | {sc.base.probability:.0%} | ${sc.base.net_profit:+,.0f} |",
-            f"| 약세 시나리오 | {sc.bearish.probability:.0%} | ${sc.bearish.net_profit:+,.0f} |",
-            f"| **기대값 (EV)** | — | **${sc.expected_value:+,.0f}** |",
+            "**💰 청산 레벨별 예상 손익**", "",
+            "| 레벨 | 프리미엄 | 예상 P&L (진입 기준) |",
+            "|------|---------|-------------------|",
+            f"| 지금 전량 청산 | {current_premium_str} | ${total_pnl:+,.0f} |",
+            f"| 스탑 발동 (-50%) | ${sc.stop_loss_premium:.2f} | ${stop_pnl:+,.0f} |",
+            f"| T1 달성 (+50%) | ${sc.target_premium_1st:.2f} | ${t1_pnl:+,.0f} |" if sc.target_premium_1st else "",
+            f"| T2 달성 (+100%) | ${sc.target_premium_2nd:.2f} | ${t2_pnl:+,.0f} |" if sc.target_premium_2nd else "",
         ]
+        lines = [l for l in lines if l != ""]  # 빈 문자열 제거
+        # EV 음수인데 HOLD: 근거 자동 설명
+        if sc.expected_value < 0 and d.action == "HOLD":
+            lines += [
+                "",
+                f"> 📌 **EV 음수 HOLD 근거**: 강세 시나리오({sc.bullish.probability:.0%}) 실현 시 ${sc.bullish.net_profit:+,.0f} 가능 | DTE {dte_val}일 잔여 | Thesis 유효 → 기회비용 유지",
+            ]
     else:
-        lines += ["> P&L 시나리오 데이터 없음"]
+        lines += ["> P&L 데이터 없음"]
 
     lines += [
         "",
@@ -4622,12 +5083,27 @@ def _format_sell_position_block(
         "",
     ]
 
-    # 한 줄 요약
-    _one_liner = (sent.get("thesis", "") if sent else "") or d.rationale
-    if _one_liner:
-        _first = _one_liner.split(".")[0].strip()
-        if len(_first) > 10:
-            lines += [f"> 💬 **한 줄 요약**: {_first[:180]}.", ""]
+    # 한 줄 요약 — 투자자에게 "지금 상태 + 해야 할 행동"을 한 문장으로
+    if d.action == "FULL_EXIT":
+        _exit_summary = f"FULL EXIT 결정 — {d.rationale[:160]}" if d.rationale else "FULL EXIT 결정"
+        lines += [f"> 💬 **한 줄 요약**: {_exit_summary}", ""]
+    elif d.action == "HOLD":
+        _pnl_str  = f"{pnl_pct:+.1f}%" if pnl_pct is not None else "N/A"
+        _stop_str = f"${sc.stop_loss_premium:.2f}" if sc and sc.stop_loss_premium else "미설정"
+        _t1_str   = f"${sc.target_premium_1st:.2f}" if sc and sc.target_premium_1st else "미설정"
+        if pnl_pct is not None and pnl_pct < 0:
+            _one_liner = f"현재 {_pnl_str} 손실 중 — Thesis 유효, DTE {dte_val}일 충분 → 스탑 {_stop_str} 대기"
+        elif pnl_pct is not None and pnl_pct >= 0:
+            _one_liner = f"현재 {_pnl_str} 수익 — T1({_t1_str}) 도달 대기, 스탑 {_stop_str} 추적"
+        else:
+            _one_liner = d.rationale or "판단 근거 없음"
+        lines += [f"> 💬 **한 줄 요약**: {_one_liner}", ""]
+    else:
+        _one_liner = (sent.get("thesis", "") if sent else "") or d.rationale
+        if _one_liner:
+            _first = _one_liner.split(".")[0].strip()
+            if len(_first) > 10:
+                lines += [f"> 💬 **한 줄 요약**: {_first[:180]}.", ""]
 
     return lines
 
@@ -4652,8 +5128,10 @@ def _format_sell_review_section(
     """
     from datetime import date as _date
 
-    result_str   = "수익 ✅" if d.realized_pnl >= 0 else "손실 ❌"
-    pnl_sign     = "+" if d.realized_pnl >= 0 else ""
+    # FULL_EXIT: realized_pnl=0 (미실행) → unrealized_pnl로 손익 판단
+    _review_pnl  = d.unrealized_pnl if (d.action == "FULL_EXIT" and d.realized_pnl == 0) else d.realized_pnl
+    result_str   = "수익 ✅" if _review_pnl >= 0 else "손실 ❌"
+    pnl_sign     = "+" if _review_pnl >= 0 else ""
     days_held    = ((_date.today() - pos.entry_date).days) if pos.entry_date else 0
 
     # LLM 필드 추출 (기본값 포함)
@@ -4677,7 +5155,7 @@ def _format_sell_review_section(
         "```",
         f"티커:       {ticker}",
         f"결과:       {result_str}",
-        f"실현 손익:  {pnl_sign}${d.realized_pnl:,.0f}",
+        f"손익:       {pnl_sign}${_review_pnl:,.0f}",
         f"보유 기간:  {days_held}일  ({pos.entry_date} → 오늘)",
         f"진입 프리미엄: ${pos.entry_premium:.2f}",
         f"Thesis 정확도: {acc_icon} {accuracy}",

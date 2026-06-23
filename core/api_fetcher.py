@@ -54,14 +54,17 @@ def _calc_sma_pct(closes: list[float], period: int) -> Optional[float]:
     return round((curr - sma) / sma * 100, 2)
 
 
-def _calc_rvol(volumes: list[float], lookback: int = 20) -> Optional[float]:
-    """오늘 거래량 / 직전 lookback일 평균"""
+def _calc_rvol(volumes: list[float], lookback: int = 20, elapsed_fraction: float = 1.0) -> Optional[float]:
+    """오늘 거래량 / 직전 lookback일 평균
+    elapsed_fraction: 장 중이면 경과비율(0~1), 완결 바이면 1.0
+    정규화: 오늘누적거래량 / (20일평균 × 경과비율)
+    """
     if len(volumes) < lookback + 1:
         return None
     avg = float(np.mean(volumes[-(lookback + 1):-1]))
-    if avg == 0:
+    if avg == 0 or elapsed_fraction <= 0:
         return None
-    return round(float(volumes[-1]) / avg, 2)
+    return round(float(volumes[-1]) / (avg * elapsed_fraction), 2)
 
 
 def _calc_sma_val(closes: list[float], period: int) -> Optional[float]:
@@ -600,7 +603,25 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
 
         # ── 기술지표 (기존) ──
         rsi14 = _calc_rsi(closes)
-        rvol = _calc_rvol(volumes)
+        # 장중 RVOL 정규화: 오늘 미완성 바는 경과비율로 나눠서 비교
+        import pytz as _pytz, datetime as _dt
+        _et = _pytz.timezone('America/New_York')
+        _now_et = _dt.datetime.now(_et)
+        _today_bar = (
+            hist is not None and not hist.empty and
+            hist.index[-1].date() == _now_et.date() and
+            _now_et.weekday() < 5 and
+            _dt.time(9, 30) <= _now_et.time() < _dt.time(16, 0)
+        )
+        if _today_bar:
+            _elapsed_sec = (
+                _now_et.hour * 3600 + _now_et.minute * 60 + _now_et.second
+                - (9 * 3600 + 30 * 60)
+            )
+            _elapsed_frac = min(1.0, max(0.01, _elapsed_sec / (390 * 60)))
+        else:
+            _elapsed_frac = 1.0
+        rvol = _calc_rvol(volumes, elapsed_fraction=_elapsed_frac)
         sma20_pct = _calc_sma_pct(closes, 20)
         sma50_pct = _calc_sma_pct(closes, 50)
         sma200_pct = _calc_sma_pct(closes, 200)
@@ -834,6 +855,7 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         # ── 밸류에이션 ──
         forward_pe = _f(info.get("forwardPE"))
         peg = _f(info.get("trailingPegRatio") or info.get("pegRatio"))
+        peg_forward = None  # yfinance에 신뢰할 수 있는 5년 EPS CAGR 없음 — PEG Forward 계산 불가
         beta = _f(info.get("beta"))
         # 애널리스트 목표주가 — 합리적 범위 체크 포함
         # apt["current"]는 post-earnings 급등 직후 현재가와 같아지는 버그 있음
@@ -882,7 +904,7 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         # ── 성장률 (decimal → %) ──
         revenue_growth_yoy = _pct(info.get("revenueGrowth"))
         net_income_growth_yoy = _pct(info.get("earningsGrowth"))
-        eps_next_5y_pct = _pct(info.get("earningsQuarterlyGrowth"))
+        eps_next_5y_pct = None  # yfinance에 5년 EPS CAGR 컨센서스 없음; Finviz 파싱 시에만 채워짐
 
         # ── 손익 (raw USD → M USD) ──
         revenue_ttm = _million(info.get("totalRevenue"))
@@ -951,6 +973,14 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         fcf_ttm = _million(info.get("freeCashflow"))
         market_cap = _f(info.get("marketCap"))
 
+        # 역산 성장률: P = EPS*(1+g)^5 / ((WACC-tg)*(1+WACC)^5) 에서 역산
+        _wacc, _tg = 0.10, 0.03
+        implied_eps_growth_pct = (
+            round(((price * (_wacc - _tg) * (1 + _wacc) ** 5 / eps_ttm) ** 0.2 - 1) * 100, 1)
+            if price and eps_ttm and eps_ttm > 0
+            else None
+        )
+
     except Exception as exc:
         log.warning("yfinance fetch 실패 %s: %s", ticker, exc)
         return StockDetail(ticker=ticker)
@@ -970,6 +1000,8 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         sma200_pct=sma200_pct,
         forward_pe=forward_pe,
         peg=peg,
+        peg_forward=peg_forward,
+        implied_eps_growth_pct=implied_eps_growth_pct,
         beta=beta,
         target_price=target_price,
         target_price_high=target_price_high,
@@ -1093,6 +1125,7 @@ def fetch_option_chain_fresh(
     ticker: str,
     dte_min: int = 14,
     dte_max: int = 45,
+    delta_target: float = 0.50,
 ) -> list[dict] | None:
     """
     yfinance로 옵션 체인을 실시간 수집해 SummaryOptionData.chain 형식으로 반환.
@@ -1179,14 +1212,19 @@ def fetch_option_chain_fresh(
             log.warning("option_chain_no_valid_expiry: %s (dte_min=%d)", ticker, dte_min)
             return None
 
-        # ── 만기별 ATM OI 합산 → OI가 가장 높은 만기 선택 ──────────────
+        # ── 만기별 ATM OI + 레버리지 추정 복합 점수 → 최적 만기 선택 ──────
         chosen_exp: str = candidate_exps[0][0]
         chosen_dte: int = candidate_exps[0][1]
-        best_atm_oi: int = -1
+        best_combined: float = -1.0
+        _sel_atm_oi: int = 0
+        _sel_lev: float = 0.0
 
         for exp_str, dte_c in candidate_exps:
             try:
                 ch_tmp = t.option_chain(exp_str)
+                _exp_atm_oi: int = 0
+                _best_mid: float = 0.0
+                _best_d_dist: float = float("inf")
                 for df_tmp in [ch_tmp.calls, ch_tmp.puts]:
                     if df_tmp is None or df_tmp.empty:
                         continue
@@ -1195,18 +1233,38 @@ def fetch_option_chain_fresh(
                             (df_tmp["strike"] >= spot_pre * 0.95) &
                             (df_tmp["strike"] <= spot_pre * 1.05)
                         )
-                        atm_oi = int(df_tmp.loc[atm_mask, "openInterest"].fillna(0).sum())
+                        _exp_atm_oi += int(df_tmp.loc[atm_mask, "openInterest"].fillna(0).sum())
+                        # delta_target에 가장 가까운 옵션의 mid 찾기 (레버리지 추정용)
+                        for _, _row in df_tmp[atm_mask].iterrows():
+                            _bid_r = float(_row.get("bid") or 0)
+                            _ask_r = float(_row.get("ask") or 0)
+                            _iv_r  = float(_row.get("impliedVolatility") or 0)
+                            if _bid_r <= 0 or _iv_r <= 0:
+                                continue
+                            _mid_r = (_bid_r + _ask_r) / 2
+                            _strk_r = float(_row.get("strike") or spot_pre)
+                            # 간단한 delta 추정: moneyness 기반 (정밀도 불필요)
+                            _moneyness = _strk_r / spot_pre if spot_pre else 1.0
+                            _d_approx = max(0.1, min(0.9, 1.0 - _moneyness * 0.5 + 0.5))
+                            _d_dist = abs(_d_approx - delta_target)
+                            if _d_dist < _best_d_dist:
+                                _best_d_dist = _d_dist
+                                _best_mid = _mid_r
                     else:
-                        atm_oi = int(df_tmp["openInterest"].fillna(0).sum())
-                    if atm_oi > best_atm_oi:
-                        best_atm_oi = atm_oi
-                        chosen_exp = exp_str
-                        chosen_dte = dte_c
+                        _exp_atm_oi += int(df_tmp["openInterest"].fillna(0).sum())
+                lev_est = (delta_target * spot_pre / _best_mid) if (_best_mid > 0 and spot_pre) else 1.0
+                combined = _exp_atm_oi * 0.6 + min(lev_est, 15.0) * 300
+                if combined > best_combined:
+                    best_combined = combined
+                    chosen_exp = exp_str
+                    chosen_dte = dte_c
+                    _sel_atm_oi = _exp_atm_oi
+                    _sel_lev = round(lev_est, 1)
             except Exception:
                 continue
 
-        log.debug("option_expiry_selected: %s  exp=%s  DTE=%d  atm_oi=%d",
-                  ticker, chosen_exp, chosen_dte, best_atm_oi)
+        log.debug("option_expiry_selected: %s  exp=%s  DTE=%d  atm_oi=%d  lev_est=%.1fx  combined=%.0f",
+                  ticker, chosen_exp, chosen_dte, _sel_atm_oi, _sel_lev, best_combined)
 
         chain = t.option_chain(chosen_exp)
         spot = spot_pre or _f(info_data.get("regularMarketPrice"))
@@ -1237,8 +1295,8 @@ def fetch_option_chain_fresh(
                 if strike is None:
                     continue
 
-                # spot ±10% ATM 근처만 포함 (체인 전체를 넘기면 너무 큼)
-                if spot and (strike < spot * 0.90 or strike > spot * 1.10):
+                # spot ±15% 근처 포함 (장기 delta 0.40 커버, 단기도 충분히 포함)
+                if spot and (strike < spot * 0.85 or strike > spot * 1.15):
                     continue
 
                 bid = _f(row.get("bid")) or 0.0
@@ -1365,15 +1423,22 @@ async def fetch_option_chains_multi(
         "장기":  (_st.DTE_LONG_MIN,  _st.DTE_LONG_MAX),
         "초장기": (_st.DTE_ULTRA_MIN, _st.DTE_ULTRA_MAX),
     }
+    _DELTA_TARGETS = {
+        "단기":  _st.DELTA_SHORT_TARGET,
+        "중기":  _st.DELTA_MID_TARGET,
+        "장기":  _st.DELTA_LONG_TARGET,
+        "초장기": _st.DELTA_ULTRA_TARGET,
+    }
 
     sem = asyncio.Semaphore(max_concurrency)
     results: dict[str, list[dict]] = {}
 
     async def _one(horizon: str) -> None:
         dte_min, dte_max = _DTE_RANGES[horizon]
+        d_tgt = _DELTA_TARGETS.get(horizon, 0.50)
         async with sem:
             chain = await asyncio.to_thread(
-                fetch_option_chain_fresh, ticker, dte_min, dte_max
+                fetch_option_chain_fresh, ticker, dte_min, dte_max, d_tgt
             )
             if chain:
                 results[horizon] = chain
@@ -1548,6 +1613,97 @@ def fetch_macro_realtime() -> dict:
             log.debug("macro fetch 실패 %s: %s", sym, exc)
         time.sleep(0.1)  # rate-limit 완화
 
+    # ── RRE 매크로/섹터 보강 지표 (docs §8) ──────────────────────────
+    def _ext_closes(sym: str, period: str = "3mo") -> list[float]:
+        try:
+            h = yf.Ticker(sym).history(period=period, auto_adjust=True)
+            if h is not None and not h.empty:
+                return [float(v) for v in h["Close"].dropna().tolist()]
+        except Exception as exc:
+            log.debug("macro_ext fetch 실패 %s: %s", sym, exc)
+        return []
+
+    def _ret_20d(closes: list[float]) -> Optional[float]:
+        if len(closes) >= 21 and closes[-21] != 0:
+            return (closes[-1] - closes[-21]) / closes[-21] * 100.0
+        return None
+
+    def _ret_nd(closes: list[float], n: int) -> Optional[float]:
+        if len(closes) >= n + 1 and closes[-(n + 1)] != 0:
+            return (closes[-1] - closes[-(n + 1)]) / closes[-(n + 1)] * 100.0
+        return None
+
+    try:
+        # ① SMH + SMH vs SPY 상대강도 (+ 종목 섹터 상대강도용 SMH 1M 수익률)
+        _smh = _ext_closes("SMH")
+        _spy = _ext_closes("SPY")
+        if _smh:
+            result["smh"] = round(_smh[-1], 2)
+            if len(_smh) >= 20:
+                result["smh_ma20"] = round(float(np.mean(_smh[-20:])), 2)
+        _smh_r, _spy_r = _ret_20d(_smh), _ret_20d(_spy)
+        if _smh_r is not None:
+            result["smh_return_1m"] = round(_smh_r, 2)
+        if _smh_r is not None and _spy_r is not None:
+            result["smh_rs_20d"] = round(_smh_r - _spy_r, 2)
+
+        # ② HYG/IEF 크레딧 스프레드 비율 20일 변화
+        _hyg = _ext_closes("HYG")
+        _ief = _ext_closes("IEF")
+        if _hyg:
+            result["hyg"] = round(_hyg[-1], 2)
+        if (len(_hyg) >= 21 and len(_ief) >= 21
+                and _ief[-1] and _ief[-21]):
+            _r_now = _hyg[-1] / _ief[-1]
+            _r_then = _hyg[-21] / _ief[-21]
+            if _r_then:
+                result["hyg_ief_chg_20d"] = round((_r_now - _r_then) / _r_then * 100.0, 2)
+
+        # ③ VIX 백워데이션 (VIX9D / VIX)
+        _vix9d = _ext_closes("^VIX9D", period="1mo")
+        if _vix9d:
+            result["vix9d"] = round(_vix9d[-1], 2)
+            _vix_now = result.get("vix")
+            if _vix_now and _vix_now > 0:
+                result["vix_backwardation"] = round(_vix9d[-1] / _vix_now, 3)
+
+        # ④ 시장 폭 (^BPSPX)
+        _bp = _ext_closes("^BPSPX", period="1mo")
+        if _bp:
+            result["bpspx"] = round(_bp[-1], 2)
+
+        # ⑤ 10년물 금리 방향성 (20일 변화, %p) — ^TNX 스케일 자동 보정
+        _tnx = _ext_closes("^TNX")
+        if len(_tnx) >= 21:
+            _scale = 0.1 if _tnx[-1] > 20 else 1.0
+            result["yield_10y_chg_20d"] = round((_tnx[-1] - _tnx[-21]) * _scale, 3)
+
+        # ⑥ SKEW (기관 하락 헤지)
+        _skew = _ext_closes("^SKEW", period="1mo")
+        if _skew:
+            result["skew"] = round(_skew[-1], 2)
+
+        # ⑦ 섹터 로테이션: 방어주(XLU,XLV) vs 성장주(XLK,SMH) 10일 수익률
+        _xlu = _ext_closes("XLU", period="1mo")
+        _xlv = _ext_closes("XLV", period="1mo")
+        _xlk = _ext_closes("XLK", period="1mo")
+        _def_rets = [r for r in (_ret_nd(_xlu, 10), _ret_nd(_xlv, 10)) if r is not None]
+        _grw_rets = [r for r in (_ret_nd(_xlk, 10), _ret_nd(_smh, 10)) if r is not None]
+        if _def_rets and _grw_rets:
+            _def_avg = sum(_def_rets) / len(_def_rets)
+            _grw_avg = sum(_grw_rets) / len(_grw_rets)
+            result["sector_rotation_10d"] = round(_def_avg - _grw_avg, 2)
+    except Exception as exc:
+        log.warning("macro_ext 실패: %s", exc)
+
+    # ⑦ 섹터 대장주 피어 약세 점검
+    try:
+        _peers = fetch_sector_peers()
+        if _peers:
+            result.update(_peers)
+    except Exception as exc:
+        log.warning("sector_peers 실패: %s", exc)
+
     # ── Fear & Greed — CNN production API ────────────────────────────
     try:
         _ssl_ctx = ssl.create_default_context()
@@ -1572,6 +1728,47 @@ def fetch_macro_realtime() -> dict:
         log.warning("fear_greed CNN 실패: %s", exc)
 
     return result
+
+
+# ─── 섹터 대장주 피어 약세 점검 (RRE 매크로 보강) ───────────────────────────
+
+def fetch_sector_peers(peers: Optional[list[str]] = None) -> dict:
+    """반도체 섹터 대장주 피어 약세 점검.
+
+    각 피어가 일봉 종가 < SMA20 OR 일봉 MACD Hist < 0 이면 '약세'로 집계.
+    섹터 대장이 꺾이면 개별 종목이 아무리 좋아도 끌려간다 (docs §8.2 ①).
+
+    Returns:
+        {"sector_peer_weak_ratio": float, "sector_peer_detail": str} — 실패 시 {}
+    """
+    import yfinance as yf
+    peers = peers or ["NVDA", "AMD", "AVGO", "QCOM", "MU", "TSM"]
+    weak: list[str] = []
+    checked = 0
+    for sym in peers:
+        try:
+            h = yf.Ticker(sym).history(period="3mo", auto_adjust=True)
+            if h is None or h.empty or len(h) < 30:
+                continue
+            closes = [float(v) for v in h["Close"].dropna().tolist()]
+            if len(closes) < 26:
+                continue
+            checked += 1
+            sma20 = sum(closes[-20:]) / 20.0
+            _ml, _ms, _mh = _calc_macd(closes)
+            below_sma = closes[-1] < sma20
+            macd_neg = _mh is not None and _mh < 0
+            if below_sma or macd_neg:
+                weak.append(sym)
+        except Exception as exc:
+            log.debug("sector_peer fetch 실패 %s: %s", sym, exc)
+        time.sleep(0.05)
+    if checked == 0:
+        return {}
+    return {
+        "sector_peer_weak_ratio": round(len(weak) / checked, 2),
+        "sector_peer_detail": (", ".join(weak) + " 약세") if weak else "전 피어 양호",
+    }
 
 
 # ─── 어닝 캘린더 실시간 수집 (Step 3용) ─────────────────────────────────────

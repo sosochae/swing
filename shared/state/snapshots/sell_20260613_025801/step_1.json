@@ -1,0 +1,33 @@
+{
+  "execution_id": "sell_20260613_025801",
+  "step": 1,
+  "completed_at": "2026-06-13T02:58:17.453837",
+  "duration_ms": 0,
+  "data": {
+    "MU_2026-08-21_1090.0": {
+      "delta_pnl": 65.14,
+      "theta_pnl": -517.5,
+      "vega_pnl": -12075.64,
+      "vega_exposure_per_pct": 167.27,
+      "iv_used": 0.5,
+      "dte_urgency": "안정",
+      "flags": [
+        "근거_유효"
+      ],
+      "current_price": 997.6401,
+      "current_premium": 54.3,
+      "premium_source": "bs_estimate",
+      "greeks": {
+        "delta": 0.39717369860409196,
+        "gamma": 0.0017780059252314132,
+        "theta": -0.6468810080469978,
+        "vega": 1.6726582964624563,
+        "iv": 0.5,
+        "ivr": 0.0
+      },
+      "extrinsic": 54.3,
+      "extrinsic_ratio": 0.3024,
+      "delta_category": "otm"
+    }
+  }
+}

@@ -199,9 +199,9 @@ class SlackClient:
             for _ult_tk, _uc in ultra_long_criteria.items():
                 ultra_lines.append(
                     f"• *{_ult_tk}* — {_uc.get('direction', 'N/A')}"
-                    f" | DTE {_uc.get('dte_range', 'N/A')}"
-                    f" | Delta {_uc.get('delta_range', 'N/A')}"
-                    f" | Strike {_uc.get('strike_range', 'N/A')}"
+                    f" | DTE {_uc.get('dte', 'N/A')}"
+                    f" | Delta {_uc.get('delta', 'N/A')}"
+                    f" | Strike {_uc.get('strike', 'N/A')}"
                 )
                 ultra_lines.append(
                     f"  OI ≥ {_uc.get('min_oi', 200)} | Spread ≤ {_uc.get('max_spread_pct', 10.0)}%"
@@ -248,10 +248,20 @@ class SlackClient:
 
         for d in decisions:
             urgency_icon = {"critical": "🔴", "warning": "🟡", "normal": "🟢", "stable": "🔵"}.get(d.urgency, "⚪")
+            _roll_line = ""
+            if d.action == "ROLL" and d.roll_type:
+                _rt_short = {"레버리지_복원": "레버리지복원", "손익분기점_조정": "BEP조정", "만기_연장": "만기연장"}.get(d.roll_type, d.roll_type)
+                _rk = f"${d.roll_strike:.0f}" if d.roll_strike else "?"
+                _re = str(d.roll_expiry) if d.roll_expiry else "?"
+                _roll_line = f"\n🔄 {_rt_short} → Strike {_rk} / 만기 {_re}"
+            _pnl_line = (
+                f"미실현: ${d.unrealized_pnl:+,.0f}" if d.action in ("HOLD", "ROLL")
+                else f"미실현: ${d.unrealized_pnl:+,.0f} | 실현: ${d.realized_pnl:+,.0f}"
+            )
             blocks.append(_section_block(
-                f"{urgency_icon} *{d.ticker}* → **{d.action}**\n"
-                f"_근거: {d.rationale[:100]}_\n"
-                f"실현: ${d.realized_pnl:,.0f}"
+                f"{urgency_icon} *{d.ticker}* [{d.urgency.upper()}] → **{d.action}**{_roll_line}\n"
+                f"_근거: {d.rationale[:120]}_\n"
+                f"{_pnl_line}"
             ))
 
         if obsidian_path:

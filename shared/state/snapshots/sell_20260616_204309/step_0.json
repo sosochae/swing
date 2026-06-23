@@ -1,0 +1,11 @@
+{
+  "execution_id": "sell_20260616_204309",
+  "step": 0,
+  "completed_at": "2026-06-16T20:43:34.907348",
+  "duration_ms": 23172,
+  "data": {
+    "positions": [
+      "MU"
+    ]
+  }
+}

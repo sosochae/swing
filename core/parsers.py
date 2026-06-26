@@ -782,10 +782,23 @@ def _parse_summary_list_format(raw: list, file_path: Path) -> SummaryData:
         if im_m:
             opt_data["implied_move_near"] = float(im_m.group(1))
 
-        # Max Pain
-        mp_m = re.search(r"Max Pain: \$([\d.]+)", opt_str)
-        if mp_m:
-            opt_data["max_pain_near"] = float(mp_m.group(1))
+        # Max Pain — 최근접 만기(min DTE)의 값 선택.
+        # (기존 re.search는 텍스트 첫 매치를 잡아 먼 만기의 비현실적 값을 가져오는 버그)
+        _mp_candidates: list[tuple[int, float]] = []
+        for _ln in opt_str.split("\n"):
+            _dte_m = re.search(r"DTE:(\d+)", _ln)
+            _mp_ln = re.search(r"Max Pain: \$([\d.]+)", _ln)
+            if _dte_m and _mp_ln:
+                _mp_candidates.append((int(_dte_m.group(1)), float(_mp_ln.group(1))))
+        if _mp_candidates:
+            _mp_candidates.sort(key=lambda x: x[0])          # min DTE 우선
+            opt_data["max_pain_near"] = _mp_candidates[0][1]
+            if len(_mp_candidates) > 1:
+                opt_data["max_pain_far"] = _mp_candidates[-1][1]
+        else:
+            mp_m = re.search(r"Max Pain: \$([\d.]+)", opt_str)  # 폴백
+            if mp_m:
+                opt_data["max_pain_near"] = float(mp_m.group(1))
 
         # ATM Straddle 추정 (ATM 콜 + ATM 풋 Mid 합)
         mid_m = re.findall(r"Mid ([\d.]+)", opt_str)

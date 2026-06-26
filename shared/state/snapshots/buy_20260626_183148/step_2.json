@@ -1,0 +1,23 @@
+{
+  "execution_id": "buy_20260626_183148",
+  "step": 2,
+  "completed_at": "2026-06-26T18:32:39.253971",
+  "duration_ms": 29312,
+  "data": {
+    "regime_status": "borderline",
+    "allowed_direction": "long_put",
+    "regime_confidence": 0.67,
+    "trend_confidence": 1.0,
+    "risk_factors": [
+      "VIX 상승 (20.2) — 옵션 프리미엄 과대",
+      "SPY 20MA 아래 — 하락 추세",
+      "QQQ 20MA 아래 — 기술주 약세",
+      "VIX 상승 추세 (20.2 > MA20 18.0) — 공포 확산 중",
+      "DXY 강세 (101.2 > MA20 100.1) — 달러 강세, 수익 압박",
+      "반도체 피어 약세 83% (NVDA, AMD, AVGO, QCOM, TSM 약세) — 섹터 끌림 위험"
+    ],
+    "trend_strength": "MA 구조: SPY·QQQ 모두 20MA 아래 (하락 추세)",
+    "volatility": "VIX 20.19 20.0~30.0 (개별 IVR 확인 필요)",
+    "index_trend": "방향 스코어 -4.0 ≤ -3 + 풋 검증 통과 (VIX 20.2, ADX MA확인) → Long Put | SPY < MA20 (-1), QQQ < MA20 (-1), SPY 4H DI-25>DI+10 (-0.5)"
+  }
+}

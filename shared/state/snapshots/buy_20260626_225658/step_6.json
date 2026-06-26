@@ -1,0 +1,17 @@
+{
+  "execution_id": "buy_20260626_225658",
+  "step": 6,
+  "completed_at": "2026-06-26T22:59:06.165099",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "MU"
+    ],
+    "warned": [],
+    "da_deductions": {
+      "MU": [
+        "내부자 순매도 $2633.6M (−35pt)"
+      ]
+    }
+  }
+}

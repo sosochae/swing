@@ -1,0 +1,125 @@
+{
+  "execution_id": "buy_20260626_190413",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "MRVL",
+      "direction": "long_call",
+      "action": "탈락",
+      "final_score": 0.0,
+      "conviction": {
+        "technical_signals": 4,
+        "timing_conditions": 2,
+        "total_signals": 6,
+        "rr_ratio": 0.62,
+        "ivr": 50.0,
+        "level": "low",
+        "trend_confidence": 0.476,
+        "news_confidence": 0.4,
+        "thesis_confidence": 0.207,
+        "execution_confidence": 0.7,
+        "total_conviction": 0.403
+      },
+      "capital_allocation": 7131.0,
+      "contracts": 2,
+      "strike": 270.0,
+      "expiry": "2026-07-24",
+      "rationale": "확신도 0.40 (low) | 신호수 4/8, 시나리오R/R 0.6, EV $3,037 | [ADX:10 RSI:25 MACD:0 RVOL:0] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $162.8 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "MRVL",
+        "direction": "long_call",
+        "strike": 270.0,
+        "expiry": "2026-07-24",
+        "contracts": 2,
+        "total_investment": 7131.0,
+        "commission_total": 1.0,
+        "implied_move_pct": 30.139372822299652,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.25,
+          "stock_move_pct": 45.20905923344949,
+          "target_stock_price": 408.415,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 110.8486432117448,
+          "gross_profit": 15039.728642348962,
+          "net_profit": 15038.728642348962,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4,
+          "stock_move_pct": 15.069686411149824,
+          "target_stock_price": 323.645,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 57.824775211744786,
+          "gross_profit": 4434.955042348957,
+          "net_profit": 4433.955042348957,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.35,
+          "stock_move_pct": -45.20905923344948,
+          "target_stock_price": 154.105,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -7130.0,
+          "net_profit": -7131.0,
+          "rationale": ""
+        },
+        "expected_value": 3037.414177526824,
+        "stop_loss_premium": 17.825,
+        "target_premium_1st": 53.474999999999994,
+        "target_premium_2nd": 71.3,
+        "target_premium_3rd": 89.125,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(151%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": [
+        "내부자 순매도 $237.4M (−35pt)",
+        "[🔴분포패턴-확정] Wyckoff 4/4 조건 충족",
+        "[⚠️TF역배열] 주봉↑ / 단기 MACD↓ / 1H RSI 49",
+        "[⚠️촉매소진] 다음 촉매 공백 + 최근 1M +64%",
+        "[⚠️이익의質] GAAP 순이익 성장 -80% (Non-GAAP 과장 의심)",
+        "[⚠️밸류거품] 역산 EPS CAGR 61% 필요",
+        "[🔴섹터극단이탈] SMH 대비 초과수익 +57%p (혼자 급등)",
+        "[🔴고점형성위험-극단] RRE 5/7 적색(스마트머니이탈, 촉매소진, 펀더멘털괴리, 수급군집, 멀티TF역배열) → 강제탈락"
+      ]
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "borderline",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 75.1,
+  "summary": {
+    "filtered_tickers": [
+      "MRVL"
+    ],
+    "regime": "borderline"
+  }
+}

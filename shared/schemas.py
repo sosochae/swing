@@ -83,7 +83,8 @@ class SummaryMacro(BaseModel):
     hyg_ief_chg_20d: float | None = None        # HYG/IEF 비율 20일 변화 (%)
     vix9d: float | None = None                  # 9일 VIX
     vix_backwardation: float | None = None      # VIX9D / VIX (>1 = 백워데이션)
-    bpspx: float | None = None                  # ^BPSPX 시장 폭 (Bullish %)
+    bpspx: float | None = None                  # (구) ^BPSPX — Yahoo 미제공으로 미사용
+    breadth_rsp_spy_20d: float | None = None    # RSP−SPY 20일 수익률(%p), 음수=시장폭 약화
     yield_10y_chg_20d: float | None = None      # 10년물 금리 20일 변화 (%p)
     skew: float | None = None                   # ^SKEW (기관 하락 헤지)
     sector_peer_weak_ratio: float | None = None # 반도체 피어 약세 비율 (0~1)
@@ -205,6 +206,7 @@ class StockDetail(BaseModel):
     target_price_high: float | None = None  # 애널리스트 최고 목표주가 (Street-High)
     recom: float | None = None             # 1.0=Strong Buy ~ 5.0=Sell
     beta: float | None = None
+    last_upgrade_days_ago: int | None = None  # 최근 애널리스트 업그레이드가 며칠 전 (UTAD용)
     short_float_pct: float | None = None   # "2.20%" → 2.20
     insider_trans_pct: float | None = None # "-6.19%" → -6.19 (6개월 내부자 순매수 %)
     eps_surprise_pct: float | None = None  # 최근 분기 EPS 서프라이즈 %

@@ -1573,6 +1573,63 @@ async def fetch_finnhub_insider_bulk(
     return results
 
 
+# ─── 애널리스트 업그레이드 날짜 (UTAD '막차 함정' 감지용) ───────────────────────
+
+def fetch_analyst_upgrade_days(ticker: str) -> Optional[int]:
+    """가장 최근 '업그레이드'가 며칠 전인지 반환 (yfinance upgrades_downgrades).
+
+    급등 '이후'에 나온 업그레이드 = 막차 함정(UTAD) 신호. 그 순서를 보려면
+    업그레이드 날짜가 필요한데, 현재 파이프라인엔 이 데이터가 없어 신설.
+
+    Returns:
+        days_ago (int, ≥0) — 업그레이드 이력 없거나 실패 시 None
+    """
+    try:
+        import yfinance as yf
+        import pandas as pd
+        ud = yf.Ticker(ticker).upgrades_downgrades
+        if ud is None or len(ud) == 0 or "Action" not in ud.columns:
+            return None
+        ups = ud[ud["Action"].astype(str).str.lower() == "up"]
+        if len(ups) == 0:
+            return None
+        if "GradeDate" in ups.columns:
+            last = pd.to_datetime(ups["GradeDate"]).max()
+        else:
+            last = pd.to_datetime(ups.index).max()
+        if last is None or pd.isna(last):
+            return None
+        if getattr(last, "tz", None) is not None:
+            last = last.tz_localize(None)
+        days_ago = (pd.Timestamp.now().normalize() - last.normalize()).days
+        return max(0, int(days_ago))
+    except Exception as exc:
+        log.debug("analyst_upgrade 실패 %s: %s", ticker, exc)
+        return None
+
+
+async def fetch_analyst_upgrade_days_bulk(
+    tickers: list[str],
+    max_concurrency: int = 3,
+) -> dict[str, int]:
+    """fetch_analyst_upgrade_days 의 비동기 병렬 버전.
+
+    Returns:
+        {ticker: days_ago}  (업그레이드 이력 있는 티커만)
+    """
+    sem = asyncio.Semaphore(max_concurrency)
+    results: dict[str, int] = {}
+
+    async def _one(ticker: str) -> None:
+        async with sem:
+            d = await asyncio.to_thread(fetch_analyst_upgrade_days, ticker)
+            if d is not None:
+                results[ticker] = d
+
+    await asyncio.gather(*[_one(t) for t in tickers])
+    return results
+
+
 # ─── 매크로 지표 실시간 ───────────────────────────────────────────────────────
 
 def fetch_macro_realtime() -> dict:
@@ -1667,10 +1724,13 @@ def fetch_macro_realtime() -> dict:
             if _vix_now and _vix_now > 0:
                 result["vix_backwardation"] = round(_vix9d[-1] / _vix_now, 3)
 
-        # ④ 시장 폭 (^BPSPX)
-        _bp = _ext_closes("^BPSPX", period="1mo")
-        if _bp:
-            result["bpspx"] = round(_bp[-1], 2)
+        # ④ 시장 폭 (RSP 동일가중 vs SPY 시총가중 20일 상대수익률)
+        #    ^BPSPX는 Yahoo 미제공(404) → RSP/SPY 괴리로 대체.
+        #    RSP가 SPY보다 뒤지면 소수 대형주만 지수 견인 = breadth 약화.
+        _rsp = _ext_closes("RSP")
+        _rsp_r = _ret_20d(_rsp)
+        if _rsp_r is not None and _spy_r is not None:
+            result["breadth_rsp_spy_20d"] = round(_rsp_r - _spy_r, 2)
 
         # ⑤ 10년물 금리 방향성 (20일 변화, %p) — ^TNX 스케일 자동 보정
         _tnx = _ext_closes("^TNX")

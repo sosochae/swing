@@ -341,12 +341,12 @@ def analyze_market_regime(summary: SummaryData) -> MarketRegime:
     if _vix_bw is not None and _vix_bw > st.RRE_MACRO_VIX_BACKWARDATION:
         macro_warn += 1
         risk_factors.append(f"VIX 백워데이션 (VIX9D/VIX {_vix_bw:.2f}) — 즉각적 위험 신호")
-    # ⑤ 시장 폭 약화
-    _bpspx = getattr(macro, "bpspx", None)
-    if _bpspx is not None and _bpspx < st.RRE_MACRO_BREADTH_WEAK:
+    # ⑤ 시장 폭 약화 (RSP 동일가중이 SPY 시총가중보다 뒤짐 = 소수 종목 견인)
+    _breadth = getattr(macro, "breadth_rsp_spy_20d", None)
+    if _breadth is not None and _breadth < st.RRE_MACRO_BREADTH_WEAK:
         macro_warn += 1
         risk_factors.append(
-            f"시장 폭 약화 (^BPSPX {_bpspx:.0f} < {st.RRE_MACRO_BREADTH_WEAK:.0f}) — 소수 종목 의존 상승"
+            f"시장 폭 약화 (RSP−SPY 20일 {_breadth:+.1f}%p) — 소수 종목 의존 상승"
         )
     # ⑥ 금리 방향성 (상승 중)
     _yld_chg = getattr(macro, "yield_10y_chg_20d", None)
@@ -1520,6 +1520,17 @@ def is_parabolic_top(weekly_rsi: float | None, weekly_adx: float | None) -> bool
             and weekly_adx > st.RRE_F8_WEEKLY_ADX_MIN)
 
 
+def is_max_pain_plausible(price: float | None, max_pain: float | None) -> bool:
+    """Max Pain이 주가의 1/2~2배 범위 안인지 (밖이면 데이터 불량으로 신호 무시).
+
+    summary의 만기별 Max Pain이 깨진 값(예: $281 종목에 $40)일 때 오신호 방지.
+    """
+    if not price or not max_pain or price <= 0 or max_pain <= 0:
+        return False
+    r = st.RRE_MAX_PAIN_PLAUSIBLE_RATIO
+    return (1.0 / r) <= (price / max_pain) <= r
+
+
 def calculate_reversal_risk_score(
     fv: Any,                                # StockDetail (없으면 None)
     opt: Any,                               # TickerOptions (없으면 None)
@@ -1567,7 +1578,8 @@ def calculate_reversal_risk_score(
         red.append("기술적소진")
 
     # ── 차원 2: 옵션 시장 구조 (Max Pain 괴리 AND P/C 극단) ─────────
-    gap_red = (max_pain is not None and current_px is not None and max_pain > 0
+    # Max Pain이 주가의 1/2~2배 밖이면 데이터 불량 → 신호 무시 (오신호 방지)
+    gap_red = (is_max_pain_plausible(current_px, max_pain)
                and (current_px - max_pain) / max_pain > st.RRE_D2_MAXPAIN_GAP_MIN)
     pc_red = pc_ratio is not None and 0 < pc_ratio < st.RRE_D2_PC_MAX
     if gap_red and pc_red:

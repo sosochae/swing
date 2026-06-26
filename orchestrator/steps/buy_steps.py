@@ -38,6 +38,7 @@ from core.analysis import (
     calculate_scenario,
     calculate_technical_score,
     check_portfolio_exposure,
+    is_max_pain_plausible,
     is_parabolic_top,
     validate_option,
 )
@@ -200,9 +201,13 @@ class BuySteps:
             _kav_rows = parse_kavout_universe(_Path(cfg.DATA_DIR))
             ctx.kavout_data = {r.ticker: r for r in _kav_rows}
             log.info("kavout_loaded", tickers=len(ctx.kavout_data))
+            append_audit(ctx.execution_id, 1, "info",
+                         data={"kavout_loaded": "ok", "tickers": len(ctx.kavout_data)})
         except Exception as exc:
             log.warning("kavout_parse_warn", error=str(exc))
             ctx.kavout_data = {}
+            append_audit(ctx.execution_id, 1, "degraded",
+                         data={"kavout_load_failed": str(exc)[:120]})
 
         # Watchlist 구성
         # target_tickers 지정 → 해당 종목만
@@ -503,6 +508,25 @@ class BuySteps:
             log.info("finnhub_insider_refreshed", tickers=len(insider_map))
         except Exception as _exc:
             log.warning("finnhub_insider_failed", error=str(_exc))
+            append_audit(ctx.execution_id, 4, "degraded",
+                         data={"finnhub_insider_failed": str(_exc)[:120]})
+
+        # ── 애널리스트 업그레이드 날짜 (UTAD '막차 함정' 감지용) ──────────
+        try:
+            from core.api_fetcher import fetch_analyst_upgrade_days_bulk
+            up_map = await fetch_analyst_upgrade_days_bulk(ctx.filtered_tickers)
+            for ticker, days_ago in up_map.items():
+                fv = ctx.stock_data.get(ticker)
+                if fv:
+                    ctx.stock_data[ticker] = fv.model_copy(
+                        update={"last_upgrade_days_ago": days_ago}
+                    )
+            if up_map:
+                append_audit(ctx.execution_id, 4, "info",
+                             data={"analyst_upgrade": "ok", "updated": len(up_map)})
+            log.info("analyst_upgrade_refreshed", tickers=len(up_map))
+        except Exception as _exc:
+            log.warning("analyst_upgrade_failed", error=str(_exc))
 
         # ── 실시간 데이터 → summary.technical 브릿지 ────────────────────────────
         # yfinance/Finnhub으로 가져온 stock_detail을 summary_data.technical에 반영.
@@ -1116,6 +1140,7 @@ class BuySteps:
             wk_adx   = getattr(fvd, "weekly_adx", None) if fvd else None
             adx_now  = getattr(fvd, "adx", None) if fvd else None
             adx_prev = getattr(fvd, "adx_prev", None) if fvd else None
+            last_up  = getattr(fvd, "last_upgrade_days_ago", None) if fvd else None
 
             # 다음 촉매(실적)까지 일수 (없으면 None=공백)
             next_cat_days: int | None = None
@@ -1151,13 +1176,24 @@ class BuySteps:
                     deduction += abs(st.DA_BUY_DISTRIBUTION_PENALTY)
                     reasons.append(f"[🔴분포패턴] Wyckoff {_dist}/4 조건 충족")
 
-                # ── UTAD (분포 후 가짜 돌파 — 단일세션 급등 함정) ─────────
-                if (change_pct is not None and change_pct > st.RRE_UTAD_SINGLE_DAY_RETURN_MIN
-                        and return_1m is not None and return_1m > st.RRE_DIST_RETURN_1M_MIN):
+                # ── UTAD (분포 후 가짜 돌파) ──────────────────────────────
+                # 이미 크게 오른 상태(_extended)에서 ① 단일세션 급등 OR
+                # ② 급등 '이후' 나온 업그레이드(막차 칭찬) → 함정 의심.
+                _extended = return_1m is not None and return_1m > st.RRE_DIST_RETURN_1M_MIN
+                _single_spike = (change_pct is not None
+                                 and change_pct > st.RRE_UTAD_SINGLE_DAY_RETURN_MIN)
+                _upgrade_after_runup = (last_up is not None
+                                        and last_up <= st.RRE_UTAD_UPGRADE_RECENT_DAYS)
+                if _extended and (_single_spike or _upgrade_after_runup):
                     deduction += abs(st.DA_BUY_UTAD_PENALTY)
-                    reasons.append(
-                        f"[⚠️UTAD주의] 단일세션 +{change_pct:.1f}% 급등 (이미 1M +{return_1m:.0f}% 연장)"
-                    )
+                    if _upgrade_after_runup:
+                        reasons.append(
+                            f"[⚠️UTAD주의] {last_up}일 전 업그레이드 — 이미 1M +{return_1m:.0f}% 급등 후 '막차 칭찬'"
+                        )
+                    else:
+                        reasons.append(
+                            f"[⚠️UTAD주의] 단일세션 +{change_pct:.1f}% 급등 (이미 1M +{return_1m:.0f}% 연장)"
+                        )
 
                 # ── 멀티 TF 역배열 (주봉↑ / 단기 MACD↓ / 1H RSI 약세) ─────
                 _wk_bull = (wk_dip is not None and wk_din is not None and wk_adx is not None
@@ -1170,8 +1206,8 @@ class BuySteps:
                     reasons.append(f"[⚠️TF역배열] 주봉↑ / 단기 MACD↓ / 1H RSI {rsi_1h:.0f}")
 
                 # ── 옵션 구조: Max Pain 괴리 ──────────────────────────────
-                if (opt_rre and cur_px and opt_rre.max_pain_near
-                        and opt_rre.max_pain_near > 0):
+                # max_pain이 주가의 1/2~2배 밖이면 데이터 불량 → 무시 (오신호 방지)
+                if (opt_rre and is_max_pain_plausible(cur_px, opt_rre.max_pain_near)):
                     _gap = (cur_px - opt_rre.max_pain_near) / opt_rre.max_pain_near
                     if _gap > st.RRE_MAX_PAIN_GAP_CRITICAL:
                         deduction += abs(st.DA_BUY_MAX_PAIN_CRITICAL_PENALTY)
@@ -1194,9 +1230,11 @@ class BuySteps:
                 if ((next_cat_days is None or next_cat_days > st.RRE_CATALYST_GAP_DAYS)
                         and return_1m is not None and return_1m > st.RRE_CATALYST_RETURN_MIN):
                     _cat_str = f"{next_cat_days}일" if next_cat_days is not None else "공백"
+                    _up_note = (f", {last_up}일 전 업그레이드 소화"
+                                if last_up is not None and last_up <= 30 else "")
                     deduction += abs(st.DA_BUY_CATALYST_EXHAUSTION_PENALTY)
                     reasons.append(
-                        f"[⚠️촉매소진] 다음 촉매 {_cat_str} + 최근 1M +{return_1m:.0f}%"
+                        f"[⚠️촉매소진] 다음 촉매 {_cat_str} + 최근 1M +{return_1m:.0f}%{_up_note}"
                     )
 
                 # ── GAAP/DCF 펀더멘털 괴리 ────────────────────────────────
@@ -3036,7 +3074,7 @@ def _save_completeness(
     from datetime import date
     from pathlib import Path as _Path
 
-    # ── 1. 데이터 소스 상태 (audit log에서 이번 실행 degraded 이벤트 수집) ──
+    # ── 1. 데이터 소스 상태 (audit log에서 이번 실행 이벤트 수집) ────────
     audit_file = _Path(cfg.LOGS_DIR) / f"audit_{date.today()}.json"
     data_sources: dict[str, str] = {}
     try:
@@ -3048,13 +3086,45 @@ def _save_completeness(
                 entry = _json.loads(line)
                 if entry.get("execution_id") != execution_id:
                     continue
-                d = entry.get("data", {})
+                d     = entry.get("data", {})
+                step  = entry.get("step")
+                status = entry.get("status")
+
+                # yfinance (Step 4)
                 if "yfinance_refresh_failed" in d:
                     data_sources["yfinance"] = f"failed: {str(d['yfinance_refresh_failed'])[:120]}"
-                elif entry.get("step") == 4 and entry.get("status") == "completed":
+                elif step == 4 and status == "completed":
                     data_sources.setdefault("yfinance", "ok")
+
+                # Finnhub insider (Step 4)
+                if "finnhub_insider_failed" in d:
+                    data_sources["finnhub_insider"] = f"failed: {str(d['finnhub_insider_failed'])[:120]}"
+                elif d.get("finnhub_insider") == "ok":
+                    data_sources.setdefault("finnhub_insider", "ok")
+
+                # LLM sentiment (Step 5) — 종목별 실패 누적
+                if step == 5:
+                    if status == "degraded" and "E300:" in (entry.get("error") or ""):
+                        failed_ticker = entry.get("ticker", "unknown")
+                        existing = data_sources.get("llm_sentiment", "")
+                        if existing.startswith("failed:"):
+                            data_sources["llm_sentiment"] = existing + f", {failed_ticker}"
+                        else:
+                            data_sources["llm_sentiment"] = f"failed: {failed_ticker}"
+                    elif status == "completed":
+                        data_sources.setdefault("llm_sentiment", "ok")
+
+                # Kavout (Step 1)
+                if "kavout_load_failed" in d:
+                    data_sources["kavout"] = f"failed: {str(d['kavout_load_failed'])[:120]}"
+                elif d.get("kavout_loaded") == "ok":
+                    data_sources.setdefault("kavout", "ok")
+
     except Exception:
         data_sources.setdefault("yfinance", "unknown")
+        data_sources.setdefault("finnhub_insider", "unknown")
+        data_sources.setdefault("llm_sentiment", "unknown")
+        data_sources.setdefault("kavout", "unknown")
 
     # ── 2. 필드별 실제값 ──────────────────────────────────────────────────
     _KEY_FIELDS = [

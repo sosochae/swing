@@ -651,6 +651,7 @@ DA_BUY_DISTRIBUTION_CONFIRMED_PENALTY: float = -45.0  # 4개 전부
 
 # ─ UTAD (Upthrust After Distribution): 단일세션 급등 함정 ───────────
 RRE_UTAD_SINGLE_DAY_RETURN_MIN: float = 10.0   # change_pct > +10%
+RRE_UTAD_UPGRADE_RECENT_DAYS:   int   = 7      # 최근 7일 내 업그레이드 = '급등 후 칭찬'
 DA_BUY_UTAD_PENALTY:            float = -20.0
 
 # ─ 내부자 매도 차감 3단계 (기존 일괄 -10 → 규모별 차등) ─────────────
@@ -667,6 +668,7 @@ DA_BUY_TF_DIVERGENCE_PENALTY: float = -15.0
 # ─ 옵션 시장 구조 DA (Max Pain 괴리 + P/C 역발상) ───────────────────
 RRE_MAX_PAIN_GAP_WARNING:  float = 0.08   # 현재가 > Max Pain × 1.08
 RRE_MAX_PAIN_GAP_CRITICAL: float = 0.12   # 현재가 > Max Pain × 1.12
+RRE_MAX_PAIN_PLAUSIBLE_RATIO: float = 2.0 # max_pain이 주가의 1/2~2배 밖이면 데이터 불량 → 신호 무시
 DA_BUY_MAX_PAIN_WARNING_PENALTY:  float = -15.0
 DA_BUY_MAX_PAIN_CRITICAL_PENALTY: float = -25.0
 RRE_PC_RATIO_CROWD_WARNING:  float = 0.30   # P/C < 0.30 → 군집
@@ -707,6 +709,6 @@ RRE_MACRO_HYG_DROP_PCT:       float = -1.0   # HYG/IEF 비율 20일 변화 < -1%
 RRE_MACRO_VIX_BACKWARDATION:  float = 1.0    # VIX9D / VIX > 1.0
 RRE_MACRO_YIELD_RISE_WARNING:  float = 0.30  # 10년물 20일 변화 > +0.3%p
 RRE_MACRO_YIELD_RISE_CRITICAL: float = 0.50  # > +0.5%p
-RRE_MACRO_BREADTH_WEAK:        float = 50.0  # ^BPSPX < 50 → 시장폭 약화
+RRE_MACRO_BREADTH_WEAK:        float = -3.0  # RSP−SPY 20일 < -3%p → 시장폭 약화(소수 종목 견인)
 # 섹터 로테이션: 방어주(XLU,XLV) − 성장주(XLK,SMH) 10일 수익률 차이(%p)
 RRE_MACRO_ROTATION_GAP:        float = 2.0   # 방어주가 성장주를 +2%p 초과 → 리스크오프

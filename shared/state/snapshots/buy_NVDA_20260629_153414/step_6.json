@@ -1,0 +1,15 @@
+{
+  "execution_id": "buy_NVDA_20260629_153414",
+  "step": 6,
+  "completed_at": "2026-06-29T15:37:39.181831",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "NVDA"
+    ],
+    "warned": [
+      "NVDA"
+    ],
+    "da_deductions": {}
+  }
+}

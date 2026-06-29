@@ -865,3 +865,89 @@ async def _collect_rss_feeds(
 
     log.info("rss_collected", label=label, count=len(results))
     return results
+
+
+# ─────────────────────────────────────────────────────────────
+# 8. research_agent 패턴 인프라 (카탈리스트·뉴스 강화 공용)
+# ─────────────────────────────────────────────────────────────
+
+async def rank_and_pick(
+    results: list[dict],
+    context: str,
+    top_n: int = 3,
+) -> list[dict]:
+    """
+    DDG 검색 결과 목록을 LLM으로 품질 평가해 상위 top_n 반환.
+
+    Args:
+        results: call_ddg_search() 반환값 (title, description, url 포함)
+        context: 무엇을 찾고 있는지 설명 (e.g. "MU 향후 카탈리스트 이벤트 날짜")
+        top_n: 반환할 최대 개수
+
+    Returns:
+        상위 results 항목 (원본 dict 그대로, 순서 재정렬)
+    """
+    if not results:
+        return []
+
+    items_text = "\n".join(
+        f"[{i}] {r.get('title','')} | {r.get('description','')[:150]}"
+        for i, r in enumerate(results)
+    )
+    prompt = (
+        f"Context: {context}\n\n"
+        f"Search results:\n{items_text}\n\n"
+        f"Which {top_n} results are most likely to contain specific, actionable information "
+        f"relevant to the context? Reply ONLY with a JSON array of indices, e.g. [0,2,5]."
+    )
+    try:
+        resp = await call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            model=cfg.LLM_MODEL_RANK_AND_PICK,
+            temperature=0.0,
+            max_tokens=64,
+        )
+        raw = resp.content.strip()
+        import re as _re
+        nums = _re.findall(r"\d+", raw)
+        indices = [int(n) for n in nums if int(n) < len(results)][:top_n]
+        if indices:
+            return [results[i] for i in indices]
+    except Exception as exc:
+        log.warning("rank_and_pick_failed", error=str(exc))
+    # 폴백: 앞 top_n 반환
+    return results[:top_n]
+
+
+async def fetch_url_as_markdown(url: str, max_chars: int = 3000) -> str:
+    """
+    remio web_get subprocess로 URL 본문을 마크다운으로 반환.
+    remio 미설치 시 빈 문자열 반환 (graceful degradation).
+
+    Args:
+        url: 가져올 URL
+        max_chars: 반환 최대 문자 수
+
+    Returns:
+        본문 마크다운 (max_chars 초과 시 잘림)
+    """
+    if not url:
+        return ""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "remio", "web_get", url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=20.0)
+        text = stdout.decode("utf-8", errors="replace").strip()
+        return text[:max_chars] if len(text) > max_chars else text
+    except asyncio.TimeoutError:
+        log.warning("fetch_url_timeout", url=url[:80])
+        return ""
+    except FileNotFoundError:
+        log.debug("remio_not_found", hint="remio CLI not installed")
+        return ""
+    except Exception as exc:
+        log.warning("fetch_url_failed", url=url[:80], error=str(exc))
+        return ""

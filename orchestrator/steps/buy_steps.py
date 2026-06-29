@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from core.analysis import (
@@ -43,7 +43,7 @@ from core.analysis import (
     validate_option,
 )
 from core.api_fetcher import fetch_stock_data_bulk
-from core.llm import analyze_with_llm, call_ddg_search, _collect_rss_feeds
+from core.llm import analyze_with_llm, call_ddg_search, call_llm, _collect_rss_feeds, rank_and_pick, fetch_url_as_markdown
 from core.parsers import load_latest_summary
 from core.state import (
     append_audit,
@@ -74,6 +74,63 @@ log = get_logger()
 
 # 향후 5일 내 실적 발표 종목 판단 기준 (Summary events에서 추출)
 _EARNINGS_PROXIMITY_DAYS = cfg.EARNINGS_PROXIMITY_DAYS
+
+
+def _ensure_negatives(
+    negatives: list,
+    ticker: str,
+    fvd: "Any | None",
+) -> list:
+    """LLM이 significant_negatives를 비워두면 기본 Bear 항목을 삽입한다."""
+    _EMPTY_MARKERS = {"해당 없음", "없음", "n/a", "", "해당없음"}
+
+    def _is_empty(item) -> bool:
+        if not item:
+            return True
+        factor = item.get("factor", "") if isinstance(item, dict) else str(item)
+        return factor.strip().lower() in _EMPTY_MARKERS
+
+    if negatives and not all(_is_empty(n) for n in negatives):
+        return negatives
+
+    defaults: list[dict] = []
+    _pe = getattr(fvd, "trailing_pe", None) if fvd else None
+
+    defaults.append({
+        "factor": (
+            f"{'P/E ' + f'{_pe:.1f}x — 역사적 상위 밸류에이션 구간.' if _pe and _pe > 20 else '현재 밸류에이션'}"
+            f" 지속 성장 달성이 전제 조건이며, 실망 실적 발표 시 멀티플 압축으로 인한 급락 위험이 있습니다."
+        ),
+        "source": "구조적 리스크 (자동 생성)",
+        "significance": "Medium",
+    })
+    defaults.append({
+        "factor": (
+            "반도체·메모리·기술주 업종은 사이클 특성상 수요 고점 이후 재고 조정 국면이 발생할 수 있습니다. "
+            "현재 공급 부족이 이중 주문(double-ordering)이나 고객사 재고 축적에 기인할 가능성도 배제할 수 없습니다."
+        ),
+        "source": "업종 구조적 리스크 (자동 생성)",
+        "significance": "Medium",
+    })
+    log.info("significant_negatives_auto_filled", ticker=ticker, count=len(defaults))
+    return defaults
+
+
+def _option_composite_score(e: dict, delta_target: float) -> float:
+    """delta 이격 + OI/volume 로그 보너스 + spread 패널티 (낮을수록 좋음)"""
+    import math as _m
+    _d   = abs(float(e.get("delta", 0) or 0))
+    _oi  = int(e.get("oi", 0) or 0)
+    _vol = int(e.get("volume", 0) or 0)
+    _bid = float(e.get("bid", 0) or 0)
+    _ask = float(e.get("ask", 0) or 0)
+    _mid_v = float(e.get("mid", 0) or e.get("mid_price", 0) or 0)
+    _mid = (_bid + _ask) / 2 if _bid > 0 and _ask > 0 else _mid_v
+    _spread = (_ask - _bid) / _mid if _mid > 0 and _bid > 0 and _ask > 0 else 0.0
+    return (abs(_d - delta_target)
+            - _m.log1p(_oi)  * 0.015
+            - _m.log1p(_vol) * 0.008
+            + _spread * 0.25)
 
 
 class BuySteps:
@@ -528,6 +585,30 @@ class BuySteps:
         except Exception as _exc:
             log.warning("analyst_upgrade_failed", error=str(_exc))
 
+        # ── 카탈리스트 웹 검색 보완 (제품 발표·컨퍼런스 등) ─────────────────────
+        try:
+            from core.api_fetcher import enrich_catalyst_events_web
+            _web_events = await enrich_catalyst_events_web(
+                ctx.filtered_tickers, ctx.stock_data,
+                force_refresh=ctx.force_refresh,
+            )
+            for _wt, _wevs in _web_events.items():
+                if not _wevs:
+                    continue
+                _wfv = ctx.stock_data.get(_wt)
+                if not _wfv:
+                    continue
+                # 기존 upcoming_events와 병합 후 날짜순 정렬
+                _merged = list(_wfv.upcoming_events) + _wevs
+                _merged.sort(key=lambda e: e.date)
+                ctx.stock_data[_wt] = _wfv.model_copy(
+                    update={"upcoming_events": _merged}
+                )
+            log.info("catalyst_web_enrich_done",
+                     tickers=len([t for t, e in _web_events.items() if e]))
+        except Exception as _cwe:
+            log.warning("catalyst_web_enrich_failed", error=str(_cwe))
+
         # ── 실시간 데이터 → summary.technical 브릿지 ────────────────────────────
         # yfinance/Finnhub으로 가져온 stock_detail을 summary_data.technical에 반영.
         # calculate_technical_score()가 실시간 기술지표를 사용하게 됨.
@@ -640,17 +721,18 @@ class BuySteps:
         # Weekly DI+ >> DI- AND Weekly ADX ≥ 30 → 매크로 방향과 무관하게 long_call
         # Weekly DI- >> DI+ AND Weekly ADX ≥ 30 → 매크로 방향과 무관하게 long_put
         # 이를 통해 "매크로 하락 + 개별 종목 장기 강세" 같은 케이스를 정확히 처리
-        def _stock_direction(ticker: str) -> str:
+        def _stock_direction(ticker: str) -> tuple[str, str]:
+            """(direction, override_reason) 반환. override_reason은 오버라이드 없으면 ""."""
             fv = ctx.stock_data.get(ticker)
             if not fv:
-                return macro_direction
+                return macro_direction, ""
             wdip = getattr(fv, "weekly_di_plus",  None)
             wdin = getattr(fv, "weekly_di_minus", None)
             wadx = getattr(fv, "weekly_adx",      None)
             if wdip is None or wdin is None or wadx is None:
-                return macro_direction
+                return macro_direction, ""
             if wadx < st.STOCK_DIR_WEEKLY_ADX_MIN:
-                return macro_direction   # 주봉 추세 약함 → 매크로 따름
+                return macro_direction, ""   # 주봉 추세 약함 → 매크로 따름
             if wdip > wdin * st.STOCK_DIR_WEEKLY_DI_RATIO:
                 # ── Category B 오버라이드 예외: 포물선 극단 구간 ──────────
                 # 주봉 RSI > 85 → blow-off top. 주봉 상승 추세여도 long_call
@@ -660,29 +742,41 @@ class BuySteps:
                     log.info("stock_dir_override_cancelled_parabolic", ticker=ticker,
                              weekly_rsi=round(wrsi, 1), weekly_adx=round(wadx, 1),
                              macro=macro_direction)
-                    return macro_direction
+                    return macro_direction, ""
                 # 주봉 강한 상승 추세 → long_call (매크로가 long_put이어도)
                 if macro_direction == "long_put":
+                    reason = (
+                        f"주봉 ADX {wadx:.1f} + DI+{wdip:.0f} >> DI-{wdin:.0f} "
+                        f"({wdip/wdin:.1f}배) → 개별 추세가 매크로를 오버라이드"
+                    )
                     log.info("stock_dir_override_call", ticker=ticker,
                              weekly_di_plus=round(wdip, 1), weekly_di_minus=round(wdin, 1),
                              weekly_adx=round(wadx, 1), macro=macro_direction)
-                return "long_call"
+                    return "long_call", reason
+                return "long_call", ""
             if wdin > wdip * st.STOCK_DIR_WEEKLY_DI_RATIO:
                 # 주봉 강한 하락 추세 → long_put (매크로가 long_call이어도)
                 if macro_direction == "long_call":
+                    reason = (
+                        f"주봉 ADX {wadx:.1f} + DI-{wdin:.0f} >> DI+{wdip:.0f} "
+                        f"({wdin/wdip:.1f}배) → 개별 하락 추세가 매크로를 오버라이드"
+                    )
                     log.info("stock_dir_override_put", ticker=ticker,
                              weekly_di_plus=round(wdip, 1), weekly_di_minus=round(wdin, 1),
                              weekly_adx=round(wadx, 1), macro=macro_direction)
-                return "long_put"
-            return macro_direction
+                    return "long_put", reason
+                return "long_put", ""
+            return macro_direction, ""
 
         async def analyze_one(ticker: str) -> tuple[str, TechnicalScore]:
-            stock_dir = _stock_direction(ticker)
+            stock_dir, override_reason = _stock_direction(ticker)
             score = calculate_technical_score(
                 ticker=ticker,
                 direction=stock_dir,
                 summary=ctx.summary_data,
             )
+            if override_reason:
+                score = score.model_copy(update={"direction_override_reason": override_reason})
             return ticker, score
 
         tasks = [analyze_one(t) for t in ctx.filtered_tickers]
@@ -842,7 +936,32 @@ class BuySteps:
             except Exception as exc:
                 log.warning("ddg_search_error", ticker=ticker, error=str(exc))
 
-            # ③ Brave Search 보완 (API 키 있을 때만)
+            # ③ DDG 결과 품질 선별 + 본문 fetch (research_agent 패턴)
+            #    LLM이 제목 훑어보고 상위 3개 선별 → 실제 기사 본문 3,000자 추가
+            _ddg_flat: list[dict] = []
+            for _r in ddg_results:
+                if isinstance(_r, list):
+                    _ddg_flat.extend(_r)
+            if _ddg_flat:
+                try:
+                    _top_ddg = await rank_and_pick(
+                        _ddg_flat,
+                        context=f"{ticker} 주가·실적·옵션 관련 최신 뉴스",
+                        top_n=3,
+                    )
+                    _fetch_tasks = [fetch_url_as_markdown(r.get("url", ""), max_chars=3000)
+                                    for r in _top_ddg]
+                    _bodies = await asyncio.gather(*_fetch_tasks, return_exceptions=True)
+                    for _item, _body in zip(_top_ddg, _bodies):
+                        if isinstance(_body, str) and _body:
+                            _item = dict(_item)  # 원본 불변
+                            _item["description"] = _body
+                            _item["source"] = _item.get("source", "web") + "_fetched"
+                            ticker_news.insert(0, _item)  # 선별 기사를 앞에 배치
+                except Exception as _rp_exc:
+                    log.debug("rank_and_pick_skip", ticker=ticker, error=str(_rp_exc))
+
+            # ④ Brave Search 보완 (API 키 있을 때만)
             brave_news: list[dict] = []
             try:
                 from core.llm import call_brave_search
@@ -852,7 +971,7 @@ class BuySteps:
             except Exception:
                 pass
 
-            # ④ 소스별 최대 항목 수 제한 후 합산
+            # ⑤ 소스별 최대 항목 수 제한 후 합산
             #    순서: 종목RSS → DDG → Brave → 시장RSS(Telegram 포함)
             #    각 소스에서 골고루 포함되도록 cap 적용
             def _dedup(items: list[dict]) -> list[dict]:
@@ -877,7 +996,7 @@ class BuySteps:
                      market_sampled=len(market_sample),
                      combined=len(combined))
 
-            # 어닝 분석 요약: Finviz 파일 제거 → K어닝 분석.md (Kavout) 우선 사용
+            # ⑥ 어닝 분석 요약: Finviz 파일 제거 → K어닝 분석.md (Kavout) 우선 사용
             earnings_summary = ""
             try:
                 from core.parsers import _parse_earnings_file as _pef
@@ -909,7 +1028,7 @@ class BuySteps:
             except Exception as _k_exc:
                 log.debug("k_earnings_summary_skip", ticker=ticker, error=str(_k_exc))
 
-            # ⑥ LLM 감성 분석 — 최대 50개 기사 (title + description 포함)
+            # ⑦ LLM 감성 분석 — 최대 50개 기사 (title + description 포함)
             #    claude-haiku-4.5 200k context → 50개 × 평균 300token ≒ 15k tokens, 충분
             try:
                 ticker_data = ctx.summary_data.tickers.get(ticker) if ctx.summary_data else None
@@ -932,7 +1051,11 @@ class BuySteps:
                     "key_drivers": result.get("key_drivers", []),
                     "critical_events": result.get("critical_events", []),
                     "major_positives": result.get("major_positives", []),
-                    "significant_negatives": result.get("significant_negatives", []),
+                    "significant_negatives": _ensure_negatives(
+                        result.get("significant_negatives", []),
+                        ticker=ticker,
+                        fvd=ctx.stock_data.get(ticker),
+                    ),
                     "sentiment_strength": result.get("sentiment_strength", "Moderate"),
                     "information_consensus": result.get("information_consensus", "Conflicting"),
                     "lasting_impacts": result.get("lasting_impacts", ""),
@@ -947,6 +1070,56 @@ class BuySteps:
                     ctx.summary_data.tickers[ticker].news.extend(
                         [{"source": "LLM", "title": result.get("thesis", "")}]
                     )
+
+                # ── Gap analysis (기술점수 상위 종목 + 낮은 뉴스 신뢰도일 때) ──
+                _ts = ctx.technical_scores.get(ticker)
+                _sent_confidence = result.get("confidence", "Low")
+                _is_high_conviction = _ts and _ts.final_score >= 65
+                _is_low_info = _sent_confidence in ("Low", "Medium")
+                if _is_high_conviction and _is_low_info:
+                    try:
+                        # 1단계: LLM에게 빠진 각도 1개 물어보기
+                        _gap_prompt = (
+                            f"You analyzed {ticker} stock news. "
+                            f"Overall sentiment: {result.get('overall_sentiment')}. "
+                            f"Confidence: {_sent_confidence}. "
+                            f"Bull thesis: {result.get('bull_thesis','')[:200]}. "
+                            f"What is the SINGLE most important missing data angle "
+                            f"to improve this analysis? Reply in ONE short English search query."
+                        )
+                        from shared.config import get_config as _gcfg
+                        _gap_resp = await call_llm(
+                            messages=[{"role": "user", "content": _gap_prompt}],
+                            model=_gcfg().LLM_MODEL_GAP_ANALYSIS,
+                            temperature=0.0,
+                            max_tokens=60,
+                        )
+                        _gap_query = _gap_resp.content.strip().strip('"').strip("'")
+                        log.info("gap_analysis_query", ticker=ticker, query=_gap_query[:80])
+
+                        # 2단계: 갭 쿼리로 검색 + 상위 1개 fetch
+                        _gap_results = await call_ddg_search(
+                            _gap_query, num_results=5, force_refresh=True
+                        )
+                        if _gap_results:
+                            _gap_top = await rank_and_pick(
+                                _gap_results, context=_gap_query, top_n=1
+                            )
+                            if _gap_top:
+                                _gap_body = await fetch_url_as_markdown(
+                                    _gap_top[0].get("url", ""), max_chars=2000
+                                )
+                                if _gap_body:
+                                    ctx.sentiment_results[ticker]["gap_supplement"] = {
+                                        "query": _gap_query,
+                                        "title": _gap_top[0].get("title", ""),
+                                        "body": _gap_body,
+                                    }
+                                    log.info("gap_analysis_done", ticker=ticker,
+                                             title=_gap_top[0].get("title","")[:60])
+                    except Exception as _gap_exc:
+                        log.debug("gap_analysis_skip", ticker=ticker, error=str(_gap_exc))
+
             except Exception as exc:
                 # LLM 실패해도 sentiment_results에 fallback 저장 (보고서 N/A 방지)
                 if ticker not in ctx.sentiment_results:
@@ -1150,6 +1323,22 @@ class BuySteps:
                 next_cat_days = min(_future_days)
 
             if is_long:
+                # ── 주봉 RSI 과매수 패널티 (롱콜 방향만 적용) ──────────────
+                # 주봉 RSI 80+ : 역사적으로 단기 평균회귀 위험이 높은 구간
+                if wk_rsi is not None:
+                    if wk_rsi >= st.DA_WEEKLY_RSI_EXTREME:
+                        deduction += abs(st.DA_WEEKLY_RSI_EXTREME_PENALTY)
+                        reasons.append(
+                            f"주봉 RSI 극단 과매수 {wk_rsi:.1f} ≥ {st.DA_WEEKLY_RSI_EXTREME} "
+                            f"(−{abs(st.DA_WEEKLY_RSI_EXTREME_PENALTY):.0f}pt)"
+                        )
+                    elif wk_rsi >= st.DA_WEEKLY_RSI_HIGH:
+                        deduction += abs(st.DA_WEEKLY_RSI_HIGH_PENALTY)
+                        reasons.append(
+                            f"주봉 RSI 과매수 {wk_rsi:.1f} ≥ {st.DA_WEEKLY_RSI_HIGH} "
+                            f"(−{abs(st.DA_WEEKLY_RSI_HIGH_PENALTY):.0f}pt)"
+                        )
+
                 # ── F8 포물선 경고 (step_4 기록 플래그 기반) ──────────────
                 if "F8_PARABOLIC_TOP" in ctx.filter_failures.get(ticker, []):
                     deduction += abs(st.DA_BUY_PARABOLIC_PENALTY)
@@ -1308,12 +1497,12 @@ class BuySteps:
                 ctx.technical_scores[ticker] = score.model_copy(
                     update={"final_score": new_score}
                 )
-                da_log[ticker] = reasons
+                da_log[ticker] = {"reasons": reasons, "total_pts": deduction}
                 log.info("da_deduction", ticker=ticker, deduction=deduction,
                          old=score.final_score, new=new_score, reasons=reasons)
             elif reasons:
                 # 차감 없이 경고만 기록된 이유도 보존
-                da_log[ticker] = reasons
+                da_log[ticker] = {"reasons": reasons, "total_pts": 0.0}
 
         # ── 40점 미만 경고 (탈락 없음, 모든 종목 계속 진행) ──
         before_count = len(ctx.filtered_tickers)
@@ -1835,6 +2024,68 @@ class BuySteps:
                     "dte": 35,
                 }
 
+            # ── 실적-만기 충돌 시 대안 계약 탐색 ─────────────────────────────
+            _fvd_s7 = ctx.stock_data.get(ticker) if ctx.stock_data else None
+            _next_earn_s7 = getattr(_fvd_s7, "next_earnings_date", None) if _fvd_s7 else None
+            if _next_earn_s7 and expiry_dt >= _next_earn_s7:
+                _post_target = _next_earn_s7 + timedelta(days=7)
+                # _horizon_chains에서 post_target에 가장 가까운 ATM 계약 탐색
+                _all_contracts: list[dict] = []
+                for _hz_chain in (_horizon_chains.get(ticker) or {}).values():
+                    _all_contracts.extend(_hz_chain)
+                _alt_candidates = [
+                    e for e in _all_contracts
+                    if e.get("option_type", "").lower() == opt_type
+                    and abs(float(e.get("delta", 0) or 0)) >= 0.35
+                    and abs(float(e.get("delta", 0) or 0)) <= 0.65
+                ]
+                if _alt_candidates:
+                    # 1단계: post_target에 가장 가까운 expiry 결정
+                    def _ea_exp(e: dict) -> date:
+                        try:
+                            return _dt.fromisoformat(str(e.get("expiry", ""))[:10]).date()
+                        except Exception:
+                            return date.today()
+                    _ea_best_expiry = min(
+                        {_ea_exp(e) for e in _alt_candidates},
+                        key=lambda d: abs((d - _post_target).days)
+                    )
+                    # 2단계: 해당 expiry에서 OI/volume/spread 복합스코어로 최적 계약 선택
+                    _same_expiry_pool = [e for e in _alt_candidates if _ea_exp(e) == _ea_best_expiry]
+                    # bid>0 우선 (실제 거래 가능 계약), 없으면 전체 폴백
+                    _same_expiry_liquid = [e for e in _same_expiry_pool if float(e.get("bid", 0) or 0) > 0]
+                    _best_alt = min(
+                        _same_expiry_liquid if _same_expiry_liquid else _same_expiry_pool,
+                        key=lambda e: _option_composite_score(e, 0.50)
+                    )
+                    _alt_expiry_str = str(_best_alt.get("expiry", ""))
+                    try:
+                        _alt_expiry_dt = _dt.fromisoformat(_alt_expiry_str[:10]).date()
+                    except Exception:
+                        _alt_expiry_dt = _post_target
+                    _alt_premium = float(_best_alt.get("mid_price", 0) or 0)
+                    if _alt_premium <= 0:
+                        _bid = float(_best_alt.get("bid", 0) or 0)
+                        _ask = float(_best_alt.get("ask", 0) or 0)
+                        _alt_premium = (_bid + _ask) / 2 if _bid > 0 and _ask > 0 else 0.0
+                    ctx.earnings_alt_options[ticker] = {
+                        "expiry":   _alt_expiry_dt,
+                        "strike":   float(_best_alt.get("strike", 0) or 0),
+                        "premium":  round(_alt_premium, 2),
+                        "delta":    round(abs(float(_best_alt.get("delta", 0) or 0)), 3),
+                        "dte":      (_alt_expiry_dt - date.today()).days,
+                        "opt_type": opt_type,
+                    }
+                    log.info("earnings_alt_found", ticker=ticker,
+                             current_expiry=str(expiry_dt),
+                             next_earnings=str(_next_earn_s7),
+                             alt_expiry=str(_alt_expiry_dt),
+                             alt_strike=_best_alt.get("strike"),
+                             alt_premium=round(_alt_premium, 2))
+                else:
+                    log.info("earnings_alt_no_candidate", ticker=ticker,
+                             next_earnings=str(_next_earn_s7))
+
             # ── Greeks 계산 (항상 BS 기반으로 산출) ─────────────────────────
             raw_mid = float(best_entry.get("mid_price", 0) or 0)
             strike_val = float(best_entry.get("strike", spot) or spot)
@@ -2041,6 +2292,102 @@ class BuySteps:
                               ticker=ticker, horizon=horizon,
                               strike=_hv_strike, delta=round(_hv_gs.delta, 3),
                               dte=_hv_dte)
+
+                    # ── 예산 초과 시 OTM 대안 탐색 (#3-C) ──────────────────────────
+                    try:
+                        from shared.config import get_config as _gcfg3
+                        _cfg3 = _gcfg3()
+                        _hz_budget = _cfg3.budget_1st if horizon == "중기" else _cfg3.budget_2nd
+                        _hz_cost_1c = (_hv_mid or 0.0) * 100
+                        if _hz_cost_1c > _hz_budget and _hz_cost_1c > 0:
+                            # OTM 방향: 롱콜이면 strike↑, 롱풋이면 strike↓
+                            if "call" in _hv_dir:
+                                _balt_pool = [
+                                    e for e in _pool
+                                    if float(e.get("strike", 0) or 0) > _hv_strike
+                                    and abs(float(e.get("delta", 0) or 0)) >= 0.25
+                                ]
+                            else:
+                                _balt_pool = [
+                                    e for e in _pool
+                                    if float(e.get("strike", 0) or 0) < _hv_strike
+                                    and abs(float(e.get("delta", 0) or 0)) >= 0.25
+                                ]
+                            # mid=0인 계약에 BS 가격 추정 주입 (장외 대응)
+                            import math as _bsm
+                            def _ncdf_b(x: float) -> float:
+                                _k3 = 1.0 / (1.0 + 0.2316419 * abs(x))
+                                _p3 = _k3 * (0.319381530 + _k3 * (-0.356563782
+                                    + _k3 * (1.781477937 + _k3 * (-1.821255978
+                                    + _k3 * 1.330274429))))
+                                _v3 = 1.0 - 0.39894228 * _bsm.exp(-0.5 * x * x) * _p3
+                                return _v3 if x >= 0 else 1.0 - _v3
+                            for _be in _balt_pool:
+                                _be_mid = float(_be.get("mid", 0) or _be.get("mid_price", 0) or 0)
+                                if _be_mid <= 0:
+                                    try:
+                                        _be_k = float(_be.get("strike", 0) or 0)
+                                        _be_iv = float(_be.get("iv", 0) or 0) / 100.0
+                                        _be_dte = int(_be.get("dte", 0) or 0)
+                                        _be_otype = _be.get("option_type", "").lower()
+                                        if _be_k > 0 and _be_iv > 0.05 and _be_dte > 0 and _hv_spot > 0:
+                                            _be_T = _be_dte / 365.0
+                                            _be_r = 0.04
+                                            _be_d1 = (_bsm.log(_hv_spot / _be_k) + (_be_r + 0.5 * _be_iv ** 2) * _be_T) / (_be_iv * _bsm.sqrt(_be_T))
+                                            _be_d2 = _be_d1 - _be_iv * _bsm.sqrt(_be_T)
+                                            if _be_otype == "call":
+                                                _be_px = _hv_spot * _ncdf_b(_be_d1) - _be_k * _bsm.exp(-_be_r * _be_T) * _ncdf_b(_be_d2)
+                                            else:
+                                                _be_px = _be_k * _bsm.exp(-_be_r * _be_T) * _ncdf_b(-_be_d2) - _hv_spot * _ncdf_b(-_be_d1)
+                                            if _be_px > 0:
+                                                _be["mid"] = round(max(0.01, _be_px), 3)
+                                                _be["estimated"] = True
+                                    except Exception:
+                                        pass
+                            # 예산 이내 계약만 추림 (실거래가 or BS 추정가 포함)
+                            _balt_pool = [
+                                e for e in _balt_pool
+                                if 0 < (float(e.get("mid_price", 0) or e.get("mid", 0) or 0)) * 100 <= _hz_budget
+                            ]
+                            if _balt_pool:
+                                # bid>0 우선 (실제 거래 가능 계약), 없으면 전체 폴백
+                                _balt_liquid = [e for e in _balt_pool if float(e.get("bid", 0) or 0) > 0]
+                                _balt = min(
+                                    _balt_liquid if _balt_liquid else _balt_pool,
+                                    key=lambda e: _option_composite_score(e, _d_tgt)
+                                )
+                                _balt_mid = float(_balt.get("mid_price", 0) or _balt.get("mid", 0) or 0)
+                                _balt_bid3 = float(_balt.get("bid", 0) or 0)
+                                _balt_ask3 = float(_balt.get("ask", 0) or 0)
+                                if _balt_mid <= 0 and _balt_bid3 > 0 and _balt_ask3 > 0:
+                                    _balt_mid = (_balt_bid3 + _balt_ask3) / 2
+                                try:
+                                    _balt_exp_str = str(_balt.get("expiry", ""))
+                                    _balt_exp_dt = _dt3.fromisoformat(_balt_exp_str[:10]).date() if _balt_exp_str else date.today()
+                                except Exception:
+                                    _balt_exp_dt = date.today()
+                                ctx.budget_alt_options.setdefault(ticker, {})[horizon] = {
+                                    "strike":    float(_balt.get("strike", 0) or 0),
+                                    "premium":   round(_balt_mid, 2),
+                                    "delta":     round(abs(float(_balt.get("delta", 0) or 0)), 3),
+                                    "expiry":    _balt_exp_dt,
+                                    "dte":       (_balt_exp_dt - date.today()).days,
+                                    "opt_type":  _hv_opt,
+                                    "oi":        int(_balt.get("oi", 0) or 0),
+                                    "estimated": bool(_balt.get("estimated", False)),
+                                }
+                                log.info("budget_alt_found",
+                                         ticker=ticker, horizon=horizon,
+                                         current_cost=round(_hz_cost_1c),
+                                         budget=round(_hz_budget),
+                                         alt_strike=_balt.get("strike"),
+                                         alt_premium=round(_balt_mid, 2))
+                            else:
+                                ctx.budget_alt_options.setdefault(ticker, {})[horizon] = {"no_alt": True}
+                                log.info("budget_alt_none", ticker=ticker, horizon=horizon)
+                    except Exception as _balt_e:
+                        log.warning("budget_alt_error", ticker=ticker, horizon=horizon, error=str(_balt_e))
+
                 except Exception as _hv_e:
                     log.warning("horizon_option_error",
                                 ticker=ticker, horizon=horizon, error=str(_hv_e))
@@ -2422,7 +2769,8 @@ class BuySteps:
                     ),
                     risk_factors=relevant_warnings[:3],
                     scenario=scenario,
-                    da_reasons=ctx.da_log.get(ticker, []),
+                    da_reasons=ctx.da_log.get(ticker, {}).get("reasons", []),
+                    da_total_pts=ctx.da_log.get(ticker, {}).get("total_pts", 0.0),
                 ))
             return rankings
 
@@ -2482,7 +2830,8 @@ class BuySteps:
                     rationale="데이터 부족: " + ", ".join(_reasons),
                     risk_factors=[],
                     scenario=None,
-                    da_reasons=ctx.da_log.get(_tk, []),
+                    da_reasons=ctx.da_log.get(_tk, {}).get("reasons", []),
+                    da_total_pts=ctx.da_log.get(_tk, {}).get("total_pts", 0.0),
                 ))
 
         # ── ② 수익성 최우선 정렬: EV → R/R → 확신도 ───────────────
@@ -2809,6 +3158,8 @@ class BuySteps:
                 ultra_long_criteria=dict(ctx.ultra_long_criteria) if ctx.ultra_long_criteria else None,
                 options_analytics=_opt_analytics or None,
                 summary_data=ctx.summary_data,
+                earnings_alt_options=dict(ctx.earnings_alt_options) if ctx.earnings_alt_options else None,
+                budget_alt_options=dict(ctx.budget_alt_options) if ctx.budget_alt_options else None,
             )
 
             # 탈락 종목 개별 노트

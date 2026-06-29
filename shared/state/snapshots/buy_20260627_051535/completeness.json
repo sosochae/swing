@@ -1,0 +1,42 @@
+{
+  "execution_id": "buy_20260627_051535",
+  "note_path": "swing-procedure/notes/buy/2026-06-27.md",
+  "overall": "ok",
+  "data_sources": {
+    "kavout": "ok",
+    "finnhub_insider": "ok",
+    "yfinance": "ok",
+    "llm_sentiment": "ok"
+  },
+  "fields": {
+    "MU": {
+      "ADX": 22.1,
+      "DI+": 33.5,
+      "DI-": 22.52,
+      "주봉ADX": 61.65,
+      "주봉DI+": 50.43,
+      "주봉DI-": 4.98,
+      "주봉RSI": 81.96,
+      "4H_ADX": 26.16,
+      "4H_DI+": 32.61,
+      "4H_DI-": 26.86,
+      "P/E": 25.5663,
+      "EPS": 44.29,
+      "ROE": 66.64,
+      "FCF": 7639.5,
+      "매출성장YoY": 345.7,
+      "PEG": 0.3,
+      "순이익성장YoY": 1368.5,
+      "애널리스트매수": 38,
+      "애널리스트보유": 5,
+      "애널리스트매도": 0
+    }
+  },
+  "sections": {
+    "MU": {
+      "장기_투자_관점": "ok",
+      "펀더멘털_분석": "ok",
+      "애널리스트_컨센서스": "ok"
+    }
+  }
+}

@@ -240,30 +240,36 @@ Devil's Advocate 차감:
    - information_consensus 기준: 70%이상 같은방향 → "Aligned", 50/50 → "Divided", 혼재 → "Conflicting"
 
 2. **핵심 드라이버(Key Drivers)**: 각 뉴스 소스의 영향을 분석하십시오.
-   - 소스별로 source(출처명), description(영향 설명), weight_pct(상대적 영향 비중 %, 합계 100), direction("positive"|"negative"|"neutral") 제공
-   - weight_pct는 시장 영향력 기준으로 배분 (예: 제품 출시 40%, 규제 25%, 애널리스트 20%, 기타 15%)
+   - 소스별로 source(출처명), description(영향 설명), weight_pct(상대적 영향 비중 %, 대략적 순위 기반), direction("positive"|"negative"|"neutral") 제공
+   - weight_pct는 시장 영향력 기준 대략적 순위 표현용 (정밀 합계 불필요)
 
-3. **크리티컬 이벤트(Critical Events)**: 시장에 즉각적 영향을 줄 수 있는 이벤트들 (최대 3개)
-   - 각 이벤트마다 아래 필드 전부 작성:
+3. **크리티컬 이벤트(Critical Events)**: 시장에 즉각적 영향을 줄 수 있는 이벤트들 (뉴스에 실제로 있는 것만, 최대 3개)
+   - 각 이벤트마다 아래 필드 작성 (뉴스에 언급된 내용만 — 추측 금지):
      - event: 이벤트 제목 (간결하게)
      - impact: "High"|"Medium"|"Low"
      - direction: "positive"|"negative"|"neutral"
-     - aftermath: 이 이벤트가 이미 시장에 미친 즉각적 결과를 3~4문장으로 서술. 주가 반응, 거래량 변화, 투자자 반응 포함
-     - short_term_effect: 향후 1~4주 내 예상되는 추가 영향을 2~3문장으로 서술
-     - long_term_implication: 6개월+ 관점에서 이 이벤트가 기업 펀더멘털/업황에 미치는 구조적 함의를 1~2문장으로 서술
+     - aftermath: 뉴스에 언급된 즉각적 시장 반응. 언급이 없으면 null
+     - short_term_effect: 뉴스에서 직접 언급된 향후 영향. 언급이 없으면 null
+     - long_term_implication: 뉴스에 명시적 장기 전망이 있을 때만 작성. 없으면 null
 
 4. **긍정/부정 분류**: 실제 뉴스 항목 기반으로만 작성 (추측 금지)
    - major_positives: 각 항목 → factor(내용 2~3문장), source(뉴스출처), significance("High"|"Medium"|"Low")
    - significant_negatives: 동일 구조
+   - **[규칙] significant_negatives는 반드시 1개 이상 포함해야 한다.** 직접적 부정 뉴스가 없더라도 다음 카테고리 중 해당되는 것을 사용한다:
+     (a) 사이클리컬/경쟁 리스크 — 업종 특성 또는 주요 경쟁사 위협
+     (b) 밸류에이션 부담 — 현재 멀티플의 역사적 위치
+     (c) 이중 주문/재고 축적/수요 지속성 불확실성
+     (d) 규제·지정학·거시 역풍
+   - **[금지]** "해당 없음", "없음", "N/A", 빈 배열([])은 허용하지 않는다.
 
-5. **시간적 분석(Temporal)**: 영향 지속 기간 기준
-   - lasting_impacts: 6개월 이상 지속되는 구조적 변화를 3~5문장으로 서술 (구체적 근거 포함)
-   - fading_impacts: 30~90일 내 희석되는 단기 이벤트를 3~5문장으로 서술 (왜 희석되는지 설명)
-   - next_catalyst_days: 다음 실적/주요이벤트까지 예상 일수 (정수)
+5. **시간적 분석(Temporal)**: 영향 지속 기간 기준 (뉴스에 근거가 있는 내용만)
+   - lasting_impacts: 뉴스에서 확인된 구조적 변화 (근거 없으면 "근거 부족")
+   - fading_impacts: 뉴스에서 확인된 단기 이벤트 (근거 없으면 "근거 부족")
+   - next_catalyst_days: 다음 실적/주요이벤트까지 예상 일수 (정수, 불확실하면 null)
 
-6. **황소vs곰 논쟁(Bull vs Bear)**: 실제 뉴스만 근거
-   - bull_thesis: 3~4문장 강세 논거 (구체적 수치/이벤트 인용)
-   - bear_thesis: 3~4문장 약세 논거 (구체적 수치/이벤트 인용)
+6. **황소vs곰 논쟁(Bull vs Bear)**: 실제 뉴스만 근거 (추측·창작 금지)
+   - bull_thesis: 뉴스에서 확인된 강세 근거 (없으면 "뉴스 근거 부족")
+   - bear_thesis: 뉴스에서 확인된 약세 근거 (없으면 "뉴스 근거 부족")
    - debate_verdict: "Slight Bull"|"Neutral"|"Slight Bear"
 
 7. **종합 판단**: thesis(3~4문장), supporting_factors, risk_factors, invalidation_conditions, catalyst, conviction_delta(-0.2~0.2)
@@ -283,9 +289,9 @@ Devil's Advocate 차감:
       "event": "이벤트 제목",
       "impact": "High|Medium|Low",
       "direction": "positive|negative|neutral",
-      "aftermath": "즉각적 시장 반응 3~4문장",
-      "short_term_effect": "향후 1~4주 예상 영향 2~3문장",
-      "long_term_implication": "6개월+ 구조적 함의 1~2문장"
+      "aftermath": "뉴스에 언급된 즉각적 반응 (없으면 null)",
+      "short_term_effect": "뉴스에 언급된 단기 영향 (없으면 null)",
+      "long_term_implication": "뉴스에 명시된 장기 함의 (없으면 null)"
     }
   ],
   "major_positives": [
@@ -361,7 +367,7 @@ Devil's Advocate 차감:
 3. **추세 강도 및 방향성 (ADX/DI)**: ADX 수준(25 미만/이상 기준), **DI+와 DI- 수치를 반드시 인용하며** 추세 방향을 판정. DI->DI+이면 "강한 하락추세"로 명시. ATR 기반 일간 변동폭 포함.
 4. **지지/저항 레벨**: 피벗(S1/S2/R1/R2), 볼린저밴드, **피보나치 50%(${{ fib_50 }})/61.8%(${{ fib_61_8 }})**, **Camarilla L3(${{ cam_l3 }})/L4(${{ cam_l4 }})**, **EMA 9(${{ ema9 }})/21(${{ ema21 }})**, **Keltner(${{ keltner_lower }}~${{ keltner_upper }})**, **Monthly Pivot S1(${{ monthly_pivot_s1 }})/R1(${{ monthly_pivot_r1 }})**, **Call Wall(${{ call_wall }})/Put Wall(${{ put_wall }})** 등 구체적 가격($XXX)을 언급하며 3~5문장으로 서술. 현재가와의 거리, 중요도 순위 포함. "N/A"인 레벨은 제외.
 5. **진입 타이밍 근거**: 지금 {{ direction }} 진입이 유리/불리한 이유를 기술적 근거로 3~4문장 서술. regime_status가 unfavorable이면 진입 근거가 약함을 반드시 포함. EMA 9/21이 유효하면 현재가와의 위치 관계를 언급.
-6. **리스크 시나리오**: 기술적으로 이 설정이 무너지는 조건을 3~4문장으로 서술. **Fib 61.8% ${{ fib_61_8 }} 하향 돌파**, **SAR ${{ psar }} 방향 전환(현재 {{ sar_dir }})**, **Keltner 하단 ${{ keltner_lower }} 이탈**, **GEX Flip ${{ gex_flip }} 돌파**가 유효한 레벨이면 무효화 조건으로 반드시 언급. HV 15일 기대이동폭(${{ hv_move_15d }})을 최대 손실 기준으로 활용. 단기(1~5일) 리스크와 스윙(5~15일) 리스크 구분.
+6. **리스크 시나리오**: 기술적으로 이 설정이 무너지는 조건을 서술. Fib 61.8% ${{ fib_61_8 }}, SAR ${{ psar }} ({{ sar_dir }}), Keltner 하단 ${{ keltner_lower }}, GEX Flip ${{ gex_flip }} 중 **"N/A"가 아닌 값만** 무효화 조건으로 언급. HV 15일 기대이동폭(${{ hv_move_15d }})이 유효하면 최대 손실 기준으로 활용. 단기(1~5일)와 스윙(5~15일) 리스크 구분.
 7. **종합 기술 판단**: 위 6개 섹션을 통합하여 {{ direction }} 진입의 기술적 타당성을 4~5문장으로 종합 평가. 레짐·DI·MA 위치를 종합해 진입 가부를 정직하게 결론 낼 것.
 
 ## 출력 형식 (JSON 엄수 — 마크다운 블록 금지)
@@ -373,10 +379,10 @@ Devil's Advocate 차감:
   "entry_timing_rationale": "진입 타이밍 근거 3~4문장 (이상적 진입 조건 포함)",
   "risk_scenario_narrative": "리스크 시나리오 3~4문장 (무효화 가격 레벨 포함)",
   "overall_technical_narrative": "종합 기술 판단 4~5문장",
-  "key_level_entry": 진입 기준 주가 (숫자, 피벗/BB 기반),
-  "key_level_stop": 기술적 손절 주가 (숫자, S1 또는 BB 하단 기반),
-  "key_level_target1": 1차 목표 주가 (숫자, R1 또는 BB 상단 기반),
-  "key_level_target2": 2차 목표 주가 (숫자, R2 기반),
+  "key_level_entry": 진입 기준 주가 (숫자 또는 null, 피벗/BB 기반),
+  "key_level_stop": 기술적 손절 주가 (숫자 또는 null, S1 또는 BB 하단 기반),
+  "key_level_target1": 1차 목표 주가 (숫자 또는 null, R1 또는 BB 상단 기반),
+  "key_level_target2": 2차 목표 주가 (숫자 또는 null, R2 기반),
   "trend_outlook": "BULLISH|NEUTRAL|BEARISH",
   "near_term_bias": "BULLISH|NEUTRAL|BEARISH",
   "swing_bias": "BULLISH|NEUTRAL|BEARISH",
@@ -484,14 +490,7 @@ ADX: {{ adx | default('N/A') }}
   "ticker": "{{ ticker }}",
   "condition_checks": [{"condition": "조건", "status": "유지|약화|무효"}],
   "dte_urgency": "위급|주의|보통|안정",
-  "flags": ["청산_권고_신호"|"주의_신호"|"근거_유효"],
-  "pnl_attribution": {
-    "delta_pnl": 달러,
-    "theta_pnl": 달러,
-    "vega_pnl": 달러,
-    "total_estimated_pnl": 달러,
-    "actual_pnl": 달러
-  }
+  "flags": ["청산_권고_신호"|"주의_신호"|"근거_유효"]
 }""",
 
     # ── Sell Step 2: 진입 레짐 추론 + 현재 레짐 비교 ─────────

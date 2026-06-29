@@ -1,0 +1,77 @@
+{"timestamp": "2026-06-29T06:34:17.810324+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:34:18.639817+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 0, "status": "completed", "duration_ms": 827, "data": {"warnings": []}}
+{"timestamp": "2026-06-29T06:34:18.648026+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:34:20.089769+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 1, "status": "info", "duration_ms": 0, "data": {"kavout_loaded": "ok", "tickers": 41}}
+{"timestamp": "2026-06-29T06:34:20.140007+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 1, "status": "completed", "duration_ms": 1485, "data": {"watchlist_count": 1}}
+{"timestamp": "2026-06-29T06:34:20.144023+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:34:42.056903+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 2, "status": "info", "duration_ms": 0, "data": {"spy_4h_realtime": "ok", "fields": ["spy_di_plus_4h", "spy_di_minus_4h", "spy_macd_hist_4h"]}}
+{"timestamp": "2026-06-29T06:34:42.056903+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 2, "status": "completed", "duration_ms": 21907, "data": {"regime": "favorable", "direction": "long_put", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 3}}
+{"timestamp": "2026-06-29T06:34:42.063040+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:34:44.475927+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 3, "status": "completed", "duration_ms": 2406, "data": {"total": 1, "filter_pass": 1, "filter_fail": 0, "hard_stopped": []}}
+{"timestamp": "2026-06-29T06:34:44.491225+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:34:50.712722+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 4, "status": "info", "duration_ms": 0, "data": {"yfinance_refresh": "ok", "refreshed": 1}}
+{"timestamp": "2026-06-29T06:34:55.605692+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 4, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 1}}
+{"timestamp": "2026-06-29T06:35:05.152457+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 4, "status": "info", "duration_ms": 0, "data": {"analyst_upgrade": "ok", "updated": 1}}
+{"timestamp": "2026-06-29T06:35:24.044910+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 4, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 0}}
+{"timestamp": "2026-06-29T06:35:24.044910+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 4, "status": "info", "duration_ms": 0, "data": {"realtime_f1_f3_removed": ["NVDA"]}}
+{"timestamp": "2026-06-29T06:35:24.046921+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 4, "status": "completed", "duration_ms": 39546, "data": {"scored": 1, "trend_confirmed": 0, "continuing": 1}}
+{"timestamp": "2026-06-29T06:35:24.046921+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:39.181831+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 5, "status": "completed", "duration_ms": 135125}
+{"timestamp": "2026-06-29T06:37:39.181831+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:39.181831+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 6, "status": "degraded", "duration_ms": 0, "ticker": "NVDA", "error": "DA경고: 최종점수 0.0 < 40.0 (계속 진행)"}
+{"timestamp": "2026-06-29T06:37:39.181831+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 1, "surviving": 1, "da_deductions": 0}}
+{"timestamp": "2026-06-29T06:37:39.181831+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:40.735435+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 7, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 0}}
+{"timestamp": "2026-06-29T06:37:43.266807+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 7, "status": "degraded", "duration_ms": 0, "ticker": "NVDA", "error": "E400: OI 0 < 500 최소 기준"}
+{"timestamp": "2026-06-29T06:37:43.272040+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 7, "status": "completed", "duration_ms": 4092, "data": {"valid": 0, "continuing": 1}}
+{"timestamp": "2026-06-29T06:37:43.275274+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:43.275274+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 0}}
+{"timestamp": "2026-06-29T06:37:43.277362+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:43.277362+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 9, "status": "completed", "duration_ms": 0, "data": {"invested": 0.0, "cash": 22222.0}}
+{"timestamp": "2026-06-29T06:37:43.277362+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:43.281683+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 0, "high_downside": []}}
+{"timestamp": "2026-06-29T06:37:43.283201+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:43.291330+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 11, "status": "completed", "duration_ms": 0, "data": {"requeue_added": 1}}
+{"timestamp": "2026-06-29T06:37:43.293078+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:43.420969+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 12, "status": "completed", "duration_ms": 125, "data": {"note_path": "swing-procedure/notes/buy/2026-06-29.md", "watchlist_written": 1}}
+{"timestamp": "2026-06-29T06:37:43.422976+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:37:43.992352+00:00", "execution_id": "buy_NVDA_20260629_153414", "step": 13, "status": "completed", "duration_ms": 562, "data": {"slack_ts": "1782715063.786719"}}
+{"timestamp": "2026-06-29T06:50:17.953835+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 0, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:50:18.549030+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 0, "status": "completed", "duration_ms": 593, "data": {"warnings": []}}
+{"timestamp": "2026-06-29T06:50:18.553413+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 1, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:50:18.763981+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 1, "status": "info", "duration_ms": 0, "data": {"kavout_loaded": "ok", "tickers": 41}}
+{"timestamp": "2026-06-29T06:50:18.799281+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 1, "status": "completed", "duration_ms": 250, "data": {"watchlist_count": 1}}
+{"timestamp": "2026-06-29T06:50:18.800244+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 2, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:50:27.968619+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 2, "status": "info", "duration_ms": 0, "data": {"spy_4h_realtime": "ok", "fields": ["spy_di_plus_4h", "spy_di_minus_4h", "spy_macd_hist_4h"]}}
+{"timestamp": "2026-06-29T06:50:27.968619+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 2, "status": "completed", "duration_ms": 9171, "data": {"regime": "favorable", "direction": "long_put", "regime_confidence": 1.0, "trend_confidence": 1.0, "risk_factor_count": 3}}
+{"timestamp": "2026-06-29T06:50:27.968619+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 3, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:50:29.318910+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 3, "status": "completed", "duration_ms": 1343, "data": {"total": 1, "filter_pass": 1, "filter_fail": 0, "hard_stopped": []}}
+{"timestamp": "2026-06-29T06:50:29.322118+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 4, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:50:42.384316+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 4, "status": "info", "duration_ms": 0, "data": {"yfinance_refresh": "ok", "refreshed": 1}}
+{"timestamp": "2026-06-29T06:50:46.077080+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 4, "status": "info", "duration_ms": 0, "data": {"finnhub_price_target": "ok", "updated": 1}}
+{"timestamp": "2026-06-29T06:50:49.442347+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 4, "status": "info", "duration_ms": 0, "data": {"finnhub_insider": "ok", "updated": 1}}
+{"timestamp": "2026-06-29T06:50:49.689927+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 4, "status": "info", "duration_ms": 0, "data": {"analyst_upgrade": "ok", "updated": 1}}
+{"timestamp": "2026-06-29T06:51:08.938784+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 4, "status": "info", "duration_ms": 0, "data": {"technical_bridge": "ok", "bridged": 0}}
+{"timestamp": "2026-06-29T06:51:08.951209+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 4, "status": "info", "duration_ms": 0, "data": {"realtime_f1_f3_removed": ["NVDA"]}}
+{"timestamp": "2026-06-29T06:51:08.953671+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 4, "status": "completed", "duration_ms": 39641, "data": {"scored": 1, "trend_confirmed": 0, "continuing": 1}}
+{"timestamp": "2026-06-29T06:51:08.958211+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 5, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:12.991100+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 5, "status": "completed", "duration_ms": 184031}
+{"timestamp": "2026-06-29T06:54:12.993536+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 6, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:12.995594+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 6, "status": "degraded", "duration_ms": 0, "ticker": "NVDA", "error": "DA경고: 최종점수 0.0 < 40.0 (계속 진행)"}
+{"timestamp": "2026-06-29T06:54:12.995594+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 6, "status": "completed", "duration_ms": 0, "data": {"before": 1, "warned": 1, "surviving": 1, "da_deductions": 0}}
+{"timestamp": "2026-06-29T06:54:12.997824+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 7, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:14.576603+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 7, "status": "info", "duration_ms": 0, "data": {"option_analytics_refresh": "ok", "updated": 0}}
+{"timestamp": "2026-06-29T06:54:17.010034+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 7, "status": "degraded", "duration_ms": 0, "ticker": "NVDA", "error": "E400: OI 0 < 500 최소 기준"}
+{"timestamp": "2026-06-29T06:54:17.010034+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 7, "status": "completed", "duration_ms": 4014, "data": {"valid": 0, "continuing": 1}}
+{"timestamp": "2026-06-29T06:54:17.010034+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 8, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:17.018298+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 8, "status": "completed", "duration_ms": 0, "data": {"scenarios": 0}}
+{"timestamp": "2026-06-29T06:54:17.020315+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 9, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:17.020315+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 9, "status": "completed", "duration_ms": 0, "data": {"invested": 0.0, "cash": 22222.0}}
+{"timestamp": "2026-06-29T06:54:17.022320+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 10, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:17.022320+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 10, "status": "completed", "duration_ms": 0, "data": {"balanced_rankings": 1, "aggressive_rankings": 0, "high_downside": []}}
+{"timestamp": "2026-06-29T06:54:17.024327+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 11, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:17.029647+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 11, "status": "completed", "duration_ms": 16, "data": {"requeue_added": 1}}
+{"timestamp": "2026-06-29T06:54:17.031654+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 12, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:17.129666+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 12, "status": "completed", "duration_ms": 93, "data": {"note_path": "swing-procedure/notes/buy/2026-06-29.md", "watchlist_written": 1}}
+{"timestamp": "2026-06-29T06:54:17.129666+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 13, "status": "started", "duration_ms": 0}
+{"timestamp": "2026-06-29T06:54:17.562695+00:00", "execution_id": "buy_NVDA_20260629_155015", "step": 13, "status": "completed", "duration_ms": 437, "data": {"slack_ts": "1782716057.561399"}}

@@ -1,7 +1,7 @@
 [
   {
     "ticker": "MU",
-    "registered_at": "2026-06-12T17:53:39.146314",
+    "registered_at": "2026-06-27T04:53:18.325682",
     "failed_filters": [
       "F1_RVOL_LOW"
     ],
@@ -38,7 +38,7 @@
   },
   {
     "ticker": "NVDA",
-    "registered_at": "2026-05-28T03:40:04.748241",
+    "registered_at": "2026-06-29T15:54:17.026864",
     "failed_filters": [
       "F1_RVOL_LOW"
     ],

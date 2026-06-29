@@ -64,6 +64,15 @@ class Config:
     LLM_MODEL_NL_ROUTING: str = os.getenv(
         "LLM_MODEL_NL_ROUTING", "deepseek/deepseek-v4-flash:free"
     )
+    LLM_MODEL_RANK_AND_PICK: str = os.getenv(
+        "LLM_MODEL_RANK_AND_PICK", "deepseek/deepseek-v4-flash"
+    )
+    LLM_MODEL_CATALYST_WEB: str = os.getenv(
+        "LLM_MODEL_CATALYST_WEB", "deepseek/deepseek-v4-flash"
+    )
+    LLM_MODEL_GAP_ANALYSIS: str = os.getenv(
+        "LLM_MODEL_GAP_ANALYSIS", "google/gemini-flash-2.5"
+    )
 
     # ── 외부 데이터 API ──────────────────────────────────────────
     FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")

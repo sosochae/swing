@@ -238,6 +238,8 @@ class ObsidianClient:
         ultra_long_criteria: "dict[str, dict] | None" = None,
         options_analytics: "dict[str, dict] | None" = None,
         summary_data: "SummaryData | None" = None,
+        earnings_alt_options: "dict[str, dict] | None" = None,
+        budget_alt_options: "dict[str, dict[str, dict]] | None" = None,
     ) -> str:
         """
         매수 분석 노트 저장 — TYPE 1~5 통합 보고서 형식 (환각 방지 강화)
@@ -287,16 +289,26 @@ class ObsidianClient:
             "",
         ]
 
-        # ── 포트폴리오 노출 요약 ────────────────────────────────
+        # ── 포트폴리오 노출 요약 (실제 진입 기준) ─────────────────
         if portfolio_exposure:
             pe = portfolio_exposure
+            # 진입 확정 종목만 투자금 집계 (관찰 종목은 미진입이므로 제외)
+            _entered_tickers = {r.ticker for r in entered}
+            _actual_invested = sum(
+                (scenarios or {}).get(t, None).total_investment
+                for t in _entered_tickers
+                if (scenarios or {}).get(t) is not None
+            )
+            _total_capital = cfg.TOTAL_CAPITAL
+            _actual_cash = max(0.0, _total_capital - _actual_invested)
+
             lines += [
                 "### 📊 포트폴리오 노출 현황",
                 "",
                 "| 항목 | 값 |",
                 "|------|----|",
-                f"| 총 투자금 | ${pe.total_invested:,.0f} |",
-                f"| 잔여 현금 | ${pe.remaining_cash:,.0f} |",
+                f"| 총 투자금 | ${_actual_invested:,.0f} |",
+                f"| 잔여 현금 | ${_actual_cash:,.0f} |",
                 f"| 총 델타 노출 | {pe.total_delta:+.2f} |",
                 f"| 총 세타 (일) | ${pe.total_theta:+.2f} |",
             ]
@@ -309,6 +321,25 @@ class ObsidianClient:
             if pe.concentration_warning:
                 lines.append(f"| ⚠️ 경고 | {' / '.join(pe.warnings[:2])} |")
             lines += [""]
+
+            # 관찰 대기 종목 — 아직 진입하지 않은 가상 노출
+            if watched:
+                lines += [
+                    "### 📋 관찰 대기 (가상 노출 — 진입 미결정)",
+                    "",
+                    "| 종목 | 방향 | 투자 예정금 | Strike | 만기 |",
+                    "|------|------|------------|--------|------|",
+                ]
+                for _wr in watched:
+                    _sc = (scenarios or {}).get(_wr.ticker)
+                    _inv = f"${_sc.total_investment:,.0f}" if _sc else "-"
+                    _strike = f"${_wr.strike:,.0f}" if _wr.strike else "-"
+                    _expiry = _wr.expiry.isoformat() if _wr.expiry else "-"
+                    _dir = "롱콜" if _wr.direction == "long_call" else "롱풋"
+                    lines.append(
+                        f"| {_wr.ticker} | {_dir} | {_inv} | {_strike} | {_expiry} |"
+                    )
+                lines += [""]
 
         lines += ["---", ""]
 
@@ -340,6 +371,8 @@ class ObsidianClient:
                     krow=_krow if hasattr(_krow, "k_score") else None,
                     ticker_data=_td,
                     summary_events=_evs,
+                    earnings_alt=(earnings_alt_options or {}).get(r.ticker),
+                    budget_alt=(budget_alt_options or {}).get(r.ticker),
                 )
 
         # ── 필터 탈락 요약 ──────────────────────────────────────
@@ -924,6 +957,20 @@ def _format_type1_section(
             "**📝 투자 논거 (Investment Thesis)**",
             "",
             f"> {thesis}",
+            "",
+        ]
+
+    # Gap analysis 보완 데이터 (고가치 종목 + 낮은 뉴스 신뢰도 시 자동 생성)
+    gap = sent.get("gap_supplement")
+    if gap and gap.get("body"):
+        lines += [
+            "### 1-9. 리서치 갭 보완 (Gap Analysis)",
+            "",
+            f"**🔍 보완 쿼리:** `{gap.get('query', '')}`",
+            "",
+            f"**출처:** {gap.get('title', '')}",
+            "",
+            f"> {gap['body'][:600].replace(chr(10), ' ')}",
             "",
         ]
 
@@ -1983,6 +2030,8 @@ def _format_integrated_buy_block(
     krow: "KavoutRow | None" = None,
     ticker_data: "Any | None" = None,   # summary_data.tickers[ticker] (TickerData)
     summary_events: "list | None" = None,  # summary_data.events
+    earnings_alt: "dict | None" = None,  # Step 7 실적 이후 대안 계약 {expiry, strike, premium, delta, dte}
+    budget_alt: "dict[str, dict] | None" = None,  # Step 7 예산 초과 OTM 대안 {horizon: {strike, premium, ...}}
 ) -> list[str]:
     """종목 1개에 대한 TYPE 1~5 통합 매수 보고서 블록 생성 (환각 방지)"""
 
@@ -2143,11 +2192,41 @@ def _format_integrated_buy_block(
     r12m_emoji = "🟢" if (r12m or 0) >= 50 else ("🔴" if (r12m or 0) < 0 else "🟡")
     ntw_tag = " ★ New This Week" if krow and krow.section == "new_this_week" else ""
 
+    # 레짐-포지션 방향 충돌 여부 확인
+    _regime_dir = regime.allowed_direction if regime else None
+    _ticker_dir = r.direction
+    _override_reason = (ts.direction_override_reason if ts else "") or ""
+    _regime_conflict = (
+        _regime_dir is not None
+        and _regime_dir not in ("both", "none")
+        and _regime_dir != _ticker_dir
+    )
+
     lines: list[str] = [
         "---",
         "",
         f"### {action_label} #{r.rank} {r.ticker} — {direction_label}",
         "",
+    ]
+
+    # 레짐 충돌 경고 블록 (오버라이드 사유 있을 때만)
+    if _regime_conflict and _override_reason:
+        _macro_dir_label = "롱풋 (하락)" if _regime_dir == "long_put" else "롱콜 (상승)"
+        lines += [
+            f"> ⚠️ **레짐-포지션 방향 충돌 해소**",
+            f"> 시장 레짐: `{_macro_dir_label}` | 이 종목 방향: `{direction_label}`",
+            f"> **오버라이드 근거:** {_override_reason}",
+            f"> 이 분석은 개별주 예외 처리(Category B)로 생성된 것입니다.",
+            "",
+        ]
+    elif _regime_conflict:
+        # 오버라이드 사유 없이 충돌 → 경고만 표시 (코드 버그 가능성)
+        lines += [
+            f"> ⚠️ **레짐-포지션 방향 불일치** — 오버라이드 근거 미기록 (확인 필요)",
+            "",
+        ]
+
+    lines += [
         "## ━━━ SECTION 0 · 종합 최종 판정 요약 (Executive Summary) ━━━",
         "",
         "| 항목 | 내용 |",
@@ -2193,18 +2272,11 @@ def _format_integrated_buy_block(
 
     # DA 차감 이유 박스 (있을 때만)
     if r.da_reasons:
-        _da_total = sum(
-            15 if "IV Crush" in reason
-            else 20 if "Thesis 반박" in reason
-            else 10 if "내부자" in reason
-            else 5 if "EPS 미스" in reason
-            else 5
-            for reason in r.da_reasons
-        )
+        _da_total = r.da_total_pts  # Step 6에서 집계된 실제 차감 합계 사용
         lines += [
             "#### ⚠️ Devil's Advocate 차감 내역",
             "",
-            f"> **총 차감: -{_da_total}pt**",
+            f"> **총 차감: -{_da_total:.0f}pt**",
             "",
             *[f"> - {reason}" for reason in r.da_reasons],
             "",
@@ -2309,8 +2381,9 @@ def _format_integrated_buy_block(
         ]
 
     # TYPE 1: 뉴스 감성 — 풍부한 형식으로 출력
-    # 실적 발표 날짜 추출 (summary_events에서 해당 ticker 실적 이벤트 검색)
+    # 실적 발표 날짜 추출: summary_events 우선, 없으면 fv.next_earnings_date 사용
     _earn_str = ""
+    _next_earn_date = None  # date 객체 (옵션 만기 비교용)
     if summary_events:
         for _ev in summary_events:
             _ev_name = getattr(_ev, "name", "") or ""
@@ -2322,6 +2395,7 @@ def _format_integrated_buy_block(
                 _ev_rev  = getattr(_ev, "revenue_estimate_b", None)
                 if _ev_date:
                     try:
+                        _next_earn_date = _ev_date if isinstance(_ev_date, date) else None
                         _date_str = _ev_date.strftime("%Y-%m-%d") if hasattr(_ev_date, "strftime") else str(_ev_date)[:10]
                         _earn_str = f"**{_date_str}** ({_ev_days}일 후)" if _ev_days is not None else f"**{_date_str}**"
                         # EPS/매출 예상치 추가
@@ -2335,6 +2409,69 @@ def _format_integrated_buy_block(
                     except Exception:
                         pass
                 break
+    # summary_events에 없으면 yfinance 실시간 데이터 fallback
+    if not _earn_str and fv and fv.next_earnings_date:
+        _next_earn_date = fv.next_earnings_date
+        _days_until = (_next_earn_date - date.today()).days
+        _earn_str = f"**{_next_earn_date}** ({_days_until}일 후, yfinance 기준)"
+    # 옵션 만기 내 실적 포함 여부 경고
+    _earn_in_expiry_warn = ""
+    if _next_earn_date and r.expiry:
+        if r.expiry >= _next_earn_date:
+            _alt_lines: list[str] = []
+            if earnings_alt:
+                _alt_otype = "C" if earnings_alt.get("opt_type", "call") == "call" else "P"
+                _alt_lines = [
+                    f"> 💡 **대안 만기:** {earnings_alt['expiry']} "
+                    f"(DTE {earnings_alt['dte']}일, 실적 이후)",
+                    f">    strike **${earnings_alt['strike']:,.0f}{_alt_otype}** / "
+                    f"프리미엄 **${earnings_alt['premium']:.2f}** / "
+                    f"delta **{earnings_alt['delta']:.2f}**",
+                ]
+            _earn_in_expiry_warn = (
+                f" ⚠️ 만기({r.expiry}) 내 실적 포함 — IV 급등/붕괴 위험"
+                + ("\n" + "\n".join(_alt_lines) if _alt_lines else "")
+            )
+        else:
+            _earn_in_expiry_warn = f" ✅ 만기({r.expiry}) 전 실적 없음"
+    if _earn_str and _earn_in_expiry_warn:
+        _earn_str += _earn_in_expiry_warn
+
+    # ── 📅 향후 카탈리스트 섹션 ─────────────────────────────────────
+    _catalyst_lines: list[str] = []
+    _upcoming_events = (fv.upcoming_events if fv and fv.upcoming_events else [])
+    if _upcoming_events:
+        _evt_icon = {
+            "earnings":            "📊",
+            "dividend_ex":         "💰",
+            "dividend_pay":        "💸",
+            "split":               "✂️",
+            "opex":                "⚙️",
+            "quad_witching":       "🌀",
+            "sec_8k_ma":           "📋",
+            "analyst_day":         "🏢",
+            "competitor_earnings": "🏭",
+            "lockup_expiry":       "🔓",
+            "fda_pdufa":           "💊",
+            "product_launch":      "🚀",
+        }
+        _imp_icon = {"HIGH": "🔴", "MED": "🟡", "LOW": "🟢"}
+        _catalyst_lines += [
+            "### 📅 향후 카탈리스트",
+            "",
+            "| 날짜 | D-Day | 종류 | 내용 | 중요도 |",
+            "|------|-------|------|------|--------|",
+        ]
+        for _ev in _upcoming_events:
+            _dday = f"D+{_ev.days_until}" if _ev.days_until > 0 else "D-Day"
+            _icon = _evt_icon.get(_ev.event_type, "📌")
+            _imp  = _imp_icon.get(_ev.importance, "")
+            _catalyst_lines.append(
+                f"| {_ev.date} | {_dday} | {_icon} {_ev.name} | {_ev.detail} | {_imp} {_ev.importance} |"
+            )
+        _catalyst_lines += ["", "---", ""]
+    lines += _catalyst_lines
+
     lines += _format_type1_section(sent or {}, fv=fv, earn_str=_earn_str).splitlines()
     lines += [""]
 
@@ -2452,6 +2589,20 @@ def _format_integrated_buy_block(
                 f" | 예산 **${_budget:,.0f}** → **{_contract_str}** 가능{_budget_warn}",
                 f"  - 선택 이유: {' / '.join(_why_parts)}{_adj_hint}",
             ]
+            # 예산 초과 시 OTM 대안 표시
+            _balt_h = (budget_alt or {}).get(_hz)
+            if _balt_h and not _balt_h.get("no_alt") and _budget_warn:
+                _balt_otype = "C" if _balt_h.get("opt_type", "call") == "call" else "P"
+                _balt_oi_str = f" | OI {_balt_h['oi']:,}" if _balt_h.get("oi", 0) > 0 else ""
+                lines.append(
+                    f"  > 💡 **예산 대안 (OTM):** "
+                    f"Strike ${_balt_h['strike']:,.0f}{_balt_otype} | "
+                    f"만기 {_balt_h['expiry']} | DTE {_balt_h['dte']}일 | "
+                    f"delta {_balt_h['delta']:.2f} | "
+                    f"프리미엄 **${_balt_h['premium']:.2f}** (1계약 ${_balt_h['premium']*100:,.0f})"
+                    f"{'  _(추정가)_' if _balt_h.get('estimated') else ''}"
+                    f"{_balt_oi_str}"
+                )
         else:
             if _hz == "장기" and _hz not in _active and _long_ivr_est is not None and _long_ivr_est > st.HORIZON_LONG_IVR_MAX:
                 lines.append(
@@ -3395,6 +3546,30 @@ def _format_integrated_buy_block(
             _fund_bear.append(f"부채 비율 높음 (D/E {de_str})")
         if fv.peg and fv.peg > 2:
             _fund_bear.append(f"PEG {peg_str} — 고평가 가능성")
+
+        # 정량 조건 미충족 시 구조적 Bear 항목 자동 삽입 (편향 방지)
+        if not _fund_bear:
+            _sector_str = (ticker_data.sector if ticker_data else "") or ""
+            _cyclical_sectors = {"Semiconductors", "Technology", "Consumer Cyclical",
+                                 "Energy", "Materials", "Industrials"}
+            _is_cyclical = any(s.lower() in _sector_str.lower() for s in _cyclical_sectors)
+            if _is_cyclical:
+                _fund_bear.append(
+                    f"사이클 산업 특성 ({_sector_str or '업종'}) — 업황 전환 시 실적 급감 위험"
+                )
+            if fv.trailing_pe and fv.trailing_pe > 25:
+                _fund_bear.append(
+                    f"P/E {fv.trailing_pe:.1f}x — 고밸류에이션, 실망 실적 시 멀티플 압축 위험"
+                )
+            elif fv.forward_pe and fv.forward_pe > 20:
+                _fund_bear.append(
+                    f"Fwd P/E {fv.forward_pe:.1f}x — 성장 기대 선반영, 가이던스 하향 시 주가 충격 가능"
+                )
+            if not _fund_bear:
+                _fund_bear.append(
+                    "밸류에이션 정당화에 지속적 성장 달성이 필요 — 성장 둔화 시 하락 위험"
+                )
+
         _fund_bull_str = " / ".join(_fund_bull) if _fund_bull else "해당 없음"
         _fund_bear_str = " / ".join(_fund_bear) if _fund_bear else "해당 없음"
         lines += [
@@ -3549,6 +3724,31 @@ def _format_integrated_buy_block(
         "",
     ]
 
+    # ── IV Crush 위험 분석 (IV ≥ 80% 종목에만 표시) ─────────────────────
+    if ov and ov.greeks.iv > 0:
+        _iv_pct = ov.greeks.iv * 100  # IV를 % 단위로
+        _vega_val = ov.greeks.vega     # per-share, per-1% IV
+        _entry_prem = sc.stop_loss_premium / 0.5 if (sc and sc.stop_loss_premium) else None
+        if _iv_pct >= 80 and _vega_val > 0 and _entry_prem:
+            # IV 정상화 추정: 현재 IV의 65% 수준 (보수적)
+            _iv_normal = _iv_pct * 0.65
+            _iv_drop_pts = _iv_pct - _iv_normal
+            _dollar_loss = _vega_val * 100 * r.contracts * _iv_drop_pts  # 전체 포지션 기준
+            _loss_pct = (_dollar_loss / (_entry_prem * 100 * r.contracts) * 100) if _entry_prem > 0 else 0
+            lines += [
+                f"**⚠️ IV Crush 위험 분석 (현재 IV {_iv_pct:.0f}% — 고위험)**",
+                "",
+                "| 시나리오 | 가정 IV | IV 변화 | 포지션 손실 |",
+                "|---------|--------|---------|-----------|",
+                f"| IV 정상화 (주가 제자리) | {_iv_normal:.0f}% (−{_iv_drop_pts:.0f}pt) "
+                f"| −{_iv_pct - _iv_normal:.0f}pt | "
+                f"−${_dollar_loss:,.0f} (−{_loss_pct:.0f}%) |",
+                "",
+                f"> 주가 변동 없이 IV만 하락해도 프리미엄의 약 {_loss_pct:.0f}%가 손실됩니다.",
+                f"> 진입 전 IV 추세(IVR 추이) 및 실적 이후 IV 붕괴 이력을 반드시 확인하세요.",
+                "",
+            ]
+
     # ── 옵션 시장 구조 (Implied Move / Max Pain / P/C Ratio / OI 변화) ──────
     if opt_analytics:
         _im  = opt_analytics.get("implied_move_pct")
@@ -3593,6 +3793,25 @@ def _format_integrated_buy_block(
         lines += ["> 옵션 유효성 데이터 없음 (체인 데이터 미수신)", ""]
 
     lines += ["### 5-7. 리스크 평가 (Risk Assessment)", ""]
+
+    # 주봉 RSI 과매수 경고 (롱콜이고 주봉 RSI ≥ 80일 때만)
+    _wk_rsi_57 = fv.weekly_rsi if fv else None
+    if _wk_rsi_57 is not None and r.direction == "long_call":
+        if _wk_rsi_57 >= 85:
+            lines += [
+                f"> ⚠️ **주봉 RSI {_wk_rsi_57:.1f} — 극단 과매수 (≥85)**",
+                f"> 통계적으로 주봉 RSI 85+ 이후 4~8주 내 평균 -10~20% 되돌림이 관측됩니다.",
+                f"> 현재 추세가 상승이더라도 단기 급격한 조정 여지를 반드시 허용해야 합니다.",
+                f"> 진입 시 포지션 크기를 줄이거나 OTM 비중을 낮추는 것을 권장합니다.",
+                "",
+            ]
+        elif _wk_rsi_57 >= 80:
+            lines += [
+                f"> ⚠️ **주봉 RSI {_wk_rsi_57:.1f} — 과매수 구간 (≥80)**",
+                f"> 주봉 RSI 80+ 이후 4~8주 내 평균 -8~15% 되돌림 구간이 역사적으로 관측됩니다.",
+                f"> 추세가 지속 상승하더라도 단기 조정 여지를 반드시 허용하세요.",
+                "",
+            ]
 
     if r.risk_factors:
         lines += [

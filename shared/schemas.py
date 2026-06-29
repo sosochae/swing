@@ -31,6 +31,17 @@ class SummaryEvent(BaseModel):
     revenue_estimate_b: float | None = None  # 예상 매출 (단위: 십억 달러)
 
 
+class TickerEvent(BaseModel):
+    """종목별 향후 카탈리스트 이벤트"""
+    date: date
+    event_type: str  # earnings | dividend_ex | dividend_pay | split | opex | quad_witching
+                     # sec_8k_ma | analyst_day | competitor_earnings | lockup_expiry | fda_pdufa
+    name: str
+    importance: Literal["HIGH", "MED", "LOW"]
+    days_until: int
+    detail: str = ""  # "EPS est. $1.68 / Rev $8.1B", "pin risk 주의" 등
+
+
 class SummaryRiskParams(BaseModel):
     """리스크 파라미터"""
     total_capital: float = 3000.0
@@ -373,6 +384,9 @@ class StockDetail(BaseModel):
     debt_equity: float | None = None          # 부채/자기자본 비율
     fcf_ttm: float | None = None              # 잉여현금흐름 TTM (M USD)
     market_cap: float | None = None           # 시가총액 (USD, kavout_output 파싱)
+    next_earnings_date: "date | None" = None  # 다음 실적 발표 예정일
+    sector: str | None = None                  # yfinance sector (Healthcare, Technology 등)
+    upcoming_events: list["TickerEvent"] = Field(default_factory=list)  # 종목별 카탈리스트
 
 
 class FinvizRow(BaseModel):
@@ -507,6 +521,7 @@ class TechnicalScore(BaseModel):
     option_flow_ok: bool
     darkpool_ok: bool
     signal_count: int = Field(default=0, ge=0)  # 0~8 (추세4 + 자금유입4; kavout/finviz 보정 포함)
+    direction_override_reason: str = ""  # 매크로 방향과 다른 경우 오버라이드 사유
 
 
 # ─────────────────────────────────────────────────────────────
@@ -666,6 +681,7 @@ class FinalRanking(BaseModel):
     risk_factors: list[str] = Field(default_factory=list)
     scenario: Scenario | None = None
     da_reasons: list[str] = Field(default_factory=list)  # DA 차감 이유 (Step 6)
+    da_total_pts: float = 0.0  # DA 총 차감 포인트 (Step 6 집계값)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -783,8 +799,8 @@ class PipelineContext(BaseModel):
     watchlist: list[str] = Field(default_factory=list)
     kavout_data: dict[str, "KavoutRow"] = Field(default_factory=dict)
     stock_data: dict[str, "StockDetail"] = Field(default_factory=dict)
-    # Step 6 DA 차감 이유 {ticker: ["이유1", "이유2"]}
-    da_log: dict[str, list[str]] = Field(default_factory=dict)
+    # Step 6 DA 차감 이유 {ticker: {"reasons": [...], "total_pts": float}}
+    da_log: dict[str, dict] = Field(default_factory=dict)
     # Step 6 RRE 결과 {ticker: (적색차원수, [차원이름...])} — Step 10 게이트에서 사용
     rre_results: dict[str, Any] = Field(default_factory=dict)
     # Step 6 감성 역발상 플래그 {ticker: bool} — Step 10 calculate_confidence 입력
@@ -805,6 +821,10 @@ class PipelineContext(BaseModel):
     # 초장기 기준 제시 {ticker: {"direction": ..., "dte": ..., ...}}
     # 체인 데이터가 없거나 LEAPS 미제공 종목에 대해 계약 대신 기준을 제시
     ultra_long_criteria: dict[str, dict] = Field(default_factory=dict)
+    # Step 7 실적-만기 충돌 시 대안 계약 {ticker: {"expiry", "strike", "premium", "delta", "dte"}}
+    earnings_alt_options: dict[str, dict] = Field(default_factory=dict)
+    # Step 7 예산 초과 시 OTM 대안 계약 {ticker: {horizon: {"strike", "premium", "delta", "expiry", "dte", "opt_type", "oi"}}}
+    budget_alt_options: dict[str, dict[str, dict]] = Field(default_factory=dict)
     scenarios: dict[str, Scenario] = Field(default_factory=dict)
     portfolio_exposure: PortfolioExposure = Field(default_factory=PortfolioExposure)
     final_rankings: list[FinalRanking] = Field(default_factory=list)          # 안정성+수익 균형 순위

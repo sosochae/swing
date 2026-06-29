@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Optional
 
@@ -972,6 +973,7 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         debt_equity = _f(info.get("debtToEquity"))
         fcf_ttm = _million(info.get("freeCashflow"))
         market_cap = _f(info.get("marketCap"))
+        _sector = info.get("sector") or None  # "Healthcare", "Technology" 등
 
         # 역산 성장률: P = EPS*(1+g)^5 / ((WACC-tg)*(1+WACC)^5) 에서 역산
         _wacc, _tg = 0.10, 0.03
@@ -980,6 +982,346 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
             if price and eps_ttm and eps_ttm > 0
             else None
         )
+
+        # ── 다음 실적 발표일 + 배당 정보 (yfinance calendar 기반) ────────
+        next_earnings_date = None
+        _cal_dividend_ex: "date | None" = None
+        _cal_dividend_pay: "date | None" = None
+        _cal_eps_est: "float | None" = None
+        _cal_rev_est_b: "float | None" = None
+        try:
+            from datetime import date as _date_cls
+            _cal = t.calendar
+            if _cal is not None:
+                import pandas as _pd
+
+                def _parse_cal_date(val: Any) -> "date | None":
+                    if val is None:
+                        return None
+                    if isinstance(val, list):
+                        val = val[0] if val else None
+                    if val is None:
+                        return None
+                    if hasattr(val, "date"):
+                        return val.date()
+                    if isinstance(val, _date_cls):
+                        return val
+                    return None
+
+                def _parse_cal_float(val: Any) -> "float | None":
+                    if isinstance(val, list):
+                        val = val[0] if val else None
+                    try:
+                        return float(val) if val is not None else None
+                    except (TypeError, ValueError):
+                        return None
+
+                # yfinance 0.2+ : t.calendar는 DataFrame 또는 dict
+                if isinstance(_cal, _pd.DataFrame):
+                    def _df_get(key: str) -> Any:
+                        return _cal.loc[key].iloc[0] if key in _cal.index else None
+                    next_earnings_date = _parse_cal_date(_df_get("Earnings Date"))
+                    _cal_dividend_ex   = _parse_cal_date(_df_get("Ex-Dividend Date"))
+                    _cal_dividend_pay  = _parse_cal_date(_df_get("Dividend Date"))
+                    _cal_eps_est       = _parse_cal_float(_df_get("Earnings Average"))
+                    _rev_raw = _df_get("Revenue Average")
+                    _cal_rev_est_b = round(float(_rev_raw) / 1e9, 2) if _rev_raw else None
+                elif isinstance(_cal, dict):
+                    next_earnings_date = _parse_cal_date(_cal.get("Earnings Date"))
+                    _cal_dividend_ex   = _parse_cal_date(_cal.get("Ex-Dividend Date"))
+                    _cal_dividend_pay  = _parse_cal_date(_cal.get("Dividend Date"))
+                    _cal_eps_est       = _parse_cal_float(_cal.get("Earnings Average"))
+                    _rev_raw = _cal.get("Revenue Average")
+                    _cal_rev_est_b = round(float(_rev_raw) / 1e9, 2) if _rev_raw else None
+
+            # 과거 날짜인 경우 None 처리
+            _today = _date_cls.today()
+            if next_earnings_date and next_earnings_date < _today:
+                next_earnings_date = None
+            if _cal_dividend_ex and _cal_dividend_ex < _today:
+                _cal_dividend_ex = None
+            if _cal_dividend_pay and _cal_dividend_pay < _today:
+                _cal_dividend_pay = None
+        except Exception as _e:
+            log.debug("%s calendar 수집 실패: %s", ticker, _e)
+
+        # ── 주식 분할 일정 (yfinance splits) ──────────────────────────────
+        _upcoming_splits: list[tuple["date", str]] = []
+        try:
+            from datetime import date as _date_cls2
+            _splits = t.splits
+            if _splits is not None and not _splits.empty:
+                _today2 = _date_cls2.today()
+                for _split_dt, _ratio in _splits.items():
+                    _sd = _split_dt.date() if hasattr(_split_dt, "date") else _split_dt
+                    if _sd >= _today2:
+                        _upcoming_splits.append((_sd, f"{_ratio:.0f}:1 분할"))
+        except Exception as _se:
+            log.debug("%s splits 수집 실패: %s", ticker, _se)
+
+        # ── OPEX / Quadruple Witching 계산 ────────────────────────────────
+        def _third_friday(year: int, month: int) -> "date":
+            from datetime import date as _d
+            first = _d(year, month, 1)
+            # 첫 번째 금요일
+            days_until_fri = (4 - first.weekday()) % 7
+            first_fri = first.replace(day=1 + days_until_fri)
+            return first_fri.replace(day=first_fri.day + 14)
+
+        _opex_events: list[tuple["date", str, str]] = []  # (date, event_type, detail)
+        try:
+            from datetime import date as _d3
+            _today3 = _d3.today()
+            _qw_months = {3, 6, 9, 12}
+            for _m_offset in range(0, 4):  # 앞으로 4개월치
+                _yr = _today3.year + (_today3.month + _m_offset - 1) // 12
+                _mo = (_today3.month + _m_offset - 1) % 12 + 1
+                _tf = _third_friday(_yr, _mo)
+                if _tf >= _today3:
+                    if _mo in _qw_months:
+                        _opex_events.append((_tf, "quad_witching",
+                            f"Quadruple Witching — 지수·선물·옵션 동시 만기, 변동성 급등 구간"))
+                    else:
+                        _opex_events.append((_tf, "opex",
+                            f"월간 OPEX — 대량 OI 있으면 pin risk 주의"))
+        except Exception as _oe:
+            log.debug("%s OPEX 계산 실패: %s", ticker, _oe)
+
+        # ── IPO 락업 해제 (Lock-up expiry 180일) ─────────────────────────
+        _lockup_event: "tuple[date, str] | None" = None
+        try:
+            from datetime import date as _dlk, datetime as _dtlk, timedelta as _tdlk
+            _first_epoch = info.get("firstTradeDateEpochUtc")
+            _ipo_date_lk: "date | None" = None
+            if _first_epoch:
+                _ipo_date_lk = _dtlk.utcfromtimestamp(int(_first_epoch)).date()
+            if _ipo_date_lk:
+                _today_lk = _dlk.today()
+                _days_since_ipo = (_today_lk - _ipo_date_lk).days
+                # IPO 후 365일 이내 종목만 (그 이상이면 락업 이미 해제됨)
+                if 0 < _days_since_ipo <= 365:
+                    _lockup_exp = _ipo_date_lk + _tdlk(days=180)
+                    if _lockup_exp >= _today_lk:
+                        _lockup_event = (
+                            _lockup_exp,
+                            f"IPO {_ipo_date_lk} 기준 180일 락업 해제 — 대량 매도 압력 가능",
+                        )
+        except Exception as _lke:
+            log.debug("%s lockup_expiry 계산 실패: %s", ticker, _lke)
+
+        # ── 경쟁사 매핑 테이블 ────────────────────────────────────────────
+        _COMPETITOR_MAP: dict[str, list[str]] = {
+            "MU":   ["Samsung Electronics", "SK Hynix"],
+            "NVDA": ["AMD", "INTC"],
+            "AMD":  ["NVDA", "INTC"],
+            "INTC": ["NVDA", "AMD"],
+            "TSLA": ["GM", "F", "NIO"],
+            "AAPL": ["MSFT", "GOOGL", "SAMSF"],
+            "MSFT": ["GOOGL", "AMZN", "AAPL"],
+            "GOOGL": ["MSFT", "META", "AMZN"],
+            "AMZN": ["MSFT", "GOOGL", "WMT"],
+            "META": ["SNAP", "PINS", "GOOGL"],
+            "NFLX": ["DIS", "WBD", "PARA"],
+            "TSM":  ["INTC", "SAMSF", "GFS"],
+            "AVGO": ["QCOM", "MRVL", "ADI"],
+            "QCOM": ["AVGO", "MRVL", "INTC"],
+            "CRM":  ["NOW", "ORCL", "MSFT"],
+            "SHOP": ["AMZN", "WMT", "BIGC"],
+        }
+
+        # ── SEC EDGAR 8-K 수집 (M&A / CEO교체 / 자사주 / Analyst Day) ────
+        _sec_events: list[tuple["date", str, str, str]] = []  # (date, type, name, detail)
+        try:
+            import json as _json_sec
+            import urllib.request as _ureq
+            from datetime import date as _dsec, timedelta as _td
+
+            _today_sec = _dsec.today()
+            _lookback = _today_sec - _td(days=30)   # 최근 30일 이내 공시만
+            _headers_sec = {"User-Agent": "SwingMCP research@swing.local"}
+
+            # CIK 조회
+            _cik_url = f"https://efts.sec.gov/LATEST/search-index?q=%22{ticker}%22&dateRange=custom&startdt={_today_sec - _td(days=5)}&enddt={_today_sec}&forms=8-K"
+            _cik_lookup = f"https://data.sec.gov/submissions/CIK{{}}.json"
+
+            # ticker → CIK 변환
+            _tickers_url = "https://www.sec.gov/files/company_tickers.json"
+            _req = _ureq.Request(_tickers_url, headers=_headers_sec)
+            with _ureq.urlopen(_req, timeout=5) as _r:
+                _cik_data = _json_sec.loads(_r.read().decode())
+            _cik_num: str | None = None
+            for _entry in _cik_data.values():
+                if _entry.get("ticker", "").upper() == ticker.upper():
+                    _cik_num = str(_entry["cik_str"]).zfill(10)
+                    break
+
+            if _cik_num:
+                _sub_url = f"https://data.sec.gov/submissions/CIK{_cik_num}.json"
+                _req2 = _ureq.Request(_sub_url, headers=_headers_sec)
+                with _ureq.urlopen(_req2, timeout=8) as _r2:
+                    _sub = _json_sec.loads(_r2.read().decode())
+
+                _filings = _sub.get("filings", {}).get("recent", {})
+                _forms    = _filings.get("form", [])
+                _dates    = _filings.get("filingDate", [])
+                _titles   = _filings.get("primaryDocument", [])
+                _items    = _filings.get("items", [])
+
+                _8k_keywords = {
+                    "1.01": ("sec_8k_ma",  "계약 체결", "MED"),          # Entry into material agreement
+                    "1.02": ("sec_8k_ma",  "계약 해지", "MED"),
+                    "2.01": ("sec_8k_ma",  "M&A 완료",  "HIGH"),         # Completion of acquisition
+                    "5.02": ("sec_8k_ma",  "CEO/CFO 변경", "HIGH"),      # Director/officer changes
+                    "8.01": ("sec_8k_ma",  "기타 중요 공시", "MED"),
+                    "7.01": ("analyst_day","Analyst/Investor Day", "MED"),
+                    "8.05": ("sec_8k_ma",  "자사주 매입 프로그램", "MED"),
+                }
+
+                for _form, _fdate, _item_str in zip(_forms, _dates, _items):
+                    if _form != "8-K":
+                        continue
+                    try:
+                        _fd = _dsec.fromisoformat(_fdate)
+                    except (ValueError, TypeError):
+                        continue
+                    if _fd < _lookback:
+                        continue
+                    # items 필드는 쉼표 구분 문자열
+                    for _item_code in str(_item_str).split(","):
+                        _item_code = _item_code.strip()
+                        if _item_code in _8k_keywords:
+                            _etype, _ename, _eimp = _8k_keywords[_item_code]
+                            _sec_events.append((_fd, _etype, _ename,
+                                f"SEC 8-K Item {_item_code} 공시 ({_fdate})"))
+                            break  # 한 공시당 하나만
+
+        except Exception as _sec_e:
+            log.debug("%s SEC EDGAR 수집 실패: %s", ticker, _sec_e)
+
+        # ── Finnhub 경쟁사 실적 일정 수집 ────────────────────────────────
+        _competitor_events: list[tuple["date", str, str]] = []  # (date, comp_name, detail)
+        try:
+            import json as _json_fh
+            import urllib.request as _ureq_fh
+            from datetime import date as _dfh, timedelta as _tdfh
+
+            _fh_key = os.getenv("FINNHUB_API_KEY", "").strip()
+            _comps = _COMPETITOR_MAP.get(ticker.upper(), [])
+            if _fh_key and _comps:
+                _today_fh = _dfh.today()
+                _end_fh   = _today_fh + _tdfh(days=90)
+                for _comp in _comps[:3]:  # 최대 3개사
+                    try:
+                        _fh_url = (
+                            f"https://finnhub.io/api/v1/calendar/earnings"
+                            f"?from={_today_fh}&to={_end_fh}&symbol={_comp}&token={_fh_key}"
+                        )
+                        _fh_req = _ureq_fh.Request(_fh_url,
+                            headers={"User-Agent": "SwingMCP research@swing.local"})
+                        with _ureq_fh.urlopen(_fh_req, timeout=5) as _fr:
+                            _fh_data = _json_fh.loads(_fr.read().decode())
+                        for _ce in (_fh_data.get("earningsCalendar") or [])[:1]:
+                            _ce_date_str = _ce.get("date", "")
+                            if not _ce_date_str:
+                                continue
+                            _ce_date = _dfh.fromisoformat(_ce_date_str)
+                            if _ce_date >= _today_fh:
+                                _competitor_events.append((
+                                    _ce_date,
+                                    _comp,
+                                    f"{_comp} 실적 — 섹터 방향 선행 지표",
+                                ))
+                    except Exception as _ce_e:
+                        log.debug("%s 경쟁사 %s 실적 수집 실패: %s", ticker, _comp, _ce_e)
+        except Exception as _fh_e:
+            log.debug("%s Finnhub 경쟁사 실적 수집 실패: %s", ticker, _fh_e)
+
+        # ── upcoming_events 조립 ──────────────────────────────────────────
+        _upcoming: list["TickerEvent"] = []
+        try:
+            from datetime import date as _dbase
+            from shared.schemas import TickerEvent as _TE
+            _today_b = _dbase.today()
+
+            def _days(d: "date") -> int:
+                return (d - _today_b).days
+
+            # 실적 발표
+            if next_earnings_date:
+                _eps_str = f"EPS est. ${_cal_eps_est:.2f}" if _cal_eps_est else ""
+                _rev_str = f"Rev est. ${_cal_rev_est_b:.1f}B" if _cal_rev_est_b else ""
+                _detail = " / ".join(filter(None, [_eps_str, _rev_str]))
+                _upcoming.append(_TE(
+                    date=next_earnings_date, event_type="earnings", name="실적 발표",
+                    importance="HIGH", days_until=_days(next_earnings_date),
+                    detail=_detail,
+                ))
+
+            # 배당락일
+            if _cal_dividend_ex:
+                _upcoming.append(_TE(
+                    date=_cal_dividend_ex, event_type="dividend_ex", name="배당락일",
+                    importance="MED", days_until=_days(_cal_dividend_ex),
+                    detail="딥ITM 콜 조기 행사 위험",
+                ))
+
+            # 배당 지급일
+            if _cal_dividend_pay:
+                _upcoming.append(_TE(
+                    date=_cal_dividend_pay, event_type="dividend_pay", name="배당 지급일",
+                    importance="LOW", days_until=_days(_cal_dividend_pay),
+                    detail="",
+                ))
+
+            # 주식 분할
+            for _sd, _sd_detail in _upcoming_splits:
+                _upcoming.append(_TE(
+                    date=_sd, event_type="split", name="주식 분할",
+                    importance="MED", days_until=_days(_sd),
+                    detail=_sd_detail,
+                ))
+
+            # OPEX / Quad Witching
+            for _od, _otype, _odetail in _opex_events:
+                _name = "Quadruple Witching" if _otype == "quad_witching" else "OPEX"
+                _upcoming.append(_TE(
+                    date=_od, event_type=_otype, name=_name,
+                    importance="HIGH", days_until=_days(_od),
+                    detail=_odetail,
+                ))
+
+            # 락업 해제
+            if _lockup_event:
+                _le_date, _le_detail = _lockup_event
+                _upcoming.append(_TE(
+                    date=_le_date, event_type="lockup_expiry", name="락업 해제",
+                    importance="MED", days_until=_days(_le_date),
+                    detail=_le_detail,
+                ))
+
+            # SEC EDGAR 8-K 이벤트
+            for _sd, _stype, _sname, _sdetail in _sec_events:
+                _simp = "HIGH" if _stype == "sec_8k_ma" and "CEO" in _sname else "MED"
+                _upcoming.append(_TE(
+                    date=_sd, event_type=_stype, name=_sname,
+                    importance=_simp, days_until=_days(_sd),
+                    detail=_sdetail,
+                ))
+
+            # 경쟁사 실적
+            for _cd, _cname, _cdetail in _competitor_events:
+                _upcoming.append(_TE(
+                    date=_cd, event_type="competitor_earnings", name=f"{_cname} 실적",
+                    importance="MED", days_until=_days(_cd),
+                    detail=_cdetail,
+                ))
+
+            # 날짜순 정렬
+            _upcoming.sort(key=lambda e: e.date)
+
+        except Exception as _ue:
+            log.debug("%s upcoming_events 조립 실패: %s", ticker, _ue)
+            _upcoming = []
 
     except Exception as exc:
         log.warning("yfinance fetch 실패 %s: %s", ticker, exc)
@@ -1090,6 +1432,9 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
         debt_equity=debt_equity,
         fcf_ttm=fcf_ttm,
         market_cap=market_cap,
+        next_earnings_date=next_earnings_date,
+        sector=_sector,
+        upcoming_events=_upcoming,
     )
 
 
@@ -1763,6 +2108,179 @@ def fetch_macro_realtime() -> dict:
             result.update(_peers)
     except Exception as exc:
         log.warning("sector_peers 실패: %s", exc)
+
+
+# ─── 카탈리스트 웹 검색 보완 (제품 발표·컨퍼런스 등 구조화 API 불가 이벤트) ─────
+
+async def enrich_catalyst_events_web(
+    tickers: list[str],
+    stock_data: dict[str, "StockDetail"],
+    force_refresh: bool = False,
+    max_concurrency: int = 3,
+) -> dict[str, list["TickerEvent"]]:
+    """
+    구조화 API(yfinance/SEC/Finnhub)가 커버 못하는 이벤트를
+    per-ticker 웹 검색으로 발굴: 제품 발표, 컨퍼런스, Analyst Day 등.
+
+    흐름:
+      DDG 검색 (2 쿼리) → rank_and_pick 상위 2 → fetch_url_as_markdown
+      → LLM이 날짜·이벤트명 추출 → TickerEvent 목록 반환
+
+    Returns:
+        {ticker: [TickerEvent, ...]}  — 기존 upcoming_events와 병합은 호출자 담당
+    """
+    from datetime import date as _date, timedelta as _td
+    from core.llm import call_ddg_search, rank_and_pick, fetch_url_as_markdown, call_llm
+    from core.llm import parse_llm_json
+    from shared.schemas import TickerEvent as _TE
+
+    sem = asyncio.Semaphore(max_concurrency)
+    today = _date.today()
+    look_ahead = today + _td(days=180)
+
+    import json as _json, re as _re
+
+    _HEALTHCARE_SECTORS = {"Healthcare", "Biotechnology", "Pharmaceutical",
+                           "Drug Manufacturers", "Biotech"}
+
+    async def _extract_events(
+        ticker: str,
+        queries: list[str],
+        context: str,
+        event_type: str,
+        importance: str = "MED",
+    ) -> list[_TE]:
+        """검색 → 선별 → fetch → LLM 날짜추출 공통 루프"""
+        raw_lists = await asyncio.gather(
+            *[call_ddg_search(q, num_results=6, force_refresh=force_refresh)
+              for q in queries],
+            return_exceptions=True,
+        )
+        all_results: list[dict] = []
+        for r in raw_lists:
+            if isinstance(r, list):
+                all_results.extend(r)
+        if not all_results:
+            return []
+
+        top = await rank_and_pick(all_results, context=context, top_n=2)
+        bodies: list[str] = []
+        for item in top:
+            body = await fetch_url_as_markdown(item.get("url", ""), max_chars=2000)
+            if body:
+                bodies.append(f"[{item.get('title','')}]\n{body}")
+        if not bodies:
+            return []
+
+        combined_text = "\n\n---\n\n".join(bodies)[:4000]
+        extract_prompt = (
+            f"Extract upcoming events for stock ticker {ticker} from the text below.\n"
+            f"Today: {today}. Only include events between {today} and {look_ahead}.\n"
+            f"Return JSON: "
+            f'{{"events":[{{"date":"YYYY-MM-DD","name":"event name","detail":"1 sentence"}}]}}\n'
+            f"Return {{\"events\":[]}} if no specific future dates found.\n\n"
+            f"Text:\n{combined_text}"
+        )
+        from shared.config import get_config as _gcfg
+        resp = await call_llm(
+            messages=[{"role": "user", "content": extract_prompt}],
+            model=_gcfg().LLM_MODEL_CATALYST_WEB,
+            temperature=0.0,
+            max_tokens=512,
+            response_format="json_object",
+        )
+        raw_content = resp.content.strip()
+        try:
+            parsed = _json.loads(raw_content)
+            if isinstance(parsed, dict):
+                extracted = parsed.get("events") or []
+                if not extracted:
+                    for v in parsed.values():
+                        if isinstance(v, list):
+                            extracted = v
+                            break
+            else:
+                extracted = parsed if isinstance(parsed, list) else []
+        except Exception:
+            _m = _re.search(r"\[.*?\]", raw_content, _re.DOTALL)
+            extracted = _json.loads(_m.group()) if _m else []
+
+        result: list[_TE] = []
+        for ev in extracted:
+            if not isinstance(ev, dict):
+                continue
+            try:
+                ev_date = _date.fromisoformat(ev.get("date", ""))
+            except (ValueError, TypeError):
+                continue
+            if ev_date < today or ev_date > look_ahead:
+                continue
+            result.append(_TE(
+                date=ev_date,
+                event_type=event_type,
+                name=ev.get("name", "이벤트")[:60],
+                importance=importance,
+                days_until=(ev_date - today).days,
+                detail=ev.get("detail", "")[:120],
+            ))
+        return result
+
+    async def _process(ticker: str) -> tuple[str, list[_TE]]:
+        async with sem:
+            events: list[_TE] = []
+            try:
+                year = today.year
+                fv = stock_data.get(ticker)
+                sector = (getattr(fv, "sector", None) or "").strip()
+
+                # ① 제품 발표·컨퍼런스 (모든 종목)
+                product_evs = await _extract_events(
+                    ticker,
+                    queries=[
+                        f"{ticker} product launch event conference {year}",
+                        f"{ticker} keynote investor day announcement date {year}",
+                    ],
+                    context=f"{ticker} upcoming product launch or conference event with specific date",
+                    event_type="product_launch",
+                    importance="MED",
+                )
+                events.extend(product_evs)
+
+                # ② FDA PDUFA (헬스케어·바이오테크 종목만)
+                _is_healthcare = any(s in sector for s in _HEALTHCARE_SECTORS)
+                if not _is_healthcare:
+                    # sector 미수집 시 ticker 이름으로 추가 판별 시도 생략 → 검색으로 확인
+                    pass
+                if _is_healthcare:
+                    fda_evs = await _extract_events(
+                        ticker,
+                        queries=[
+                            f"{ticker} FDA PDUFA approval date {year}",
+                            f"{ticker} drug approval decision date FDA {year}",
+                        ],
+                        context=f"{ticker} FDA PDUFA drug approval decision date",
+                        event_type="fda_pdufa",
+                        importance="HIGH",
+                    )
+                    events.extend(fda_evs)
+
+                log.info("catalyst_web_enriched", ticker=ticker,
+                         product=len(product_evs),
+                         fda=len(events) - len(product_evs))
+
+            except Exception as exc:
+                log.debug("catalyst_web_enrich_skip", ticker=ticker, error=str(exc))
+
+            return ticker, events
+
+    tasks = [_process(t) for t in tickers]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    out: dict[str, list] = {}
+    for r in results:
+        if isinstance(r, tuple):
+            ticker, evs = r
+            out[ticker] = evs
+    return out
 
     # ── Fear & Greed — CNN production API ────────────────────────────
     try:

@@ -1,0 +1,42 @@
+{
+  "execution_id": "buy_NVDA_20260629_161805",
+  "note_path": "swing-procedure/notes/buy/2026-06-29.md",
+  "overall": "ok",
+  "data_sources": {
+    "kavout": "ok",
+    "finnhub_insider": "ok",
+    "yfinance": "ok",
+    "llm_sentiment": "ok"
+  },
+  "fields": {
+    "NVDA": {
+      "ADX": 26.7,
+      "DI+": 12.74,
+      "DI-": 35.76,
+      "주봉ADX": 37.46,
+      "주봉DI+": 24.15,
+      "주봉DI-": 18.7,
+      "주봉RSI": 48.86,
+      "4H_ADX": 41.78,
+      "4H_DI+": 8.57,
+      "4H_DI-": 36.17,
+      "P/E": 29.4839,
+      "EPS": 6.53,
+      "ROE": 114.29,
+      "FCF": 46335.87,
+      "매출성장YoY": 85.2,
+      "PEG": 0.5925,
+      "순이익성장YoY": 214.5,
+      "애널리스트매수": 58,
+      "애널리스트보유": 2,
+      "애널리스트매도": 1
+    }
+  },
+  "sections": {
+    "NVDA": {
+      "장기_투자_관점": "ok",
+      "펀더멘털_분석": "ok",
+      "애널리스트_컨센서스": "ok"
+    }
+  }
+}

@@ -226,6 +226,11 @@ Devil's Advocate 차감:
 진입 방향: {{ direction }}
 현재가: ${{ price }}
 
+{% if macro_context %}
+## 매크로 컨텍스트 (오늘 수집)
+{{ macro_context }}
+
+{% endif %}
 ## 최근 뉴스 ({{ news | length }}개)
 {% for item in news %}
 - [{{ item.source }}] {{ item.title }}{% if item.description %}  — {{ item.description[:200] }}{% endif %}

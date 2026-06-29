@@ -1128,9 +1128,31 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
             "CRM":  ["NOW", "ORCL", "MSFT"],
             "SHOP": ["AMZN", "WMT", "BIGC"],
         }
+        # 관계별 구체적 detail (ticker, comp) → description
+        _COMP_DETAIL_MAP: dict[tuple[str, str], str] = {
+            ("NVDA", "AMD"):               "DC GPU/AI 가속기 수요 선행지표 — 섹터 동반 움직임",
+            ("NVDA", "INTC"):              "데이터센터 CPU 수요 — AI 인프라 지출 간접지표",
+            ("AMD",  "NVDA"):              "DC GPU 직접 경쟁 — AI 가속기 점유율 동반 변동",
+            ("AMD",  "INTC"):              "x86 서버 CPU 경쟁 간접지표",
+            ("INTC", "NVDA"):              "AI 가속기 경쟁 간접지표 — DC 지출 선행",
+            ("INTC", "AMD"):               "x86 CPU 직접 경쟁 — 서버 점유율 선행지표",
+            ("MU",   "Samsung Electronics"): "HBM·DRAM 공급과잉/부족 선행지표 — 동일 고객사",
+            ("MU",   "SK Hynix"):          "HBM 직접 경쟁 — 마진·ASP 구조 유사",
+            ("TSLA", "GM"):                "전기차 판매량·점유율 선행지표",
+            ("TSLA", "F"):                 "전기차 전환 속도 선행지표",
+            ("TSLA", "NIO"):               "중국 전기차 수요 — 글로벌 시장 리트머스",
+            ("AAPL", "MSFT"):              "기업·클라우드 AI 서비스 경쟁 간접지표",
+            ("AAPL", "GOOGL"):             "모바일·AI 에코시스템 경쟁 간접지표",
+            ("MSFT", "GOOGL"):             "클라우드·AI 직접 경쟁 — Azure vs GCP",
+            ("MSFT", "AMZN"):              "클라우드 직접 경쟁 — Azure vs AWS",
+            ("GOOGL", "MSFT"):             "클라우드·AI 검색 직접 경쟁",
+            ("AMZN", "MSFT"):              "클라우드 직접 경쟁 — AWS vs Azure",
+            ("META", "SNAP"):              "소셜 광고 수요 선행지표 — 소형 플랫폼 먼저 발표",
+            ("NFLX", "DIS"):               "스트리밍 구독자·ARPU 선행지표",
+        }
 
         # ── SEC EDGAR 8-K 수집 (M&A / CEO교체 / 자사주 / Analyst Day) ────
-        _sec_events: list[tuple["date", str, str, str]] = []  # (date, type, name, detail)
+        _sec_events: list[tuple["date", str, str, str, str]] = []  # (date, type, name, detail, importance)
         try:
             import json as _json_sec
             import urllib.request as _ureq
@@ -1172,7 +1194,7 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
                     "1.02": ("sec_8k_ma",  "계약 해지", "MED"),
                     "2.01": ("sec_8k_ma",  "M&A 완료",  "HIGH"),         # Completion of acquisition
                     "5.02": ("sec_8k_ma",  "CEO/CFO 변경", "HIGH"),      # Director/officer changes
-                    "8.01": ("sec_8k_ma",  "기타 중요 공시", "MED"),
+                    "8.01": ("sec_8k_ma",  "기타 공시", "LOW"),
                     "7.01": ("analyst_day","Analyst/Investor Day", "MED"),
                     "8.05": ("sec_8k_ma",  "자사주 매입 프로그램", "MED"),
                 }
@@ -1192,7 +1214,7 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
                         if _item_code in _8k_keywords:
                             _etype, _ename, _eimp = _8k_keywords[_item_code]
                             _sec_events.append((_fd, _etype, _ename,
-                                f"SEC 8-K Item {_item_code} 공시 ({_fdate})"))
+                                f"SEC 8-K Item {_item_code} 공시 ({_fdate})", _eimp))
                             break  # 한 공시당 하나만
 
         except Exception as _sec_e:
@@ -1226,10 +1248,14 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
                                 continue
                             _ce_date = _dfh.fromisoformat(_ce_date_str)
                             if _ce_date >= _today_fh:
+                                _comp_det = _COMP_DETAIL_MAP.get(
+                                    (ticker.upper(), _comp),
+                                    f"{_comp} 실적 — 섹터 방향 선행지표",
+                                )
                                 _competitor_events.append((
                                     _ce_date,
                                     _comp,
-                                    f"{_comp} 실적 — 섹터 방향 선행 지표",
+                                    _comp_det,
                                 ))
                     except Exception as _ce_e:
                         log.debug("%s 경쟁사 %s 실적 수집 실패: %s", ticker, _comp, _ce_e)
@@ -1299,20 +1325,21 @@ def fetch_stock_detail(ticker: str, sleep_sec: float = 0.5) -> StockDetail:
                     detail=_le_detail,
                 ))
 
-            # SEC EDGAR 8-K 이벤트
-            for _sd, _stype, _sname, _sdetail in _sec_events:
-                _simp = "HIGH" if _stype == "sec_8k_ma" and "CEO" in _sname else "MED"
+            # SEC EDGAR 8-K 이벤트 (importance는 _8k_keywords에서 직접 전파)
+            for _sd, _stype, _sname, _sdetail, _simp in _sec_events:
                 _upcoming.append(_TE(
                     date=_sd, event_type=_stype, name=_sname,
                     importance=_simp, days_until=_days(_sd),
                     detail=_sdetail,
                 ))
 
-            # 경쟁사 실적
+            # 경쟁사 실적 (1순위 경쟁사: HIGH, 나머지: MED)
+            _primary_comp = (_COMPETITOR_MAP.get(ticker.upper(), [None]))[0]
             for _cd, _cname, _cdetail in _competitor_events:
+                _comp_imp = "HIGH" if _cname == _primary_comp else "MED"
                 _upcoming.append(_TE(
                     date=_cd, event_type="competitor_earnings", name=f"{_cname} 실적",
-                    importance="MED", days_until=_days(_cd),
+                    importance=_comp_imp, days_until=_days(_cd),
                     detail=_cdetail,
                 ))
 

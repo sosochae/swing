@@ -1016,6 +1016,7 @@ class SellSteps:
                                 "price": round(current_price, 2),
                                 "news": news_items[:50],
                                 "earnings_summary": _sell_earnings_summary,
+                                "macro_context": "",
                             },
                             cache_key=_cache_key,
                         )

@@ -2463,6 +2463,8 @@ def _format_integrated_buy_block(
             "|------|-------|------|------|--------|",
         ]
         for _ev in _upcoming_events:
+            if _ev.days_until < 0:
+                continue  # 향후 섹션에 과거 이벤트 제외
             _dday = f"D+{_ev.days_until}" if _ev.days_until > 0 else "D-Day"
             _icon = _evt_icon.get(_ev.event_type, "📌")
             _imp  = _imp_icon.get(_ev.importance, "")

@@ -843,6 +843,9 @@ class PipelineContext(BaseModel):
     sell_iv_warnings: list[str] = Field(default_factory=list)         # Step 6 → 10,13
     sell_preliminary: list[Any] = Field(default_factory=list)         # Step 7 → 8,10
 
+    # 매크로 리서치 요약 (Step 1 말미 수집 → Step 5 프롬프트 주입)
+    macro_research_summary: str = ""
+
     # 단계 간 전달용 임시 메타
     obsidian_note_path: str = ""
 

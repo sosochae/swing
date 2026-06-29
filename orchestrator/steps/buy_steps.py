@@ -285,6 +285,17 @@ class BuySteps:
         except Exception as exc:
             log.warning("watchlist_write_warn", error=str(exc))
 
+        # ── 매크로 리서치 (당일 캐시 우선, 실패해도 파이프라인 계속) ──
+        try:
+            from core.macro_research import fetch_macro_context
+            ctx.macro_research_summary = await asyncio.wait_for(
+                fetch_macro_context("US equity market"),
+                timeout=60.0,
+            )
+            log.info("macro_research_done", chars=len(ctx.macro_research_summary))
+        except Exception as _macro_exc:
+            log.warning("macro_research_skip", error=str(_macro_exc))
+
         duration_ms = int((time.monotonic() - start) * 1000)
         append_audit(ctx.execution_id, 1, "completed", duration_ms=duration_ms,
                      data={"watchlist_count": len(ctx.watchlist)})
@@ -1041,6 +1052,7 @@ class BuySteps:
                         "price": ticker_data.technical.price if ticker_data else 0,
                         "news": combined[:50],
                         "earnings_summary": earnings_summary,
+                        "macro_context": ctx.macro_research_summary,
                     },
                     cache_key=cache_key,
                     force_refresh=ctx.force_refresh,
@@ -1142,6 +1154,37 @@ class BuySteps:
                     }
                 append_audit(ctx.execution_id, 5, "degraded",
                              ticker=ticker, error=f"E300: LLM 실패: {exc}")
+
+            # ── 실적 전 집중 리서치 (D-7 이하 종목) ────────────────────
+            try:
+                _ea_for_research = next(
+                    (ea for ea in ctx.earnings_list
+                     if ea.ticker == ticker
+                     and 0 <= (ea.date - date.today()).days <= 7),
+                    None,
+                )
+                if _ea_for_research:
+                    from core.research_agent import run_earnings_research
+                    _days_left = (date(_ea_for_research.date.year,
+                                       _ea_for_research.date.month,
+                                       _ea_for_research.date.day) - date.today()).days
+                    _eps_est = getattr(_ea_for_research, "eps_estimate", None)
+                    _earnings_section = await run_earnings_research(
+                        ticker,
+                        days_until=_days_left,
+                        eps_estimate=float(_eps_est) if _eps_est is not None else None,
+                    )
+                    # 기존 리서치 보고서에 실적 섹션 append
+                    _obs_path = f"Research/{ticker}_{date.today().isoformat()}.md"
+                    try:
+                        from core.obsidian import ObsidianClient as _ObsCls
+                        _obs_tmp = _ObsCls()
+                        await _obs_tmp.append_note(_obs_path, _earnings_section)
+                    except Exception:
+                        pass
+                    log.info("earnings_research_appended", ticker=ticker, days=_days_left)
+            except Exception as _er_exc:
+                log.debug("earnings_research_skip", ticker=ticker, error=str(_er_exc))
 
             await asyncio.sleep(0.5)  # Rate limit 방지
 

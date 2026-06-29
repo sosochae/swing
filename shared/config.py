@@ -30,16 +30,16 @@ class Config:
 
     # ── LLM 폴백 체인 (지정 모델 없거나 실패 시 순서대로 시도) ──────
     LLM_PRIMARY_MODEL: str = os.getenv(
-        "LLM_PRIMARY_MODEL", "openai/gpt-oss-120b:free"
+        "LLM_PRIMARY_MODEL", "deepseek/deepseek-chat"
     )
     LLM_FALLBACK_MODEL: str = os.getenv(
-        "LLM_FALLBACK_MODEL", "google/gemma-4-31b-it:free"
+        "LLM_FALLBACK_MODEL", "deepseek/deepseek-v4-flash"
     )
     LLM_FALLBACK_2: str = os.getenv(
-        "LLM_FALLBACK_2", "deepseek/deepseek-v4-flash:free"
+        "LLM_FALLBACK_2", "deepseek/deepseek-v4-pro"
     )
     LLM_FALLBACK_3: str = os.getenv(
-        "LLM_FALLBACK_3", "anthropic/claude-haiku-4-5"
+        "LLM_FALLBACK_3", ""
     )
     LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
     LLM_TEMPERATURE: float = 0.0    # 항상 결정론적
@@ -56,23 +56,31 @@ class Config:
         "LLM_MODEL_KAVOUT_EARNINGS", "deepseek/deepseek-v4-flash"
     )
     LLM_MODEL_SELL_HEALTH: str = os.getenv(
-        "LLM_MODEL_SELL_HEALTH", "openai/gpt-oss-120b:free"
+        "LLM_MODEL_SELL_HEALTH", "deepseek/deepseek-chat"
     )
     LLM_MODEL_SELL_ENV: str = os.getenv(
-        "LLM_MODEL_SELL_ENV", "deepseek/deepseek-v4-flash:free"
+        "LLM_MODEL_SELL_ENV", "deepseek/deepseek-v4-flash"
     )
     LLM_MODEL_NL_ROUTING: str = os.getenv(
-        "LLM_MODEL_NL_ROUTING", "deepseek/deepseek-v4-flash:free"
+        "LLM_MODEL_NL_ROUTING", "deepseek/deepseek-v4-flash"
     )
     LLM_MODEL_RANK_AND_PICK: str = os.getenv(
-        "LLM_MODEL_RANK_AND_PICK", "deepseek/deepseek-v4-flash"
+        "LLM_MODEL_RANK_AND_PICK", "deepseek/deepseek-chat"
     )
     LLM_MODEL_CATALYST_WEB: str = os.getenv(
         "LLM_MODEL_CATALYST_WEB", "deepseek/deepseek-v4-flash"
     )
     LLM_MODEL_GAP_ANALYSIS: str = os.getenv(
-        "LLM_MODEL_GAP_ANALYSIS", "google/gemini-flash-2.5"
+        "LLM_MODEL_GAP_ANALYSIS", "deepseek/deepseek-chat"
     )
+
+    # ── Research Agent 전용 모델 (Phase 1~4) ──────────────────────
+    RESEARCH_MODEL: str = os.getenv(
+        "RESEARCH_MODEL", "google/gemini-2.5-flash"
+    )
+    RESEARCH_FETCH_TOP_N: int = int(os.getenv("RESEARCH_FETCH_TOP_N", "5"))
+    RESEARCH_GAP_TOP_N: int = int(os.getenv("RESEARCH_GAP_TOP_N", "3"))
+    RESEARCH_DROP_THRESHOLD: float = float(os.getenv("RESEARCH_DROP_THRESHOLD", "-3.0"))
 
     # ── 외부 데이터 API ──────────────────────────────────────────
     FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")

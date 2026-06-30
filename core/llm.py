@@ -39,18 +39,17 @@ from shared.schemas import LLMRequest, LLMResponse
 log = get_logger()
 cfg = get_config()
 
-# ── 무료 폴백 체인 (미등록 템플릿 / 지정 모델 실패 시 순서대로 시도) ──
-# 원칙: 이 체인은 전부 무료 — claude-haiku-4.5는 buy_step3_research 지정 모델에서만 쓰임
-#   nvidia/nemotron-3-super-120b-a12b:free → Nemotron 120B  (ctx 1M, JSON 검증)
-#   meta-llama/llama-3.3-70b-instruct:free → Llama 3.3 70B  (ctx 131k, JSON 안정)
-#   qwen/qwen3-coder:free                  → Qwen3 Coder    (ctx 1M, 구조화 강점)
-#   openai/gpt-oss-120b:free               → GPT OSS 120B   (ctx 131k, 최후 무료)
+# ── 폴백 체인 (지정 모델 실패 시 순서대로 시도) ───────────────────────
+# .env / config.py에서 관리. 빈 문자열은 제외.
+# 기본값: deepseek-chat → deepseek-v4-flash → deepseek-v4-pro
 MODEL_PRIORITY = [
-    cfg.LLM_PRIMARY_MODEL  or "nvidia/nemotron-3-super-120b-a12b:free",  # 1순위 (무료)
-    cfg.LLM_FALLBACK_MODEL or "meta-llama/llama-3.3-70b-instruct:free",  # 2순위 (무료)
-    cfg.LLM_FALLBACK_2     or "qwen/qwen3-coder:free",                   # 3순위 (무료)
-    cfg.LLM_FALLBACK_3     or "openai/gpt-oss-120b:free",                # 4순위 (무료)
-]
+    m for m in [
+        cfg.LLM_PRIMARY_MODEL,
+        cfg.LLM_FALLBACK_MODEL,
+        cfg.LLM_FALLBACK_2,
+        cfg.LLM_FALLBACK_3,
+    ] if m
+] or ["deepseek/deepseek-chat"]
 
 
 # ─────────────────────────────────────────────────────────────

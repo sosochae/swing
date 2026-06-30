@@ -1,0 +1,124 @@
+{
+  "execution_id": "buy_20260630_035310",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "LRCX",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 0.0,
+      "conviction": {
+        "technical_signals": 9,
+        "timing_conditions": 4,
+        "total_signals": 13,
+        "rr_ratio": 0.46,
+        "ivr": 47.0,
+        "level": "low",
+        "trend_confidence": 0.833,
+        "news_confidence": 0.35,
+        "thesis_confidence": 0.154,
+        "execution_confidence": 0.0,
+        "total_conviction": 0.45
+      },
+      "capital_allocation": 5338.5,
+      "contracts": 1,
+      "strike": 430.0,
+      "expiry": "2026-08-21",
+      "rationale": "확신도 0.45 (low) | 신호수 9/8, 시나리오R/R 0.5, EV $4,612 | [ADX:25 RSI:25 MACD:25 RVOL:0] | K-Score 8/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $53.1 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "LRCX",
+        "direction": "long_call",
+        "strike": 430.0,
+        "expiry": "2026-08-21",
+        "contracts": 1,
+        "total_investment": 5338.5,
+        "commission_total": 0.5,
+        "implied_move_pct": 25.852759078720194,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.525,
+          "stock_move_pct": 38.77913861808029,
+          "target_stock_price": 572.2351,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 133.7275529719039,
+          "gross_profit": 8034.75529719039,
+          "net_profit": 8034.25529719039,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.375,
+          "stock_move_pct": 12.926379539360086,
+          "target_stock_price": 465.63509999999997,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 78.12459297190388,
+          "gross_profit": 2474.4592971903876,
+          "net_profit": 2473.9592971903876,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.1,
+          "stock_move_pct": -38.77913861808029,
+          "target_stock_price": 252.43510000000003,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -5338.0,
+          "net_profit": -5338.5,
+          "rationale": ""
+        },
+        "expected_value": 4611.868767471349,
+        "stop_loss_premium": 26.69,
+        "target_premium_1st": 80.07000000000001,
+        "target_premium_2nd": 106.76,
+        "target_premium_3rd": 133.45000000000002,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(86%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": [
+        "내부자 순매도 $481.2M (−35pt)",
+        "[🔴MaxPain극단괴리] 현재가 Max Pain 대비 +14.5%",
+        "[🔴군집리스크-극단] P/C 0.138 (콜 극단 집중)",
+        "[⚠️촉매소진] 다음 촉매 공백 + 최근 1M +35%",
+        "[⚠️밸류거품] 역산 EPS CAGR 54% 필요",
+        "[🔴고점형성위험] RRE 4/7 적색(옵션구조, 스마트머니이탈, 촉매소진, 수급군집)"
+      ],
+      "da_total_pts": 155.0
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "borderline",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 261.3,
+  "summary": {
+    "filtered_tickers": [
+      "LRCX"
+    ],
+    "regime": "borderline"
+  }
+}

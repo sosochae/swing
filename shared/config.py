@@ -49,6 +49,9 @@ class Config:
     LLM_MODEL_BUY_RESEARCH: str = os.getenv(
         "LLM_MODEL_BUY_RESEARCH", "anthropic/claude-haiku-4-5"
     )
+    LLM_MODEL_BUY_RESEARCH_UPDATE: str = os.getenv(
+        "LLM_MODEL_BUY_RESEARCH_UPDATE", "deepseek/deepseek-v4-flash"
+    )
     LLM_MODEL_BUY_TECH_NARRATIVE: str = os.getenv(
         "LLM_MODEL_BUY_TECH_NARRATIVE", "deepseek/deepseek-v4-flash"
     )

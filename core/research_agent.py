@@ -1,17 +1,15 @@
 """
 core/research_agent.py
 ======================
-Research Agent — Plan → Search → Rank → Fetch → Gap → Synth 루프
+포지션 관련 리서치 유틸리티
 
-세 가지 리서치 함수를 제공:
-  run_research()           : On-demand 심층 리서치 (Phase 1)
-  run_earnings_research()  : 실적 전 집중 리서치   (Phase 3)
-  run_drop_research()      : 포지션 급락 원인 분석  (Phase 4)
+포함 기능:
+  run_drop_research()      : 포지션 급락 원인 분석 (position_monitor 사용)
 
-LLM 호출: call_llm(model=cfg.RESEARCH_MODEL) — google/gemini-2.5-flash
-검색:     call_ddg_search / call_brave_search (기존 인프라 재사용)
-Rank/Fetch: rank_and_pick / fetch_url_as_markdown (기존 인프라 재사용)
-Obsidian: ObsidianClient.PUT
+데이터 수집 헬퍼 (buy_steps Step 5에서 직접 호출):
+  _fetch_stock_snapshot()  : yfinance 주식 지표
+  _fetch_options_snapshot(): yfinance ATM 스트래들·IV·내재 이동폭
+  _fetch_earnings_data()   : yfinance 실적 추정치·서프라이즈 히스토리
 """
 
 from __future__ import annotations
@@ -41,6 +39,251 @@ async def _llm(prompt: str, max_tokens: int = 4096) -> str:
         max_tokens=max_tokens,
     )
     return resp.content.strip()
+
+
+def _unwrap_json(text: str) -> str:
+    """코드블록만 제거. JSON 평탄화는 하지 않음 — continuation 기법으로 JSON 자체를 방지."""
+    import re
+    stripped = text.strip()
+    code_block = re.match(r"^```(?:json|markdown)?\s*([\s\S]*?)```\s*$", stripped)
+    if code_block:
+        stripped = code_block.group(1).strip()
+    return stripped
+
+
+def _fetch_stock_snapshot_sync(ticker: str) -> str:
+    """yfinance로 핵심 정량 지표 수집 (동기). 실패 시 빈 문자열."""
+    try:
+        import yfinance as yf  # type: ignore
+        tk = yf.Ticker(ticker)
+        info = tk.fast_info
+        full = tk.info
+
+        lines: list[str] = []
+
+        def add(label: str, val, fmt: str = "{}"):
+            if val is not None:
+                try:
+                    lines.append(f"- {label}: {fmt.format(val)}")
+                except Exception:
+                    pass
+
+        add("현재가", info.get("last_price") or full.get("currentPrice"), "${:.2f}")
+        add("전일 종가", full.get("previousClose"), "${:.2f}")
+        add("52주 최고", info.get("year_high") or full.get("fiftyTwoWeekHigh"), "${:.2f}")
+        add("52주 최저", info.get("year_low") or full.get("fiftyTwoWeekLow"), "${:.2f}")
+        mc = full.get("marketCap")
+        if mc is not None:
+            if mc >= 1e12:
+                lines.append(f"- 시가총액: ${mc/1e12:.2f}T")
+            elif mc >= 1e9:
+                lines.append(f"- 시가총액: ${mc/1e9:.1f}B")
+            else:
+                lines.append(f"- 시가총액: ${mc:,.0f}")
+        add("PER (Forward)", full.get("forwardPE"), "{:.1f}x")
+        add("PER (Trailing)", full.get("trailingPE"), "{:.1f}x")
+        add("베타", full.get("beta"), "{:.2f}")
+        add("애널리스트 목표가 (평균)", full.get("targetMeanPrice"), "${:.2f}")
+        add("애널리스트 목표가 (최고)", full.get("targetHighPrice"), "${:.2f}")
+        add("애널리스트 목표가 (최저)", full.get("targetLowPrice"), "${:.2f}")
+        add("애널리스트 수", full.get("numberOfAnalystOpinions"))
+        add("추천 등급", full.get("recommendationKey"))
+
+        # 추천 Buy/Hold/Sell 비율 (recommendations_summary 0m 기준)
+        try:
+            rec = tk.recommendations_summary
+            if rec is not None and not rec.empty:
+                cur = rec[rec["period"] == "0m"]
+                if not cur.empty:
+                    row = cur.iloc[0]
+                    n_buy = int(row.get("strongBuy", 0)) + int(row.get("buy", 0))
+                    n_hold = int(row.get("hold", 0))
+                    n_sell = int(row.get("sell", 0)) + int(row.get("strongSell", 0))
+                    total = n_buy + n_hold + n_sell
+                    if total > 0:
+                        lines.append(
+                            f"- 추천 비율: Buy {n_buy/total*100:.0f}%"
+                            f" / Hold {n_hold/total*100:.0f}%"
+                            f" / Sell {n_sell/total*100:.0f}% ({total}명)"
+                        )
+        except Exception:
+            pass
+
+        add("공매도 커버 일수", full.get("shortRatio"), "{:.1f}일")
+        add("거래량", full.get("volume"), "{:,}")
+        add("평균 거래량(10일)", full.get("averageVolume10days"), "{:,}")
+
+        return "\n".join(lines)
+    except Exception as exc:
+        log.debug("stock_snapshot_fail", ticker=ticker, error=str(exc))
+        return ""
+
+
+def _fetch_options_snapshot_sync(ticker: str) -> str:
+    """ATM 스트래들로 옵션 내재 이동폭 계산 (동기). 실패 시 빈 문자열."""
+    try:
+        import yfinance as yf  # type: ignore
+        tk = yf.Ticker(ticker)
+        expirations = tk.options
+        if not expirations:
+            return ""
+
+        current_price = tk.fast_info.get("last_price") or tk.info.get("currentPrice")
+        if not current_price:
+            return ""
+
+        # 최소 7일 이후 만기 선택 (단기 만기는 IV가 의미 없음)
+        from datetime import date as _date, timedelta
+        min_date = _date.today() + timedelta(days=7)
+        exp = next(
+            (e for e in expirations if _date.fromisoformat(e) >= min_date),
+            expirations[0],
+        )
+        chain = tk.option_chain(exp)
+        calls = chain.calls.copy()
+        puts = chain.puts.copy()
+
+        calls["dist"] = abs(calls["strike"] - current_price)
+        puts["dist"] = abs(puts["strike"] - current_price)
+
+        atm_call = calls.nsmallest(1, "dist").iloc[0]
+        atm_put = puts.nsmallest(1, "dist").iloc[0]
+
+        straddle = float(atm_call["lastPrice"]) + float(atm_put["lastPrice"])
+        implied_move_pct = straddle / current_price * 100
+
+        iv_call = float(atm_call.get("impliedVolatility", 0))
+        iv_put = float(atm_put.get("impliedVolatility", 0))
+        atm_iv = (iv_call + iv_put) / 2 if (iv_call + iv_put) > 0 else 0
+
+        breakeven_down = current_price - straddle
+        breakeven_up = current_price + straddle
+
+        lines = [
+            f"- 기준 만기: {exp}",
+            f"- ATM 스트라이크: ${atm_call['strike']:.0f}",
+            f"- ATM 스트래들 가격: ${straddle:.2f}",
+            f"- 옵션 내재 이동폭: ±{implied_move_pct:.1f}%",
+            f"- 손익분기: ${breakeven_down:.2f} (하방) / ${breakeven_up:.2f} (상방)",
+        ]
+        if atm_iv > 0.01:  # 1% 미만은 stale 데이터로 간주, 출력 제외
+            lines.append(f"- ATM 내재변동성(IV): {atm_iv:.1%}")
+        return "\n".join(lines)
+    except Exception as exc:
+        log.debug("options_snapshot_fail", ticker=ticker, error=str(exc))
+        return ""
+
+
+def _fetch_earnings_data_sync(ticker: str) -> str:
+    """yfinance로 실적 일정·추정치·서프라이즈 히스토리·주가 이동폭 수집 (동기)."""
+    try:
+        import yfinance as yf  # type: ignore
+        import pandas as _pd  # type: ignore
+        tk = yf.Ticker(ticker)
+        lines: list[str] = []
+
+        # 실적 발표 캘린더
+        try:
+            cal = tk.calendar
+            if cal is not None and not cal.empty:
+                for col in cal.columns:
+                    val = cal[col].iloc[0]
+                    if val is not None:
+                        lines.append(f"- {col}: {val}")
+        except Exception:
+            pass
+
+        # 분기별 EPS 실적 히스토리 (quarter가 인덱스)
+        try:
+            hist = tk.earnings_history
+            if hist is not None and not hist.empty:
+                lines.append("\n[EPS 서프라이즈 히스토리 (최근 4분기)]")
+                for date_ts, row in hist.head(4).iterrows():
+                    date_str = _pd.Timestamp(date_ts).strftime("%Y-%m-%d")
+                    est = row.get("epsEstimate")
+                    act = row.get("epsActual")
+                    if est is not None and act is not None:
+                        surprise = ((act - est) / abs(est) * 100) if est != 0 else 0
+                        lines.append(f"  {date_str}: 추정 ${est:.2f} → 실제 ${act:.2f} ({surprise:+.1f}%)")
+        except Exception:
+            pass
+
+        # 과거 실적일 주가 이동폭 (earnings_dates + history)
+        try:
+            ed = tk.earnings_dates
+            if ed is not None and not ed.empty:
+                price_hist = tk.history(period="2y")
+                if not price_hist.empty:
+                    price_hist.index = price_hist.index.tz_localize(None)
+                    moves = []
+                    for earn_dt in ed.index[:4]:
+                        earn_ts = _pd.Timestamp(earn_dt).tz_localize(None)
+                        before = price_hist[price_hist.index < earn_ts]
+                        after = price_hist[price_hist.index >= earn_ts]
+                        if before.empty or after.empty:
+                            continue
+                        prev_close = float(before.iloc[-1]["Close"])
+                        next_open = float(after.iloc[0]["Open"])
+                        move = (next_open - prev_close) / prev_close * 100
+                        moves.append(f"  {earn_ts.strftime('%Y-%m-%d')}: {move:+.1f}%")
+                    if moves:
+                        lines.append("\n[과거 실적일 주가 이동폭 (갭 기준)]")
+                        lines.extend(moves)
+        except Exception:
+            pass
+
+        # 분기 EPS/매출 추정치
+        try:
+            ee = tk.earnings_estimate
+            if ee is not None and not ee.empty:
+                lines.append("\n[EPS 추정치]")
+                for idx in ee.index[:4]:
+                    row = ee.loc[idx]
+                    avg = row.get("avg")
+                    low_ = row.get("low")
+                    high_ = row.get("high")
+                    if avg is not None:
+                        lines.append(f"  {idx}: 평균 ${avg:.2f} (범위: ${low_:.2f}~${high_:.2f})")
+        except Exception:
+            pass
+
+        try:
+            re_ = tk.revenue_estimate
+            if re_ is not None and not re_.empty:
+                lines.append("\n[매출 추정치]")
+                for idx in re_.index[:2]:
+                    row = re_.loc[idx]
+                    avg = row.get("avg")
+                    if avg is not None:
+                        if avg >= 1e9:
+                            avg_str = f"${avg / 1e9:.1f}B"
+                        elif avg >= 1e6:
+                            avg_str = f"${avg / 1e6:.1f}M"
+                        else:
+                            avg_str = f"${avg:,.0f}"
+                        lines.append(f"  {idx}: 평균 {avg_str}")
+        except Exception:
+            pass
+
+        return "\n".join(lines) if lines else "yfinance 실적 데이터 없음"
+    except Exception as exc:
+        log.debug("earnings_data_fail", ticker=ticker, error=str(exc))
+        return "yfinance 실적 데이터 없음"
+
+
+async def _fetch_stock_snapshot(ticker: str) -> str:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _fetch_stock_snapshot_sync, ticker)
+
+
+async def _fetch_options_snapshot(ticker: str) -> str:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _fetch_options_snapshot_sync, ticker)
+
+
+async def _fetch_earnings_data(ticker: str) -> str:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _fetch_earnings_data_sync, ticker)
 
 
 async def _search_and_fetch(
@@ -112,195 +355,7 @@ def _build_report_header(ticker: str, report_type: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# Phase 1: On-demand 심층 리서치
-# ─────────────────────────────────────────────────────────────
-
-async def run_research(
-    ticker: str,
-    context_hint: str = "",
-) -> str:
-    """
-    특정 종목 심층 리서치 루프.
-
-    Args:
-        ticker: 종목 심볼 (예: "NVDA")
-        context_hint: 파이프라인 컨텍스트 문자열
-                      (예: "기술점수 82, high conviction, regime=bull")
-                      수동 CLI 호출 시 빈 문자열 가능
-
-    Returns:
-        합성된 리서치 보고서 마크다운 문자열
-    """
-    today = date.today().isoformat()
-    log.info("research_start", ticker=ticker)
-
-    context_section = f"\n파이프라인 컨텍스트: {context_hint}" if context_hint else ""
-
-    # ── [Plan] 검색 쿼리 생성 ──────────────────────────────────
-    plan_prompt = (
-        f"You are a financial research analyst. Generate 5 distinct search queries "
-        f"to thoroughly research {ticker} stock from different angles.\n"
-        f"Today's date: {today}{context_section}\n\n"
-        f"Focus angles: recent news, earnings outlook, options activity, "
-        f"sector trends, analyst sentiment.\n\n"
-        f"Output ONLY 5 search queries, one per line, no numbering, no explanation."
-    )
-    queries_raw = await _llm(plan_prompt, max_tokens=256)
-    queries = [q.strip() for q in queries_raw.splitlines() if q.strip()][:5]
-    if not queries:
-        queries = [
-            f"{ticker} stock news analysis {today}",
-            f"{ticker} earnings outlook analyst estimate",
-            f"{ticker} options unusual activity",
-            f"{ticker} sector trend outlook",
-            f"{ticker} technical analysis price target",
-        ]
-    log.info("research_queries", ticker=ticker, count=len(queries))
-
-    # ── [Search 1 + Rank + Fetch] ──────────────────────────────
-    fetched_1 = await _search_and_fetch(
-        queries,
-        context=f"{ticker} stock research — recent news, earnings, options",
-        fetch_top_n=cfg.RESEARCH_FETCH_TOP_N,
-    )
-    log.info("research_fetch1", ticker=ticker, count=len(fetched_1))
-
-    # ── [Gap Analysis] ─────────────────────────────────────────
-    fetched_2: list[dict] = []
-    if fetched_1:
-        collected_summary = "\n\n---\n\n".join(
-            f"[{d['title']}]\n{d['content'][:800]}" for d in fetched_1
-        )
-        gap_prompt = (
-            f"Research target: {ticker} stock\n\n"
-            f"Already collected:\n{collected_summary}\n\n"
-            f"Identify what important information is still missing and generate "
-            f"up to 3 additional search queries to fill those gaps.\n"
-            f"If coverage is sufficient, reply with exactly: SUFFICIENT\n"
-            f"Otherwise output ONLY search queries, one per line, no explanation."
-        )
-        gap_raw = await _llm(gap_prompt, max_tokens=200)
-
-        if "SUFFICIENT" not in gap_raw.upper():
-            gap_queries = [q.strip() for q in gap_raw.splitlines()
-                           if q.strip() and len(q.strip()) > 5][:3]
-            if gap_queries:
-                log.info("research_gap_queries", ticker=ticker, count=len(gap_queries))
-                fetched_2 = await _search_and_fetch(
-                    gap_queries,
-                    context=f"{ticker} supplementary research",
-                    fetch_top_n=cfg.RESEARCH_GAP_TOP_N,
-                )
-                log.info("research_fetch2", ticker=ticker, count=len(fetched_2))
-        else:
-            log.info("research_gap_sufficient", ticker=ticker)
-
-    all_fetched = fetched_1 + fetched_2
-
-    # ── [Synth] 보고서 합성 ────────────────────────────────────
-    if not all_fetched:
-        synth_md = f"데이터 수집 실패 — 검색 결과 없음 ({today})"
-    else:
-        sources_text = "\n\n---\n\n".join(
-            f"### 소스 {i+1}: {d['title']}\nURL: {d['url']}\n\n{d['content'][:2000]}"
-            for i, d in enumerate(all_fetched)
-        )
-        synth_prompt = (
-            f"You are a professional stock analyst. Synthesize the following research "
-            f"sources into a comprehensive investment research report for {ticker}.\n"
-            f"Today: {today}{context_section}\n\n"
-            f"Write in Korean. Structure the report with these sections:\n"
-            f"## 핵심 요약\n"
-            f"## 최신 뉴스 및 이벤트\n"
-            f"## 실적 및 밸류에이션\n"
-            f"## 기술적 분석 시사점\n"
-            f"## 옵션/기관 흐름\n"
-            f"## 리스크 요인\n"
-            f"## 종합 판단\n\n"
-            f"Be concise but thorough. Base everything on the sources provided.\n\n"
-            f"SOURCES:\n{sources_text}"
-        )
-        synth_md = await _llm(synth_prompt, max_tokens=3000)
-
-    # ── 보고서 조립 및 Obsidian 저장 ───────────────────────────
-    report = _build_report_header(ticker, "📊 심층 리서치 보고서")
-    report += synth_md
-    report += f"\n\n---\n*수집 소스: {len(all_fetched)}개*\n"
-
-    obs_path = f"Research/{ticker}_{today}.md"
-    await _save_to_obsidian(obs_path, report)
-
-    log.info("research_done", ticker=ticker, sources=len(all_fetched))
-    return report
-
-
-# ─────────────────────────────────────────────────────────────
-# Phase 3: 실적 전 집중 리서치
-# ─────────────────────────────────────────────────────────────
-
-async def run_earnings_research(
-    ticker: str,
-    days_until: int,
-    eps_estimate: Optional[float] = None,
-) -> str:
-    """
-    실적 발표 D-7 이하 종목 집중 리서치.
-
-    Args:
-        ticker: 종목 심볼
-        days_until: 실적까지 남은 일수
-        eps_estimate: 예상 EPS (없으면 None)
-
-    Returns:
-        실적 미리보기 마크다운 섹션
-    """
-    today = date.today().isoformat()
-    log.info("earnings_research_start", ticker=ticker, days_until=days_until)
-
-    eps_hint = f" (EPS 예상: ${eps_estimate:.2f})" if eps_estimate is not None else ""
-    quarter_hint = f"D-{days_until}{eps_hint}"
-
-    queries = [
-        f"{ticker} earnings preview analyst estimate {today}",
-        f"{ticker} revenue guidance expectations Wall Street consensus",
-        f"{ticker} options implied move earnings historical reaction",
-        f"{ticker} sector earnings beat miss pattern Q2 2026",
-    ]
-
-    fetched = await _search_and_fetch(
-        queries,
-        context=f"{ticker} earnings preview — analyst estimates, implied move, sector",
-        fetch_top_n=4,
-    )
-    log.info("earnings_research_fetch", ticker=ticker, count=len(fetched))
-
-    if not fetched:
-        return f"\n\n## 실적 미리보기 ({quarter_hint})\n\n데이터 수집 실패\n"
-
-    sources_text = "\n\n---\n\n".join(
-        f"[{d['title']}]\n{d['content'][:1500]}" for d in fetched
-    )
-    synth_prompt = (
-        f"Analyze the upcoming earnings for {ticker} (reporting in {days_until} days{eps_hint}).\n"
-        f"Today: {today}\n\n"
-        f"Write in Korean. Cover these points:\n"
-        f"- 애널리스트 컨센서스 EPS / 매출 예상\n"
-        f"- 옵션 implied move (예상 주가 이동폭 %)\n"
-        f"- 최근 실적 서프라이즈 패턴\n"
-        f"- 주요 관전 포인트 (guidance, segment)\n"
-        f"- 진입 전략 시사점 (IV crush 타이밍 등)\n\n"
-        f"Be concise (300~500 chars per point). Base on sources only.\n\n"
-        f"SOURCES:\n{sources_text}"
-    )
-    synth_md = await _llm(synth_prompt, max_tokens=2000)
-
-    section = f"\n\n## 📅 실적 미리보기 ({quarter_hint})\n\n{synth_md}\n"
-    log.info("earnings_research_done", ticker=ticker)
-    return section
-
-
-# ─────────────────────────────────────────────────────────────
-# Phase 4: 포지션 급락 원인 분석
+# 포지션 급락 원인 분석
 # ─────────────────────────────────────────────────────────────
 
 async def run_drop_research(
@@ -340,33 +395,61 @@ async def run_drop_research(
 
     if not fetched:
         verdict = "판단 불가"
-        synth_md = "검색 결과 없음 — 직접 확인 필요"
+        synth_md = (
+            f"## 낙폭 원인 분석\n"
+            f"검색된 관련 뉴스가 없습니다. "
+            f"오늘({today}) {ticker}의 급락 원인에 대한 언론 보도가 아직 없거나, "
+            f"실제 급락이 발생하지 않은 상태일 수 있습니다.\n\n"
+            f"## 관련 뉴스 요약\n없음\n\n"
+            f"## 판단: 판단 불가\n\n"
+            f"## 대응 시사점\n정보 부족으로 판단 보류. 직접 뉴스 확인 후 대응 결정 권장.\n"
+        )
     else:
         sources_text = "\n\n---\n\n".join(
             f"[{d['title']}]\n{d['content'][:1500]}" for d in fetched
         )
-        synth_prompt = (
-            f"{ticker} dropped {pct_change:.1f}% today ({now_str}){entry_hint}.\n\n"
-            f"Analyze the cause and conclude with ONE of these verdicts:\n"
-            f"  - 정상 조정: normal technical pullback, no fundamental change\n"
-            f"  - 실질 악재: real negative catalyst (earnings miss, guidance cut, regulatory, etc.)\n"
-            f"  - 판단 불가: insufficient information\n\n"
-            f"Write in Korean. Structure:\n"
-            f"## 낙폭 원인 분석\n"
-            f"## 관련 뉴스 요약\n"
-            f"## 판단: [정상 조정 / 실질 악재 / 판단 불가]\n"
-            f"## 대응 시사점\n\n"
+        # JSON으로 추출 → Python이 마크다운 포맷
+        extract_prompt = (
+            f"{ticker} dropped {pct_change:.1f}% today ({now_str}){entry_hint}.\n"
+            f"From the sources below, extract information about this stock drop.\n"
+            f"Return ONLY a JSON object with exactly these 5 Korean string values:\n\n"
+            f'{{"cause": "...", "news_summary": "...", "verdict": "정상 조정 OR 실질 악재 OR 판단 불가", '
+            f'"verdict_reason": "...", "action": "..."}}\n\n'
+            f"Rules: verdict must be exactly one of the 3 options. Korean strings. No extra keys.\n\n"
             f"SOURCES:\n{sources_text}"
         )
-        synth_md = await _llm(synth_prompt, max_tokens=2000)
+        raw = await _llm(extract_prompt, max_tokens=1000)
+        import json as _json, re as _re
 
-        # 판단 추출 (Slack 알림용)
-        if "실질 악재" in synth_md:
-            verdict = "실질 악재"
-        elif "정상 조정" in synth_md:
-            verdict = "정상 조정"
-        else:
-            verdict = "판단 불가"
+        # JSON 파싱
+        try:
+            m = _re.search(r"\{[\s\S]+\}", raw)
+            if m:
+                data = _json.loads(m.group())
+                verdict = data.get("verdict", "판단 불가")
+                synth_md = (
+                    f"## 낙폭 원인 분석\n{data.get('cause', '소스에서 확인되지 않음')}\n\n"
+                    f"## 관련 뉴스 요약\n{data.get('news_summary', '없음')}\n\n"
+                    f"## 판단: {verdict}\n{data.get('verdict_reason', '')}\n\n"
+                    f"## 대응 시사점\n{data.get('action', '')}\n"
+                )
+            else:
+                raise ValueError("no JSON found")
+        except Exception:
+            # 파싱 실패 시 raw를 그대로 사용 + 섹션 보완
+            raw_clean = _unwrap_json(raw)
+            if "## 낙폭 원인 분석" not in raw_clean:
+                raw_clean = "## 낙폭 원인 분석\n" + raw_clean
+            synth_md = raw_clean
+
+        # verdict가 JSON 파싱에서 설정되지 않았으면 텍스트에서 추출
+        if not isinstance(locals().get("verdict"), str):
+            if "실질 악재" in synth_md:
+                verdict = "실질 악재"
+            elif "정상 조정" in synth_md:
+                verdict = "정상 조정"
+            else:
+                verdict = "판단 불가"
 
     report = _build_report_header(ticker, f"🚨 급락 분석 ({pct_change:.1f}%)")
     report += f"**판단: {verdict}**\n\n"

@@ -81,10 +81,14 @@ async def fetch_macro_context(theme: str = "US equity market") -> str:
 
     # ── [Plan] 쿼리 생성 ──────────────────────────────────────
     plan_prompt = (
-        f"Generate 3 concise web search queries to understand the current macro "
-        f"environment and sentiment for: {theme}\n"
+        f"Generate 3 English web search queries about the current macro environment for: {theme}\n"
         f"Today: {today}\n\n"
-        f"Output ONLY 3 queries, one per line, no numbering."
+        f"STRICT FORMAT RULES:\n"
+        f"- Output exactly 3 lines\n"
+        f"- Each line is a plain search query string only\n"
+        f"- NO JSON, NO markdown, NO numbering, NO code blocks, NO explanations\n"
+        f"- Example line: US semiconductor market outlook 2026\n\n"
+        f"3 queries:"
     )
     queries_raw = await _llm(plan_prompt, max_tokens=150)
     queries = [q.strip() for q in queries_raw.splitlines() if q.strip()][:3]
@@ -132,12 +136,15 @@ async def fetch_macro_context(theme: str = "US equity market") -> str:
         synth_prompt = (
             f"Summarize the current macro environment for: {theme}\n"
             f"Today: {today}\n\n"
-            f"Write in Korean, 300~500 characters total.\n"
-            f"Cover: 전반적 시장 심리, 주요 리스크, 섹터 특이사항.\n"
-            f"Be factual and concise. No markdown headers.\n\n"
+            f"STRICT FORMAT RULES:\n"
+            f"- Write in plain Korean text only, 300~500 characters total\n"
+            f"- NO JSON, NO code blocks, NO markdown headers, NO wrapping objects\n"
+            f"- Start directly with the summary text\n\n"
+            f"Cover: 전반적 시장 심리, 주요 리스크, 섹터 특이사항.\n\n"
             f"SOURCES:\n{sources_text}"
         )
-        summary = await _llm(synth_prompt, max_tokens=600)
+        from core.research_agent import _unwrap_json
+        summary = _unwrap_json(await _llm(synth_prompt, max_tokens=600))
 
     # 캐시 저장
     cache[cache_key] = summary

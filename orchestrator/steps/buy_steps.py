@@ -1155,36 +1155,50 @@ class BuySteps:
                 append_audit(ctx.execution_id, 5, "degraded",
                              ticker=ticker, error=f"E300: LLM 실패: {exc}")
 
-            # ── 실적 전 집중 리서치 (D-7 이하 종목) ────────────────────
+            # ── 정량 지표 섹션 저장 (전 종목) ───────────────────────────
             try:
-                _ea_for_research = next(
+                from core.research_agent import (
+                    _fetch_stock_snapshot, _fetch_options_snapshot, _fetch_earnings_data,
+                )
+                # D-7 실적 여부 (헤더 표시용)
+                _ea_for_quant = next(
                     (ea for ea in ctx.earnings_list
                      if ea.ticker == ticker
                      and 0 <= (ea.date - date.today()).days <= 7),
                     None,
                 )
-                if _ea_for_research:
-                    from core.research_agent import run_earnings_research
-                    _days_left = (date(_ea_for_research.date.year,
-                                       _ea_for_research.date.month,
-                                       _ea_for_research.date.day) - date.today()).days
-                    _eps_est = getattr(_ea_for_research, "eps_estimate", None)
-                    _earnings_section = await run_earnings_research(
-                        ticker,
-                        days_until=_days_left,
-                        eps_estimate=float(_eps_est) if _eps_est is not None else None,
-                    )
-                    # 기존 리서치 보고서에 실적 섹션 append
-                    _obs_path = f"Research/{ticker}_{date.today().isoformat()}.md"
-                    try:
-                        from core.obsidian import ObsidianClient as _ObsCls
-                        _obs_tmp = _ObsCls()
-                        await _obs_tmp.append_note(_obs_path, _earnings_section)
-                    except Exception:
-                        pass
-                    log.info("earnings_research_appended", ticker=ticker, days=_days_left)
-            except Exception as _er_exc:
-                log.debug("earnings_research_skip", ticker=ticker, error=str(_er_exc))
+                _days_str = ""
+                if _ea_for_quant:
+                    _days_left = (date(_ea_for_quant.date.year,
+                                       _ea_for_quant.date.month,
+                                       _ea_for_quant.date.day) - date.today()).days
+                    _days_str = f" | 실적 D-{_days_left}"
+
+                # 실적 데이터는 D-7 여부와 무관하게 항상 수집 (EPS 컨센서스·과거 이동폭)
+                _stock_text, _opts_text, _earn_text = await asyncio.gather(
+                    _fetch_stock_snapshot(ticker),
+                    _fetch_options_snapshot(ticker),
+                    _fetch_earnings_data(ticker),
+                )
+
+                _quant_md = f"## 📊 정량 지표{_days_str}\n\n"
+                if _stock_text:
+                    _quant_md += f"**주식 지표**\n{_stock_text}\n\n"
+                if _opts_text:
+                    _quant_md += f"**옵션 지표**\n{_opts_text}\n\n"
+                if _earn_text:
+                    _quant_md += f"**실적 데이터**\n{_earn_text}\n"
+
+                _obs_path = f"Research/{ticker}_{date.today().isoformat()}.md"
+                try:
+                    from core.obsidian import ObsidianClient as _ObsCls
+                    _obs_tmp = _ObsCls()
+                    await _obs_tmp.write_note(_obs_path, _quant_md)
+                except Exception:
+                    pass
+                log.info("quant_section_saved", ticker=ticker)
+            except Exception as _quant_exc:
+                log.debug("quant_section_skip", ticker=ticker, error=str(_quant_exc))
 
             await asyncio.sleep(0.5)  # Rate limit 방지
 

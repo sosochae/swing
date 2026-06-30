@@ -3,7 +3,7 @@ servers/swing_mcp/server.py
 ============================
 SwingMCP 단일 MCP 서버 (T2 최적화: tools/ 8개 파일 → server.py 내장)
 
-10개 MCP Tool 노출:
+12개 MCP Tool 노출:
   1. run_buy_pipeline      - Buy Pipeline 실행
   2. run_sell_pipeline     - Sell Pipeline 실행
   3. nl_query              - 자연어 명령 라우팅
@@ -12,14 +12,32 @@ SwingMCP 단일 MCP 서버 (T2 최적화: tools/ 8개 파일 → server.py 내�
   6. partial_exit_apply    - 부분 청산 처리
   7. position_status       - 포지션 현황 조회
   8. step_execute          - 단일 단계 수동 실행
-  (+2 추가)
   9. health_check          - 시스템 헬스 체크
   10. cache_clear          - 캐시 삭제
+  11. read_note            - Obsidian 노트 읽기
+  12. get_ticker_info      - 종목 매수 보고서 + 정량 지표 조회
 
 stdio 프로토콜로 Roo Code / Claude Desktop에 연결됩니다.
 """
 
 from __future__ import annotations
+
+# ── SSL CA bundle ASCII 경로 확보 (curl_cffi 로드 전에 반드시 실행) ─────────
+import os as _os, shutil as _sh, certifi as _certifi_ssl
+_ca_raw = _certifi_ssl.where()
+try:
+    _ca_raw.encode('ascii')
+    _ca_ascii = _ca_raw
+except UnicodeEncodeError:
+    from pathlib import Path as _Path
+    _cache_dir = _Path(__file__).resolve().parents[2] / 'cache'
+    _cache_dir.mkdir(exist_ok=True)
+    _ca_ascii = str(_cache_dir / 'cacert.pem')
+    _sh.copy2(_ca_raw, _ca_ascii)
+for _ev in ('SSL_CERT_FILE', 'CURL_CA_BUNDLE', 'REQUESTS_CA_BUNDLE'):
+    _os.environ[_ev] = _ca_ascii
+del _ca_raw, _ca_ascii, _ev, _os, _sh, _certifi_ssl
+# ─────────────────────────────────────────────────────────────────────────────
 
 import asyncio
 import sys
@@ -249,6 +267,42 @@ async def list_tools() -> list[types.Tool]:
                 "required": [],
             },
         ),
+        types.Tool(
+            name="read_note",
+            description=(
+                "Obsidian 노트 내용 읽기. "
+                "경로를 지정해 매수 보고서, 정량 지표, 포지션 노트 등을 조회. "
+                "예: read_note(path='Research/NVDA_2026-06-30.md')"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Obsidian vault 내 경로. 예: 'Research/NVDA_2026-06-30.md'",
+                    },
+                },
+                "required": ["path"],
+            },
+        ),
+        types.Tool(
+            name="get_ticker_info",
+            description=(
+                "종목 정량 지표 + 포지션 현황 원스톱 조회. "
+                "buy_steps에서 저장한 Research/{ticker}_{today}.md를 읽어 반환. "
+                "예: get_ticker_info(ticker='NVDA') → 현재가, 목표가, straddle, EPS 컨센서스 등"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "종목 심볼 (예: NVDA)",
+                    },
+                },
+                "required": ["ticker"],
+            },
+        ),
     ]
 
 
@@ -369,6 +423,12 @@ async def _dispatch(name: str, args: dict) -> dict:
         deleted = clear_cache(ticker=args.get("ticker"))
         return {"status": "ok", "deleted": deleted}
 
+    elif name == "read_note":
+        return await _read_note(path=args["path"])
+
+    elif name == "get_ticker_info":
+        return await _get_ticker_info(ticker=args["ticker"].upper())
+
     else:
         raise ValueError(f"Unknown tool: {name}")
 
@@ -474,6 +534,60 @@ def _pipeline_result_to_dict(result) -> dict:
             for d in result.sell_decisions
         ],
         "summary": result.summary,
+    }
+
+
+# ─────────────────────────────────────────────────────────────
+# 노트 읽기 핸들러
+# ─────────────────────────────────────────────────────────────
+
+async def _read_note(path: str) -> dict:
+    """Obsidian 노트 내용을 읽어 반환."""
+    from core.obsidian import ObsidianClient
+
+    log.info("mcp_read_note", path=path)
+    obs = ObsidianClient()
+    content = await obs.read_note(path)
+    if content is None:
+        return {"status": "not_found", "path": path, "content": None}
+    return {"status": "ok", "path": path, "content": content}
+
+
+async def _get_ticker_info(ticker: str) -> dict:
+    """종목 정량 지표 노트 + 포지션 현황 반환."""
+    from core.obsidian import ObsidianClient
+    from datetime import date
+
+    log.info("mcp_get_ticker_info", ticker=ticker)
+    obs = ObsidianClient()
+
+    # Research 노트 (buy_steps Step 5에서 저장)
+    note_path = f"Research/{ticker}_{date.today().isoformat()}.md"
+    content = await obs.read_note(note_path)
+
+    # 포지션 현황
+    position_info = None
+    try:
+        from pathlib import Path
+        from core.parsers import parse_positions
+        positions = parse_positions(Path(cfg.POSITIONS_FILE))
+        pos = next((p for p in positions if p.ticker == ticker), None)
+        if pos:
+            position_info = {
+                "entry_stock_price": pos.entry_stock_price,
+                "contracts": getattr(pos, "contracts", None),
+                "expiry": str(getattr(pos, "expiry", "")),
+                "strike": getattr(pos, "strike", None),
+            }
+    except Exception:
+        pass
+
+    return {
+        "status": "ok",
+        "ticker": ticker,
+        "note_path": note_path,
+        "quant_data": content,
+        "position": position_info,
     }
 
 

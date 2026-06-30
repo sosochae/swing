@@ -23,6 +23,15 @@ load_dotenv(_root / ".env", override=False)
 class Config:
     """SwingMCP 전체 설정 클래스 (싱글톤 패턴)"""
 
+    # ── LLM 프로바이더 선택 ─────────────────────────────────────
+    # "openrouter" : 기존 OpenRouter API 사용 (API 키 필요)
+    # "claude_cli" : claude -p 서브프로세스 (월정액 계정, API 키 불필요)
+    #               단, response_format=json_object 요청은 자동으로 OpenRouter로 라우팅
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openrouter")
+
+    # claude_cli 모드에서 사용할 Claude 모델
+    CLAUDE_CLI_MODEL: str = os.getenv("CLAUDE_CLI_MODEL", "claude-sonnet-4-6")
+
     # ── OpenRouter ──────────────────────────────────────────
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
@@ -202,8 +211,13 @@ class Config:
     def validate(cls) -> list[str]:
         """필수 환경 변수 검증, 누락 목록 반환"""
         missing = []
+        # claude_cli 모드에서도 JSON 강제 호출은 OpenRouter로 라우팅되므로 키 필요
         if not cls.OPENROUTER_API_KEY:
-            missing.append("OPENROUTER_API_KEY")
+            if cls.LLM_PROVIDER == "openrouter":
+                missing.append("OPENROUTER_API_KEY")
+            else:
+                # claude_cli 모드: JSON 강제 호출 시 OpenRouter 미설정이면 실패 가능
+                missing.append("OPENROUTER_API_KEY (claude_cli 모드에서도 JSON 강제 호출에 필요)")
         if not cls.OBSIDIAN_API_KEY:
             missing.append("OBSIDIAN_API_KEY")
         if not cls.SLACK_BOT_TOKEN:

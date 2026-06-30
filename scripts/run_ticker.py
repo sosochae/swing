@@ -130,6 +130,10 @@ def _parse_args() -> argparse.Namespace:
         "--no-cache", action="store_true",
         help="LLM 캐시 무시하고 새로 실행 (기본값)"
     )
+    parser.add_argument(
+        "--provider", choices=["openrouter", "claude_cli"],
+        help="LLM 프로바이더 선택 (기본: .env의 LLM_PROVIDER)"
+    )
     return parser.parse_args()
 
 
@@ -137,11 +141,15 @@ if __name__ == "__main__":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
     args = _parse_args()
+    if args.provider:
+        import os; os.environ["LLM_PROVIDER"] = args.provider
+
     tickers = [t.upper() for t in args.tickers]
     if not tickers:
         print("사용법: python scripts/run_ticker.py TSLA")
         print("       python scripts/run_ticker.py AAPL MSFT NVDA")
         print("       python scripts/run_ticker.py TSLA --use-cache")
+        print("       python scripts/run_ticker.py TSLA --provider claude_cli")
         sys.exit(1)
 
     use_cache = args.use_cache and not args.no_cache

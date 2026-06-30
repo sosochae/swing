@@ -68,10 +68,20 @@ def _fetch_stock_snapshot_sync(ticker: str) -> str:
                 except Exception:
                     pass
 
-        add("현재가", info.get("last_price") or full.get("currentPrice"), "${:.2f}")
+        current = info.get("last_price") or full.get("currentPrice")
+        add("현재가", current, "${:.2f}")
         add("전일 종가", full.get("previousClose"), "${:.2f}")
-        add("52주 최고", info.get("year_high") or full.get("fiftyTwoWeekHigh"), "${:.2f}")
-        add("52주 최저", info.get("year_low") or full.get("fiftyTwoWeekLow"), "${:.2f}")
+
+        high52 = info.get("year_high") or full.get("fiftyTwoWeekHigh")
+        low52  = info.get("year_low")  or full.get("fiftyTwoWeekLow")
+        add("52주 최고", high52, "${:.2f}")
+        add("52주 최저", low52, "${:.2f}")
+        # 52주 범위 내 현재 위치
+        if current and high52 and low52 and high52 > low52:
+            pct_in_range = (current - low52) / (high52 - low52) * 100
+            flag = " ⚠️ 고점권" if pct_in_range >= 80 else (" 🟢 저점권" if pct_in_range <= 20 else "")
+            lines.append(f"- 52주 범위 위치: {pct_in_range:.0f}%{flag}")
+
         mc = full.get("marketCap")
         if mc is not None:
             if mc >= 1e12:
@@ -83,9 +93,19 @@ def _fetch_stock_snapshot_sync(ticker: str) -> str:
         add("PER (Forward)", full.get("forwardPE"), "{:.1f}x")
         add("PER (Trailing)", full.get("trailingPE"), "{:.1f}x")
         add("베타", full.get("beta"), "{:.2f}")
-        add("애널리스트 목표가 (평균)", full.get("targetMeanPrice"), "${:.2f}")
-        add("애널리스트 목표가 (최고)", full.get("targetHighPrice"), "${:.2f}")
-        add("애널리스트 목표가 (최저)", full.get("targetLowPrice"), "${:.2f}")
+        add("배당수익률", full.get("dividendYield"), "{:.2%}")
+
+        # 애널리스트 목표가 + 업사이드 %
+        target_mean = full.get("targetMeanPrice")
+        target_high = full.get("targetHighPrice")
+        target_low  = full.get("targetLowPrice")
+        if target_mean is not None:
+            upside = f" ({(target_mean/current - 1)*100:+.1f}%)" if current else ""
+            lines.append(f"- 애널리스트 목표가 (평균): ${target_mean:.2f}{upside}")
+        if target_high is not None:
+            lines.append(f"- 애널리스트 목표가 (최고): ${target_high:.2f}")
+        if target_low is not None:
+            lines.append(f"- 애널리스트 목표가 (최저): ${target_low:.2f}")
         add("애널리스트 수", full.get("numberOfAnalystOpinions"))
         add("추천 등급", full.get("recommendationKey"))
 
@@ -156,6 +176,25 @@ def _fetch_options_snapshot_sync(ticker: str) -> str:
         iv_put = float(atm_put.get("impliedVolatility", 0))
         atm_iv = (iv_call + iv_put) / 2 if (iv_call + iv_put) > 0 else 0
 
+        # 장외 stale IV → HV proxy (api_fetcher 와 동일 방식)
+        import math as _math
+        hv_proxy: float | None = None
+        try:
+            _hist = tk.history(period="30d", auto_adjust=True)
+            if _hist is not None and not _hist.empty:
+                _closes = _hist["Close"].dropna().tolist()
+                if len(_closes) >= 20:
+                    _rets = [_math.log(_closes[i] / _closes[i-1]) for i in range(1, len(_closes))]
+                    import statistics as _stats
+                    hv_proxy = _math.sqrt(252) * _stats.stdev(_rets[-20:])
+        except Exception:
+            pass
+
+        iv_estimated = False
+        if atm_iv < 0.01 and hv_proxy:  # stale IV → HV 대체
+            atm_iv = hv_proxy
+            iv_estimated = True
+
         breakeven_down = current_price - straddle
         breakeven_up = current_price + straddle
 
@@ -166,8 +205,9 @@ def _fetch_options_snapshot_sync(ticker: str) -> str:
             f"- 옵션 내재 이동폭: ±{implied_move_pct:.1f}%",
             f"- 손익분기: ${breakeven_down:.2f} (하방) / ${breakeven_up:.2f} (상방)",
         ]
-        if atm_iv > 0.01:  # 1% 미만은 stale 데이터로 간주, 출력 제외
-            lines.append(f"- ATM 내재변동성(IV): {atm_iv:.1%}")
+        if atm_iv > 0.01:
+            label = "ATM IV (HV 추정, 장외)" if iv_estimated else "ATM 내재변동성(IV)"
+            lines.append(f"- {label}: {atm_iv:.1%}")
         return "\n".join(lines)
     except Exception as exc:
         log.debug("options_snapshot_fail", ticker=ticker, error=str(exc))
@@ -175,14 +215,14 @@ def _fetch_options_snapshot_sync(ticker: str) -> str:
 
 
 def _fetch_earnings_data_sync(ticker: str) -> str:
-    """yfinance로 실적 일정·추정치·서프라이즈 히스토리·주가 이동폭 수집 (동기)."""
+    """yfinance로 실적 이력(EPS 서프라이즈+주가 반응 통합)·추정치 수집 (동기)."""
     try:
         import yfinance as yf  # type: ignore
         import pandas as _pd  # type: ignore
         tk = yf.Ticker(ticker)
         lines: list[str] = []
 
-        # 실적 발표 캘린더
+        # 실적 발표 캘린더 (다음 발표일)
         try:
             cal = tk.calendar
             if cal is not None and not cal.empty:
@@ -193,75 +233,105 @@ def _fetch_earnings_data_sync(ticker: str) -> str:
         except Exception:
             pass
 
-        # 분기별 EPS 실적 히스토리 (quarter가 인덱스)
+        # EPS 서프라이즈 + 주가 반응 통합 테이블
+        # earnings_history: 분기말 날짜(인덱스), 오름차순 → 뒤집어서 최신순
+        # earnings_dates: 실제 발표일(인덱스), 내림차순(최신순)
         try:
             hist = tk.earnings_history
-            if hist is not None and not hist.empty:
-                lines.append("\n[EPS 서프라이즈 히스토리 (최근 4분기)]")
-                for date_ts, row in hist.head(4).iterrows():
-                    date_str = _pd.Timestamp(date_ts).strftime("%Y-%m-%d")
-                    est = row.get("epsEstimate")
-                    act = row.get("epsActual")
-                    if est is not None and act is not None:
-                        surprise = ((act - est) / abs(est) * 100) if est != 0 else 0
-                        lines.append(f"  {date_str}: 추정 ${est:.2f} → 실제 ${act:.2f} ({surprise:+.1f}%)")
-        except Exception:
-            pass
-
-        # 과거 실적일 주가 이동폭 (earnings_dates + history)
-        try:
             ed = tk.earnings_dates
-            if ed is not None and not ed.empty:
-                price_hist = tk.history(period="2y")
-                if not price_hist.empty:
-                    price_hist.index = price_hist.index.tz_localize(None)
-                    moves = []
-                    for earn_dt in ed.index[:4]:
+            price_hist = tk.history(period="2y")
+
+            if hist is not None and not hist.empty:
+                price_hist.index = price_hist.index.tz_localize(None)
+                # 최신순으로 정렬 (head(4)는 오름차순이므로 tail 후 역순)
+                hist_recent = hist.tail(4).iloc[::-1]
+
+                # earnings_dates에서 발표일→가격 이동폭 구성 (과거 날짜만)
+                today_ts = _pd.Timestamp.today().tz_localize(None)
+                move_by_pos: list[tuple[str, float]] = []  # (발표일, 이동폭)
+                if ed is not None and not ed.empty:
+                    past_dates = [dt for dt in ed.index
+                                  if _pd.Timestamp(dt).tz_localize(None) <= today_ts]
+                    for earn_dt in past_dates[:len(hist_recent)]:
                         earn_ts = _pd.Timestamp(earn_dt).tz_localize(None)
                         before = price_hist[price_hist.index < earn_ts]
                         after = price_hist[price_hist.index >= earn_ts]
                         if before.empty or after.empty:
+                            move_by_pos.append((earn_ts.strftime("%Y-%m-%d"), float("nan")))
                             continue
                         prev_close = float(before.iloc[-1]["Close"])
                         next_open = float(after.iloc[0]["Open"])
                         move = (next_open - prev_close) / prev_close * 100
-                        moves.append(f"  {earn_ts.strftime('%Y-%m-%d')}: {move:+.1f}%")
-                    if moves:
-                        lines.append("\n[과거 실적일 주가 이동폭 (갭 기준)]")
-                        lines.extend(moves)
+                        move_by_pos.append((earn_ts.strftime("%Y-%m-%d"), move))
+
+                lines.append("\n[실적 이력 — EPS 서프라이즈 & 주가 반응 (최신순)]")
+                for i, (q_ts, row) in enumerate(hist_recent.iterrows()):
+                    est = row.get("epsEstimate")
+                    act = row.get("epsActual")
+                    if est is None or act is None:
+                        continue
+                    surprise = ((act - est) / abs(est) * 100) if est != 0 else 0
+                    surprise_str = f"{surprise:+.1f}%"
+
+                    if i < len(move_by_pos):
+                        ann_date, move = move_by_pos[i]
+                        import math
+                        if not math.isnan(move):
+                            move_str = f"{move:+.1f}%"
+                            # 역방향 반응 경고 (큰 beat인데 하락)
+                            if surprise > 10 and move < 0:
+                                move_str += " ⚠️ 역방향"
+                        else:
+                            move_str = "N/A"
+                        lines.append(
+                            f"  발표 {ann_date}: EPS 추정 ${est:.2f} → 실제 ${act:.2f}"
+                            f" (서프라이즈 {surprise_str}) | 주가 {move_str}"
+                        )
+                    else:
+                        lines.append(
+                            f"  EPS 추정 ${est:.2f} → 실제 ${act:.2f} (서프라이즈 {surprise_str})"
+                        )
         except Exception:
             pass
 
-        # 분기 EPS/매출 추정치
+        # EPS 추정치 (기간 레이블 한글화)
+        _period_label = {
+            "0q": "이번 분기", "+1q": "다음 분기",
+            "0y": "이번 연도", "+1y": "다음 연도",
+        }
         try:
             ee = tk.earnings_estimate
             if ee is not None and not ee.empty:
-                lines.append("\n[EPS 추정치]")
+                lines.append("\n[EPS 컨센서스]")
                 for idx in ee.index[:4]:
                     row = ee.loc[idx]
                     avg = row.get("avg")
                     low_ = row.get("low")
                     high_ = row.get("high")
                     if avg is not None:
-                        lines.append(f"  {idx}: 평균 ${avg:.2f} (범위: ${low_:.2f}~${high_:.2f})")
+                        label = _period_label.get(str(idx), str(idx))
+                        lines.append(f"  {label}: 평균 ${avg:.2f} (범위: ${low_:.2f}~${high_:.2f})")
         except Exception:
             pass
 
+        # 매출 추정치 (범위 포함)
         try:
             re_ = tk.revenue_estimate
             if re_ is not None and not re_.empty:
-                lines.append("\n[매출 추정치]")
+                lines.append("\n[매출 컨센서스]")
                 for idx in re_.index[:2]:
                     row = re_.loc[idx]
                     avg = row.get("avg")
+                    low_ = row.get("low")
+                    high_ = row.get("high")
                     if avg is not None:
-                        if avg >= 1e9:
-                            avg_str = f"${avg / 1e9:.1f}B"
-                        elif avg >= 1e6:
-                            avg_str = f"${avg / 1e6:.1f}M"
-                        else:
-                            avg_str = f"${avg:,.0f}"
-                        lines.append(f"  {idx}: 평균 {avg_str}")
+                        def _fmt(v):
+                            if v is None:
+                                return "N/A"
+                            return f"${v/1e9:.1f}B" if v >= 1e9 else f"${v/1e6:.1f}M"
+                        label = _period_label.get(str(idx), str(idx))
+                        range_str = f" (범위: {_fmt(low_)}~{_fmt(high_)})" if low_ and high_ else ""
+                        lines.append(f"  {label}: 평균 {_fmt(avg)}{range_str}")
         except Exception:
             pass
 

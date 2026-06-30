@@ -66,7 +66,10 @@ async def call_llm(
     timeout: float | None = None,
 ) -> LLMResponse:
     """
-    OpenRouter API 호출 (다단계 폴백 포함)
+    LLM 호출 (프로바이더 자동 라우팅)
+
+    LLM_PROVIDER=claude_cli 이고 response_format != "json_object" → claude -p 서브프로세스
+    그 외 (openrouter 또는 json_object 강제 필요) → OpenRouter API
 
     Args:
         messages: [{"role": "user", "content": "..."}, ...]
@@ -83,22 +86,44 @@ async def call_llm(
     Raises:
         RuntimeError: 모든 모델 폴백 실패 시
     """
+    # claude_cli 모드: JSON 강제가 필요 없는 호출만 CLI로 처리
+    # response_format="json_object" 인 경우 OpenRouter로 자동 라우팅
+    use_cli = (cfg.LLM_PROVIDER == "claude_cli") and (response_format != "json_object")
+
+    if use_cli:
+        full_system = apply_role_lock(system_prompt)
+        start = time.monotonic()
+        response = await _call_claude_cli(
+            messages=messages,
+            system_prompt=full_system,
+            max_tokens=max_tokens,
+            timeout=timeout or float(cfg.LLM_TIMEOUT_SECONDS),
+        )
+        response.duration_ms = int((time.monotonic() - start) * 1000)
+        log.info(
+            "llm_call_success",
+            model=response.model_used,
+            provider="claude_cli",
+            duration_ms=response.duration_ms,
+        )
+        return response
+
+    # OpenRouter 경로 (기존 로직)
     if not cfg.OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY not set")
+        raise RuntimeError(
+            "OPENROUTER_API_KEY not set"
+            + (" (claude_cli 모드에서 JSON 강제 호출은 OpenRouter 필요)" if cfg.LLM_PROVIDER == "claude_cli" else "")
+        )
 
     timeout = timeout or float(cfg.LLM_TIMEOUT_SECONDS)
-    # 지정 모델이 있으면 그것을 1순위로, 이후 MODEL_PRIORITY 폴백 체인 추가
-    # (지정 모델 실패 시에도 무료 체인으로 자동 강등)
     if model and model not in MODEL_PRIORITY:
         models_to_try = [model] + MODEL_PRIORITY
     elif model:
-        # 지정 모델을 맨 앞으로 끌어오고 중복 제거
         rest = [m for m in MODEL_PRIORITY if m != model]
         models_to_try = [model] + rest
     else:
         models_to_try = MODEL_PRIORITY
 
-    # Role Lock 삽입
     full_system = apply_role_lock(system_prompt)
 
     for attempt_model in models_to_try:
@@ -118,6 +143,7 @@ async def call_llm(
             log.info(
                 "llm_call_success",
                 model=attempt_model,
+                provider="openrouter",
                 duration_ms=elapsed_ms,
                 input_tokens=response.input_tokens,
                 output_tokens=response.output_tokens,
@@ -132,6 +158,63 @@ async def call_llm(
             await asyncio.sleep(2)
 
     raise RuntimeError("LLM call failed unexpectedly")
+
+
+async def _call_claude_cli(
+    messages: list[dict[str, str]],
+    system_prompt: str,
+    max_tokens: int,
+    timeout: float,
+) -> LLMResponse:
+    """
+    claude -p 서브프로세스로 LLM 호출 (월정액 계정 사용, API 키 불필요).
+
+    system_prompt + messages를 하나의 텍스트로 합쳐 stdin으로 전달.
+    response_format=json_object 를 지원하지 않으므로 call_llm()에서 라우팅으로 배제됨.
+    """
+    # 메시지를 하나의 텍스트로 조합
+    parts: list[str] = []
+    if system_prompt:
+        parts.append(f"[System]\n{system_prompt}\n")
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "user":
+            parts.append(f"[User]\n{content}")
+        elif role == "assistant":
+            parts.append(f"[Assistant]\n{content}")
+    combined = "\n\n".join(parts)
+
+    model = cfg.CLAUDE_CLI_MODEL
+    cmd = ["claude", "-p", "--model", model]
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=combined.encode("utf-8")),
+            timeout=timeout,
+        )
+        text = stdout.decode("utf-8", errors="replace").strip()
+        if not text:
+            err = stderr.decode("utf-8", errors="replace")[:300]
+            raise RuntimeError(f"claude CLI empty output. stderr={err}")
+
+        return LLMResponse(
+            content=text,
+            model_used=model,
+            input_tokens=0,   # CLI는 토큰 수 미제공
+            output_tokens=0,
+            cached=False,
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"claude CLI timed out ({timeout:.0f}s)")
+    except FileNotFoundError:
+        raise RuntimeError("claude CLI not found. 'claude' 명령어가 PATH에 있는지 확인하세요.")
 
 
 async def _call_openrouter(

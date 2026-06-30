@@ -2380,103 +2380,6 @@ def _format_integrated_buy_block(
             "",
         ]
 
-    # TYPE 1: 뉴스 감성 — 풍부한 형식으로 출력
-    # 실적 발표 날짜 추출: summary_events 우선, 없으면 fv.next_earnings_date 사용
-    _earn_str = ""
-    _next_earn_date = None  # date 객체 (옵션 만기 비교용)
-    if summary_events:
-        for _ev in summary_events:
-            _ev_name = getattr(_ev, "name", "") or ""
-            _ev_type = getattr(_ev, "type", "") or ""
-            if "실적" in _ev_type and r.ticker in _ev_name.upper():
-                _ev_date = getattr(_ev, "date", None)
-                _ev_days = getattr(_ev, "days_until", None)
-                _ev_eps  = getattr(_ev, "eps_estimate", None)
-                _ev_rev  = getattr(_ev, "revenue_estimate_b", None)
-                if _ev_date:
-                    try:
-                        _next_earn_date = _ev_date if isinstance(_ev_date, date) else None
-                        _date_str = _ev_date.strftime("%Y-%m-%d") if hasattr(_ev_date, "strftime") else str(_ev_date)[:10]
-                        _earn_str = f"**{_date_str}** ({_ev_days}일 후)" if _ev_days is not None else f"**{_date_str}**"
-                        # EPS/매출 예상치 추가
-                        _earn_extras = []
-                        if _ev_eps is not None:
-                            _earn_extras.append(f"EPS est. **${_ev_eps:.2f}**")
-                        if _ev_rev is not None:
-                            _earn_extras.append(f"매출 est. **${_ev_rev:.1f}B**")
-                        if _earn_extras:
-                            _earn_str += " | " + " / ".join(_earn_extras)
-                    except Exception:
-                        pass
-                break
-    # summary_events에 없으면 yfinance 실시간 데이터 fallback
-    if not _earn_str and fv and fv.next_earnings_date:
-        _next_earn_date = fv.next_earnings_date
-        _days_until = (_next_earn_date - date.today()).days
-        _earn_str = f"**{_next_earn_date}** ({_days_until}일 후, yfinance 기준)"
-    # 옵션 만기 내 실적 포함 여부 경고
-    _earn_in_expiry_warn = ""
-    if _next_earn_date and r.expiry:
-        if r.expiry >= _next_earn_date:
-            _alt_lines: list[str] = []
-            if earnings_alt:
-                _alt_otype = "C" if earnings_alt.get("opt_type", "call") == "call" else "P"
-                _alt_lines = [
-                    f"> 💡 **대안 만기:** {earnings_alt['expiry']} "
-                    f"(DTE {earnings_alt['dte']}일, 실적 이후)",
-                    f">    strike **${earnings_alt['strike']:,.0f}{_alt_otype}** / "
-                    f"프리미엄 **${earnings_alt['premium']:.2f}** / "
-                    f"delta **{earnings_alt['delta']:.2f}**",
-                ]
-            _earn_in_expiry_warn = (
-                f" ⚠️ 만기({r.expiry}) 내 실적 포함 — IV 급등/붕괴 위험"
-                + ("\n" + "\n".join(_alt_lines) if _alt_lines else "")
-            )
-        else:
-            _earn_in_expiry_warn = f" ✅ 만기({r.expiry}) 전 실적 없음"
-    if _earn_str and _earn_in_expiry_warn:
-        _earn_str += _earn_in_expiry_warn
-
-    # ── 📅 향후 카탈리스트 섹션 ─────────────────────────────────────
-    _catalyst_lines: list[str] = []
-    _upcoming_events = (fv.upcoming_events if fv and fv.upcoming_events else [])
-    if _upcoming_events:
-        _evt_icon = {
-            "earnings":            "📊",
-            "dividend_ex":         "💰",
-            "dividend_pay":        "💸",
-            "split":               "✂️",
-            "opex":                "⚙️",
-            "quad_witching":       "🌀",
-            "sec_8k_ma":           "📋",
-            "analyst_day":         "🏢",
-            "competitor_earnings": "🏭",
-            "lockup_expiry":       "🔓",
-            "fda_pdufa":           "💊",
-            "product_launch":      "🚀",
-        }
-        _imp_icon = {"HIGH": "🔴", "MED": "🟡", "LOW": "🟢"}
-        _catalyst_lines += [
-            "### 📅 향후 카탈리스트",
-            "",
-            "| 날짜 | D-Day | 종류 | 내용 | 중요도 |",
-            "|------|-------|------|------|--------|",
-        ]
-        for _ev in _upcoming_events:
-            if _ev.days_until < 0:
-                continue  # 향후 섹션에 과거 이벤트 제외
-            _dday = f"D+{_ev.days_until}" if _ev.days_until > 0 else "D-Day"
-            _icon = _evt_icon.get(_ev.event_type, "📌")
-            _imp  = _imp_icon.get(_ev.importance, "")
-            _catalyst_lines.append(
-                f"| {_ev.date} | {_dday} | {_icon} {_ev.name} | {_ev.detail} | {_imp} {_ev.importance} |"
-            )
-        _catalyst_lines += ["", "---", ""]
-    lines += _catalyst_lines
-
-    lines += _format_type1_section(sent or {}, fv=fv, earn_str=_earn_str).splitlines()
-    lines += [""]
-
     # TYPE 2: 투자 기간 & 기간별 옵션 추천 ──────────────────────────────────
     lines += ["## ━━━ TYPE 2 · 투자 기간 & 옵션 추천 ━━━", ""]
     _hz_all = ["단기", "중기", "장기"]
@@ -2664,6 +2567,103 @@ def _format_integrated_buy_block(
         ]
     except Exception:
         pass
+
+    # TYPE 1: 뉴스 감성 — 풍부한 형식으로 출력
+    # 실적 발표 날짜 추출: summary_events 우선, 없으면 fv.next_earnings_date 사용
+    _earn_str = ""
+    _next_earn_date = None  # date 객체 (옵션 만기 비교용)
+    if summary_events:
+        for _ev in summary_events:
+            _ev_name = getattr(_ev, "name", "") or ""
+            _ev_type = getattr(_ev, "type", "") or ""
+            if "실적" in _ev_type and r.ticker in _ev_name.upper():
+                _ev_date = getattr(_ev, "date", None)
+                _ev_days = getattr(_ev, "days_until", None)
+                _ev_eps  = getattr(_ev, "eps_estimate", None)
+                _ev_rev  = getattr(_ev, "revenue_estimate_b", None)
+                if _ev_date:
+                    try:
+                        _next_earn_date = _ev_date if isinstance(_ev_date, date) else None
+                        _date_str = _ev_date.strftime("%Y-%m-%d") if hasattr(_ev_date, "strftime") else str(_ev_date)[:10]
+                        _earn_str = f"**{_date_str}** ({_ev_days}일 후)" if _ev_days is not None else f"**{_date_str}**"
+                        # EPS/매출 예상치 추가
+                        _earn_extras = []
+                        if _ev_eps is not None:
+                            _earn_extras.append(f"EPS est. **${_ev_eps:.2f}**")
+                        if _ev_rev is not None:
+                            _earn_extras.append(f"매출 est. **${_ev_rev:.1f}B**")
+                        if _earn_extras:
+                            _earn_str += " | " + " / ".join(_earn_extras)
+                    except Exception:
+                        pass
+                break
+    # summary_events에 없으면 yfinance 실시간 데이터 fallback
+    if not _earn_str and fv and fv.next_earnings_date:
+        _next_earn_date = fv.next_earnings_date
+        _days_until = (_next_earn_date - date.today()).days
+        _earn_str = f"**{_next_earn_date}** ({_days_until}일 후, yfinance 기준)"
+    # 옵션 만기 내 실적 포함 여부 경고
+    _earn_in_expiry_warn = ""
+    if _next_earn_date and r.expiry:
+        if r.expiry >= _next_earn_date:
+            _alt_lines: list[str] = []
+            if earnings_alt:
+                _alt_otype = "C" if earnings_alt.get("opt_type", "call") == "call" else "P"
+                _alt_lines = [
+                    f"> 💡 **대안 만기:** {earnings_alt['expiry']} "
+                    f"(DTE {earnings_alt['dte']}일, 실적 이후)",
+                    f">    strike **${earnings_alt['strike']:,.0f}{_alt_otype}** / "
+                    f"프리미엄 **${earnings_alt['premium']:.2f}** / "
+                    f"delta **{earnings_alt['delta']:.2f}**",
+                ]
+            _earn_in_expiry_warn = (
+                f" ⚠️ 만기({r.expiry}) 내 실적 포함 — IV 급등/붕괴 위험"
+                + ("\n" + "\n".join(_alt_lines) if _alt_lines else "")
+            )
+        else:
+            _earn_in_expiry_warn = f" ✅ 만기({r.expiry}) 전 실적 없음"
+    if _earn_str and _earn_in_expiry_warn:
+        _earn_str += _earn_in_expiry_warn
+
+    # ── 📅 향후 카탈리스트 섹션 ─────────────────────────────────────
+    _catalyst_lines: list[str] = []
+    _upcoming_events = (fv.upcoming_events if fv and fv.upcoming_events else [])
+    if _upcoming_events:
+        _evt_icon = {
+            "earnings":            "📊",
+            "dividend_ex":         "💰",
+            "dividend_pay":        "💸",
+            "split":               "✂️",
+            "opex":                "⚙️",
+            "quad_witching":       "🌀",
+            "sec_8k_ma":           "📋",
+            "analyst_day":         "🏢",
+            "competitor_earnings": "🏭",
+            "lockup_expiry":       "🔓",
+            "fda_pdufa":           "💊",
+            "product_launch":      "🚀",
+        }
+        _imp_icon = {"HIGH": "🔴", "MED": "🟡", "LOW": "🟢"}
+        _catalyst_lines += [
+            "### 📅 향후 카탈리스트",
+            "",
+            "| 날짜 | D-Day | 종류 | 내용 | 중요도 |",
+            "|------|-------|------|------|--------|",
+        ]
+        for _ev in _upcoming_events:
+            if _ev.days_until < 0:
+                continue  # 향후 섹션에 과거 이벤트 제외
+            _dday = f"D+{_ev.days_until}" if _ev.days_until > 0 else "D-Day"
+            _icon = _evt_icon.get(_ev.event_type, "📌")
+            _imp  = _imp_icon.get(_ev.importance, "")
+            _catalyst_lines.append(
+                f"| {_ev.date} | {_dday} | {_icon} {_ev.name} | {_ev.detail} | {_imp} {_ev.importance} |"
+            )
+        _catalyst_lines += ["", "---", ""]
+    lines += _catalyst_lines
+
+    lines += _format_type1_section(sent or {}, fv=fv, earn_str=_earn_str).splitlines()
+    lines += [""]
 
     # TYPE 3: 기술 분석 (실제 지표값 + LLM 내러티브 포함)
     tech_narrative = sent.get("technical_narrative") if sent else None

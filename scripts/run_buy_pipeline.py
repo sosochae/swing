@@ -210,6 +210,10 @@ def _parse_args() -> argparse.Namespace:
         "--no-cache", action="store_true",
         help="LLM 캐시 무시하고 새로 실행 (기본값)"
     )
+    parser.add_argument(
+        "--provider", choices=["openrouter", "claude_cli"],
+        help="LLM 프로바이더 선택 (기본: .env의 LLM_PROVIDER)"
+    )
     return parser.parse_args()
 
 
@@ -217,5 +221,7 @@ if __name__ == "__main__":
     import sys, io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     args = _parse_args()
+    if args.provider:
+        import os; os.environ["LLM_PROVIDER"] = args.provider
     use_cache = args.use_cache and not args.no_cache
     asyncio.run(run(use_cache=use_cache))

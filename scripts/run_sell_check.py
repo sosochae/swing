@@ -900,7 +900,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="경량 매도 체크 파이프라인")
     parser.add_argument("--ticker", nargs="+", help="특정 종목만 체크 (예: --ticker LRCX NVDA)")
     parser.add_argument("--verbose", action="store_true", help="상세 출력")
+    parser.add_argument(
+        "--provider", choices=["openrouter", "claude_cli"],
+        help="LLM 프로바이더 선택 (기본: .env의 LLM_PROVIDER)"
+    )
     args = parser.parse_args()
+
+    if args.provider:
+        # cfg는 모듈 최상위에서 이미 생성됐으므로 인스턴스 속성 직접 덮어쓰기
+        # get_config()는 @lru_cache로 동일 객체 반환 → 이후 모든 모듈에도 반영됨
+        import os; os.environ["LLM_PROVIDER"] = args.provider
+        cfg.LLM_PROVIDER = args.provider
 
     asyncio.run(run(ticker_filter=args.ticker, verbose=args.verbose))
 

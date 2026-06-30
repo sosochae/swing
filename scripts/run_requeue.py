@@ -190,6 +190,10 @@ def _parse_args() -> argparse.Namespace:
     top_cache = parser.add_mutually_exclusive_group()
     top_cache.add_argument("--use-cache", dest="top_use_cache", action="store_true", help="LLM 캐시 있으면 재사용")
     top_cache.add_argument("--no-cache", dest="top_no_cache", action="store_true", help="LLM 캐시 무시 (기본값)")
+    parser.add_argument(
+        "--provider", choices=["openrouter", "claude_cli"],
+        help="LLM 프로바이더 선택 (기본: .env의 LLM_PROVIDER)"
+    )
 
     return parser.parse_args()
 
@@ -199,6 +203,8 @@ if __name__ == "__main__":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
     args = _parse_args()
+    if args.provider:
+        import os; os.environ["LLM_PROVIDER"] = args.provider
     cmd = args.cmd or "run"  # 인수 없으면 run
 
     if cmd == "add":

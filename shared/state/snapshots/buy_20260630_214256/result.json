@@ -1,0 +1,124 @@
+{
+  "execution_id": "buy_20260630_214256",
+  "pipeline_type": "buy",
+  "status": "completed",
+  "completed_steps": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "failed_steps": {},
+  "final_rankings": [
+    {
+      "rank": 1,
+      "ticker": "MU",
+      "direction": "long_call",
+      "action": "보류",
+      "final_score": 0.0,
+      "conviction": {
+        "technical_signals": 7,
+        "timing_conditions": 3,
+        "total_signals": 10,
+        "rr_ratio": 0.57,
+        "ivr": 50.0,
+        "level": "low",
+        "trend_confidence": 0.667,
+        "news_confidence": 0.4,
+        "thesis_confidence": 0.19,
+        "execution_confidence": 0.7,
+        "total_conviction": 0.474
+      },
+      "capital_allocation": 7777.7,
+      "contracts": 1,
+      "strike": 1200.0,
+      "expiry": "2026-08-21",
+      "rationale": "확신도 0.47 (low) | 신호수 7/8, 시나리오R/R 0.6, EV $3,956 | [ADX:0 RSI:25 MACD:0 RVOL:0] | K-Score 9/9 [포지션한도초과] [⚠️일변동하락위험]",
+      "risk_factors": [
+        "포트폴리오 롱 편향 (80% 이상) — 하락 리스크 무방비",
+        "일일 세타 비용 $212.5 — 무방향 보유 시 빠른 손실"
+      ],
+      "scenario": {
+        "ticker": "MU",
+        "direction": "long_call",
+        "strike": 1200.0,
+        "expiry": "2026-08-21",
+        "contracts": 1,
+        "total_investment": 14399.5,
+        "commission_total": 0.5,
+        "implied_move_pct": 29.113404582285558,
+        "bullish": {
+          "name": "bullish",
+          "probability": 0.225,
+          "stock_move_pct": 43.67010687342833,
+          "target_stock_price": 1645.425,
+          "iv_change_assumption": "IV 유지",
+          "expected_option_value": 413.7947293398781,
+          "gross_profit": 26980.472933987807,
+          "net_profit": 26979.972933987807,
+          "rationale": ""
+        },
+        "base": {
+          "name": "base",
+          "probability": 0.4,
+          "stock_move_pct": 14.55670229114279,
+          "target_stock_price": 1311.9950000000001,
+          "iv_change_assumption": "IV 소폭 압축",
+          "expected_option_value": 226.1205783398782,
+          "gross_profit": 8213.05783398782,
+          "net_profit": 8212.55783398782,
+          "rationale": ""
+        },
+        "bearish": {
+          "name": "bearish",
+          "probability": 0.375,
+          "stock_move_pct": -43.670106873428345,
+          "target_stock_price": 645.1349999999999,
+          "iv_change_assumption": "IV 붕괴",
+          "expected_option_value": 0.0,
+          "gross_profit": -14399.0,
+          "net_profit": -14399.5,
+          "rationale": ""
+        },
+        "expected_value": 3955.704543742384,
+        "stop_loss_premium": 71.995,
+        "target_premium_1st": 215.985,
+        "target_premium_2nd": 287.98,
+        "target_premium_3rd": 359.975,
+        "trailing_stop_pct": 20.0,
+        "delta_gap_risk": "고IV(126%) — IV 붕괴 시 베가 손실 주의"
+      },
+      "da_reasons": [
+        "내부자 순매도 $2633.6M (−35pt)",
+        "주봉 RSI 과매수 82.3 ≥ 80.0 (−5pt)",
+        "[🔴분포패턴-확정] Wyckoff 4/4 조건 충족",
+        "[🔴MaxPain극단괴리] 현재가 Max Pain 대비 +21.8%",
+        "[⚠️촉매소진] 다음 촉매 공백 + 최근 1M +49%",
+        "[🔴고점형성위험] RRE 4/7 적색(스마트머니이탈, 촉매소진, 수급군집, 멀티TF역배열)"
+      ],
+      "da_total_pts": 170.0
+    }
+  ],
+  "sell_decisions": [],
+  "market_regime": "borderline",
+  "snapshot_path": "",
+  "obsidian_note_path": "",
+  "slack_message_ts": "",
+  "duration_seconds": 176.3,
+  "summary": {
+    "filtered_tickers": [
+      "MU"
+    ],
+    "regime": "borderline"
+  }
+}

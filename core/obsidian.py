@@ -544,15 +544,6 @@ class ObsidianClient:
         await self.write_note(vault_path, content)
         return vault_path
 
-    async def save_rejected_note(self, ticker: str, reasons: list[str]) -> str:
-        """탈락 종목 노트 저장"""
-        today = date.today().isoformat()
-        vault_path = cfg.REJECTED_NOTE_PATH_TEMPLATE.format(ticker=ticker, date=today)
-        content = f"# {ticker} — 탈락 ({today})\n\n**사유:**\n"
-        content += "\n".join(f"- {r}" for r in reasons)
-        await self.write_note(vault_path, content)
-        return vault_path
-
     async def write_watchlist(self, tickers: list[str]) -> bool:
         """watchlist.md 갱신"""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")

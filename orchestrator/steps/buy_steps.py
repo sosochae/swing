@@ -3219,13 +3219,6 @@ class BuySteps:
                 budget_alt_options=dict(ctx.budget_alt_options) if ctx.budget_alt_options else None,
             )
 
-            # 탈락 종목 개별 노트
-            for ticker, codes in list(ctx.filter_failures.items())[:10]:
-                try:
-                    await self.obsidian.save_rejected_note(ticker, codes)
-                except Exception:
-                    pass
-
         except Exception as exc:
             append_audit(ctx.execution_id, 12, "degraded", error=f"E500: Obsidian 저장 실패: {exc}")
             note_path = ""

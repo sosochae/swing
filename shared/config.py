@@ -198,7 +198,6 @@ class Config:
     BUY_NOTE_PATH_TEMPLATE: str = "swing-procedure/notes/buy/{date}.md"
     SELL_NOTE_PATH_TEMPLATE: str = "swing-procedure/notes/sell/{date}.md"
     TICKER_NOTE_PATH_TEMPLATE: str = "swing-procedure/tickers/{ticker}.md"
-    REJECTED_NOTE_PATH_TEMPLATE: str = "swing-procedure/rejected/{ticker}_{date}.md"
 
     @classmethod
     def ensure_local_dirs(cls) -> None:

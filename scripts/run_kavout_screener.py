@@ -326,10 +326,11 @@ def _format_obsidian_note(
 
         blk = [
             f"### {tier_rank}. {r.ticker} — {r.total_score:.1f}점"
-            f"  (K={k_str} | SR={sr_str} | 시총 {_mc(r.ticker)} | {guidance_str} | {tone_str})",
+            f"  (모멘텀 {r.momentum_score:.0f} | 펀더멘털 {r.fundamental_score:.0f} | 카탈리스트 {r.catalyst_score:.0f})",
         ]
         if r.company:
             blk.append(f"*{r.company}*")
+        blk.append(f"*K={k_str} | SR={sr_str} | 시총 {_mc(r.ticker)} | {guidance_str} | {tone_str}*")
         blk.append("")
 
         # 투자 근거

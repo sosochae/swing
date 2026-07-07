@@ -26,12 +26,31 @@ function getTickerList() {
   const tickers = values
     .map(r => String(r[0]).trim().toUpperCase())
     .filter(v => v && v !== "티커" && v !== "종목" && v !== "" && !v.startsWith("//"));
-  
+
   if (tickers.length === 0) {
     throw new Error("종목 탭 A열에 티커를 입력하세요.");
   }
-  
+
+  // ── Kavout screener 상위 3종목 병합 (중복 제거) ──
+  try {
+    getKavoutTop3().forEach(t => { if (t && !tickers.includes(t)) tickers.push(t); });
+  } catch (e) { Logger.log("Kavout top3 병합 스킵: " + e); }
+
   return tickers;
+}
+
+// =============================================
+// Kavout screener 상위 3종목 (Drive의 kavout_top.json)
+// =============================================
+function getKavoutTop3() {
+  const folders = DriveApp.getFoldersByName("Data");   // Y:\내 드라이브\Data
+  if (!folders.hasNext()) return [];
+  const files = folders.next().getFilesByName("kavout_top.json");
+  if (!files.hasNext()) return [];
+  const parsed = JSON.parse(files.next().getBlob().getDataAsString("UTF-8"));
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  if (parsed.date !== today) return [];   // 오늘 생성분이 아니면 병합 안 함
+  return (parsed.top || []).map(t => String(t).trim().toUpperCase()).slice(0, 3);
 }
 
 // =============================================

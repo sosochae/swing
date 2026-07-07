@@ -1189,7 +1189,7 @@ class BuySteps:
                 if _earn_text:
                     _quant_md += f"**실적 데이터**\n{_earn_text}\n"
 
-                _obs_path = f"Research/{ticker}_{date.today().isoformat()}.md"
+                _obs_path = f"{cfg.RESEARCH_NOTE_DIR}/{ticker}_{date.today().isoformat()}.md"
                 try:
                     from core.obsidian import ObsidianClient as _ObsCls
                     _obs_tmp = _ObsCls()

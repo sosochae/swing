@@ -1,0 +1,25 @@
+{
+  "execution_id": "buy_20260702_053854",
+  "step": 6,
+  "completed_at": "2026-07-02T05:42:19.129059",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "MU"
+    ],
+    "warned": [
+      "MU"
+    ],
+    "da_deductions": {
+      "MU": {
+        "reasons": [
+          "내부자 순매도 $2633.6M (−35pt)",
+          "[🔴분포패턴] Wyckoff 3/4 조건 충족",
+          "[⚠️TF역배열] 주봉↑ / 단기 MACD↓ / 1H RSI 35",
+          "[⚠️리버설주의] RRE 2/7 적색(스마트머니이탈, 멀티TF역배열)"
+        ],
+        "total_pts": 100.0
+      }
+    }
+  }
+}

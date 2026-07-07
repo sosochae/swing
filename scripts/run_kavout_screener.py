@@ -201,6 +201,31 @@ async def run(refresh_earnings: bool = False, top_n: int = 10) -> None:
 
     duration = round(time.monotonic() - start, 1)
 
+    # ── Kavout Top-3 내보내기 (AppScript 종목 병합용) ──
+    try:
+        import json as _json
+        top3 = [r.ticker for r in ranked[:3]]
+        top3_payload = _json.dumps({
+            "date": date.today().isoformat(),
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "top": top3,
+        }, ensure_ascii=False)
+
+        top_path = data_dir / "kavout_top.json"
+        top_path.write_text(top3_payload, encoding="utf-8")
+        print(f"  ✓ Top-3 저장: {top_path}  {top3}")
+
+        # AppScript 실행 계정 드라이브에도 복제 저장
+        # (DATA_DIR가 다른 구글 계정 소유라 DriveApp.getFoldersByName()이 못 찾는 문제 우회)
+        if cfg.KAVOUT_TOP_SYNC_DIR:
+            sync_dir = Path(cfg.KAVOUT_TOP_SYNC_DIR)
+            sync_dir.mkdir(parents=True, exist_ok=True)
+            sync_path = sync_dir / "kavout_top.json"
+            sync_path.write_text(top3_payload, encoding="utf-8")
+            print(f"  ✓ Top-3 동기화 저장: {sync_path}")
+    except Exception as exc:
+        print(f"  △ Top-3 저장 실패(무시): {exc}")
+
     result = ScreenerResult(
         execution_id=execution_id,
         total_universe=len(finviz_details),

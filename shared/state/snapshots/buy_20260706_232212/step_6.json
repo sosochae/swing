@@ -1,0 +1,25 @@
+{
+  "execution_id": "buy_20260706_232212",
+  "step": 6,
+  "completed_at": "2026-07-06T23:28:15.239396",
+  "duration_ms": 0,
+  "data": {
+    "surviving": [
+      "MU"
+    ],
+    "warned": [
+      "MU"
+    ],
+    "da_deductions": {
+      "MU": {
+        "reasons": [
+          "내부자 순매도 $2633.6M (−35pt)",
+          "[⚠️TF역배열] 주봉↑ / 단기 MACD↓ / 1H RSI 41",
+          "[🔴MaxPain극단괴리] 현재가 Max Pain 대비 +27.8%",
+          "[⚠️리버설주의] RRE 2/7 적색(스마트머니이탈, 멀티TF역배열)"
+        ],
+        "total_pts": 95.0
+      }
+    }
+  }
+}

@@ -117,6 +117,9 @@ class Config:
     )
     EARNINGS_DIR: str = os.getenv("EARNINGS_DIR", r"Y:\내 드라이브\어닝")
     DATA_DIR: str = os.getenv("DATA_DIR", r"Y:\내 드라이브\Data")
+    # AppScript 실행 계정 드라이브에도 kavout_top.json을 복제 저장
+    # (DATA_DIR가 다른 구글 계정 소유 드라이브라 DriveApp이 못 찾는 문제 우회)
+    KAVOUT_TOP_SYNC_DIR: str = os.getenv("KAVOUT_TOP_SYNC_DIR", "")
     POSITIONS_FILE: str = os.getenv("POSITIONS_FILE", r"C:\lian\positions.md")
     WATCHLIST_FILE: str = os.getenv("WATCHLIST_FILE", r"C:\lian\Swing\watchlist.md")
 
@@ -198,6 +201,33 @@ class Config:
     BUY_NOTE_PATH_TEMPLATE: str = "swing-procedure/notes/buy/{date}.md"
     SELL_NOTE_PATH_TEMPLATE: str = "swing-procedure/notes/sell/{date}.md"
     TICKER_NOTE_PATH_TEMPLATE: str = "swing-procedure/tickers/{ticker}.md"
+    RESEARCH_NOTE_DIR: str = "swing-procedure/Research"
+
+    # ── 장기투자 LLM 모델 ────────────────────────────────────────
+    LLM_MODEL_LT_MOAT: str = os.getenv(
+        "LLM_MODEL_LT_MOAT", "google/gemini-2.5-flash"
+    )
+    LLM_MODEL_LT_MANAGEMENT: str = os.getenv(
+        "LLM_MODEL_LT_MANAGEMENT", "google/gemini-2.5-flash"
+    )
+    LLM_MODEL_LT_INDUSTRY: str = os.getenv(
+        "LLM_MODEL_LT_INDUSTRY", "google/gemini-2.5-flash"
+    )
+    LLM_MODEL_LT_QUALITATIVE: str = os.getenv(
+        "LLM_MODEL_LT_QUALITATIVE", "google/gemini-2.5-flash"
+    )
+
+    # ── 장기투자 경로 및 채널 ────────────────────────────────────
+    LT_NOTE_PATH_TEMPLATE: str = os.getenv(
+        "LT_NOTE_PATH_TEMPLATE", "longterm/reports/{ticker}_{date}.md"
+    )
+    LT_SLACK_CHANNEL: str = os.getenv("LT_SLACK_CHANNEL", "#longterm-investing")
+
+    # ── DCF 파라미터 ─────────────────────────────────────────────
+    LT_HISTORY_YEARS: int = int(os.getenv("LT_HISTORY_YEARS", "5"))
+    LT_DCF_GROWTH_RATE: float = float(os.getenv("LT_DCF_GROWTH_RATE", "0.08"))
+    LT_DCF_TERMINAL_RATE: float = float(os.getenv("LT_DCF_TERMINAL_RATE", "0.03"))
+    LT_DCF_DISCOUNT_RATE: float = float(os.getenv("LT_DCF_DISCOUNT_RATE", "0.09"))
 
     @classmethod
     def ensure_local_dirs(cls) -> None:

@@ -559,6 +559,15 @@ class ObsidianClient:
         return await self.write_note("watchlist.md", content)
 
 
+async def save_note_safe(path: str, content: str) -> None:
+    """Obsidian REST API로 노트 저장. 실패해도 예외 전파하지 않고 로그만 남김."""
+    try:
+        await ObsidianClient().write_note(path, content)
+        log.info("note_saved", path=path)
+    except Exception as exc:
+        log.warning("note_save_fail", path=path, error=str(exc))
+
+
 # ─────────────────────────────────────────────────────────────
 # 헬퍼 함수
 # ─────────────────────────────────────────────────────────────
@@ -719,9 +728,9 @@ def _format_type1_section(
         drivers_str = ", ".join(str(d) for d in key_drivers[:3]) if key_drivers else "N/A"
 
     lines = [
-        "## ━━━ TYPE 1 · 뉴스 & 센티멘트 분석 ━━━",
+        "## ━━━ TYPE 3 · 뉴스 & 센티멘트 분석 ━━━",
         "",
-        "### 1-1. 종합 감정 (Overall Sentiment)",
+        "### 3-1. 종합 감정 (Overall Sentiment)",
         "",
         "| 항목 | 값 |",
         "|------|-----|",
@@ -737,7 +746,7 @@ def _format_type1_section(
 
     # Critical events — C안: 서브헤더 + aftermath 단락 + 단기/장기 영향
     if critical:
-        lines.append("### 1-2. 시장 지배 이벤트 (Critical Events)")
+        lines.append("### 3-2. 시장 지배 이벤트 (Critical Events)")
         lines.append("")
         lines.append("**🔴 결정적 사건 (High Impact)**")
         lines.append("")
@@ -769,7 +778,7 @@ def _format_type1_section(
 
     # Key Drivers 상세 (신형 dict일 때만)
     if key_drivers and isinstance(key_drivers[0], dict):
-        lines.append("### 1-3. 정보 가중치 분석 (Key Drivers 상세)")
+        lines.append("### 3-3. 정보 가중치 분석 (Key Drivers 상세)")
         lines.append("")
         lines.append("**📌 Key Drivers (소스별 영향 분석)**")
         lines.append("")
@@ -786,7 +795,7 @@ def _format_type1_section(
 
     # 긍정 요인 전용 섹션
     if positives:
-        lines.append("### 1-4. 긍정 요인 전용 섹션 (Major Positives)")
+        lines.append("### 3-4. 긍정 요인 전용 섹션 (Major Positives)")
         lines.append("")
         lines.append("**✅ 긍정 요인 (Major Positives)**")
         lines.append("")
@@ -811,7 +820,7 @@ def _format_type1_section(
 
     # 부정 요인 전용 섹션
     if negatives:
-        lines.append("### 1-5. 부정 요인 전용 섹션 (Significant Negatives)")
+        lines.append("### 3-5. 부정 요인 전용 섹션 (Significant Negatives)")
         lines.append("")
         lines.append("**⛔ 부정 요인 (Significant Negatives)**")
         lines.append("")
@@ -836,7 +845,7 @@ def _format_type1_section(
 
     # Temporal analysis — C안: 문단 형식
     if lasting or fading:
-        lines.append("### 1-6. 시간축별 영향 지속성 (Temporal Analysis)")
+        lines.append("### 3-6. 시간축별 영향 지속성 (Temporal Analysis)")
         lines.append("")
         lines.append("**⏳ Temporal Analysis**")
         if lasting:
@@ -847,7 +856,7 @@ def _format_type1_section(
 
     # Bull vs Bear — 이중 분리 (추세 전망 + 진입 타이밍)
     if bull or bear:
-        lines.append("### 1-7. Bull vs Bear 논쟁 (이중 분리)")
+        lines.append("### 3-7. Bull vs Bear 논쟁 (이중 분리)")
         lines.append("")
         lines.append("**🥊 추세 전망 논쟁 (Trend Debate)**")
         if bull:
@@ -943,7 +952,7 @@ def _format_type1_section(
     # 투자 논거 서술 (Investment Thesis)
     if thesis:
         lines += [
-            "### 1-8. 투자 논거 서술 (Investment Thesis)",
+            "### 3-8. 투자 논거 서술 (Investment Thesis)",
             "",
             "**📝 투자 논거 (Investment Thesis)**",
             "",
@@ -955,7 +964,7 @@ def _format_type1_section(
     gap = sent.get("gap_supplement")
     if gap and gap.get("body"):
         lines += [
-            "### 1-9. 리서치 갭 보완 (Gap Analysis)",
+            "### 3-9. 리서치 갭 보완 (Gap Analysis)",
             "",
             f"**🔍 보완 쿼리:** `{gap.get('query', '')}`",
             "",
@@ -1280,9 +1289,9 @@ def _format_type3_section(
         _divergence_warn = "⚠️ **단기 역방향** — 롱풋 포지션인데 단기 모멘텀은 상승. 반등 후 진입 대기"
 
     lines = [
-        "## ━━━ TYPE 3 · 기술적 분석 ━━━",
+        "## ━━━ TYPE 2 · 기술적 분석 ━━━",
         "",
-        "### 3-0. 시계열별 신호 요약 (트렌드 vs 트레이딩)",
+        "### 2-0. 시계열별 신호 요약 (트렌드 vs 트레이딩)",
         "",
         "| 시계열 | 신호 | 근거 |",
         "|--------|------|------|",
@@ -1295,7 +1304,7 @@ def _format_type3_section(
         lines += [f"> {_divergence_warn}", ""]
 
     lines += [
-        "### 3-1. 트레이딩 뷰 요약",
+        "### 2-1. 트레이딩 뷰 요약",
         "",
         "| 항목 | 값 |",
         "|------|-----|",
@@ -1323,7 +1332,7 @@ def _format_type3_section(
         _sma20_1h_str = f"${getattr(fv,'sma20_1h',None):.2f}" if getattr(fv,'sma20_1h',None) else "N/A"
         _rsi_1h_str   = f"{getattr(fv,'rsi_1h',None):.1f}" if getattr(fv,'rsi_1h',None) else "N/A"
         lines += [
-            "### 3-2. 실제 지표값 (Live Indicators)",
+            "### 2-2. 실제 지표값 (Live Indicators)",
             "",
             "**📊 실제 지표값 (Live Indicators)**",
             "",
@@ -1354,7 +1363,7 @@ def _format_type3_section(
 
         if any([trend_nar, mom_nar, vol_nar, sr_nar, entry_nar, risk_nar, overall_nar]):
             lines += [
-                "### 3-3. 기술 분석 내러티브 (LLM 심층)",
+                "### 2-3. 기술 분석 내러티브 (LLM 심층)",
                 "",
                 "> _⚠️ LLM 캐시 기반 분석 — 내러티브 내 가격/지표 수치는 분석 생성 시점 기준. 실제 최신 값은 3-2 Live Indicators 참조._",
                 "",
@@ -1388,7 +1397,7 @@ def _format_type3_section(
     _rg_emoji = "🔴" if regime_status == "unfavorable" else ("🟢" if regime_status == "favorable" else "🟡")
 
     lines += [
-        "### 3-4. 멀티 타임프레임 추세",
+        "### 2-4. 멀티 타임프레임 추세",
         "",
         "**Multi-Timeframe Trend:**",
         "",
@@ -1399,7 +1408,7 @@ def _format_type3_section(
         f"| Long-term (3-6M) | {_lt_emoji} {long_term} | SMA배열(5/20/50){' + DI 하락추세 → Neutral 하향' if _lt_di_overridden else ''} |",
         f"| Weekly Regime | {_rg_emoji} {regime_status} | Market Regime |",
         "",
-        "### 3-5. 행동 지침",
+        "### 2-5. 행동 지침",
         "",
         "**Action Plan:**",
         "",
@@ -1498,7 +1507,7 @@ def _format_type3_section(
             return f"${v:.2f}" if v else "N/A"
 
         lines += [
-            "### 3-6. 핵심 가격 레벨 통합 테이블",
+            "### 2-6. 핵심 가격 레벨 통합 테이블",
             "",
             "**📍 핵심 가격 레벨 통합 (Key Price Levels)**",
             "",
@@ -1878,7 +1887,7 @@ def _format_type3_section(
             _lt_desc = f"T3 참고 레벨: {' / '.join(_lt_refs)}. " + _lt_desc
 
         lines += [
-            "### 3-7. 가격 예측 시나리오 (Price Projections)",
+            "### 2-7. 가격 예측 시나리오 (Price Projections)",
             "",
             "**📅 가격 예측 시나리오 (Price Projections)**",
             "",
@@ -1911,7 +1920,7 @@ def _format_type3_section(
                         or _psar_38 or _fib62_38 or _gflip_38 or _pwall_38
                         or _kcl_38 or _ms1_38)
         if _has_any:
-            lines += ["### 3-8. 핵심 변곡점 (Key Inflection Points)", "", "**⚡ 핵심 변곡점 (Key Inflection Points)**", "", "```"]
+            lines += ["### 2-8. 핵심 변곡점 (Key Inflection Points)", "", "**⚡ 핵심 변곡점 (Key Inflection Points)**", "", "```"]
             if _accel:
                 _accel_cur = _cur_price_val or (fv.price if fv else None)
                 if _accel_cur and _accel_cur > _accel:
@@ -2372,7 +2381,7 @@ def _format_integrated_buy_block(
         ]
 
     # TYPE 2: 투자 기간 & 기간별 옵션 추천 ──────────────────────────────────
-    lines += ["## ━━━ TYPE 2 · 투자 기간 & 옵션 추천 ━━━", ""]
+    lines += ["## ━━━ TYPE 1 · 투자 기간 & 옵션 추천 ━━━", ""]
     _hz_all = ["단기", "중기", "장기"]
     _active = set(investment_horizons or [])
     _spot_px = fv.price if fv and fv.price else 100
@@ -2559,7 +2568,33 @@ def _format_integrated_buy_block(
     except Exception:
         pass
 
-    # TYPE 1: 뉴스 감성 — 풍부한 형식으로 출력
+    # TYPE 2: 기술 분석 (실제 지표값 + LLM 내러티브 포함)
+    tech_narrative = sent.get("technical_narrative") if sent else None
+    lines += _format_type3_section(r, ts, sc, regime, fv=fv, narrative=tech_narrative, opt_analytics=opt_analytics).splitlines()
+    lines += [""]
+
+    # Technical Dashboard (TYPE 2 섹션)
+    if ts:
+        ma_label = "정배열" if ts.ma_alignment == "bullish" else "역배열" if ts.ma_alignment == "bearish" else "혼조"
+        lines += [
+            "### 2-9. 기술 분석 세부 대시보드",
+            "",
+            "#### 기술 분석 세부 (Technical Dashboard)",
+            "",
+            "```",
+            f"MA 정배열   : {ts.ma_alignment} ({ma_label})",
+            f"ADX 점수    : {ts.adx_score:.1f}/25  {'[강함]' if ts.adx_score >= 18 else '[보통]' if ts.adx_score >= 10 else '[약함]'}",
+            f"RSI 점수    : {ts.rsi_score:.1f}/25  {'[적정]' if ts.rsi_score >= 15 else '[주의]'}",
+            f"MACD 점수   : {ts.macd_score:.1f}/25  {'[신호확인]' if ts.macd_score >= 15 else '[미확인]'}",
+            f"RVOL 점수   : {ts.rvol_score:.1f}/25  {'[급등]' if ts.rvol_score >= 18 else '[보통]' if ts.rvol_score >= 10 else '[약함]'}",
+            f"추세 확인   : {'확인됨' if ts.trend_confirmed else '미확인'}",
+            f"자금유입    : {'확인됨' if ts.capital_flow_confirmed else '미확인'}",
+            f"신호 합계   : {ts.signal_count}/8 (신뢰도 {confidence_pct}%)",
+            "```",
+            "",
+        ]
+
+    # TYPE 3: 뉴스 감성 — 풍부한 형식으로 출력
     # 실적 발표 날짜 추출: summary_events 우선, 없으면 fv.next_earnings_date 사용
     _earn_str = ""
     _next_earn_date = None  # date 객체 (옵션 만기 비교용)
@@ -2655,32 +2690,6 @@ def _format_integrated_buy_block(
 
     lines += _format_type1_section(sent or {}, fv=fv, earn_str=_earn_str).splitlines()
     lines += [""]
-
-    # TYPE 3: 기술 분석 (실제 지표값 + LLM 내러티브 포함)
-    tech_narrative = sent.get("technical_narrative") if sent else None
-    lines += _format_type3_section(r, ts, sc, regime, fv=fv, narrative=tech_narrative, opt_analytics=opt_analytics).splitlines()
-    lines += [""]
-
-    # Technical Dashboard (TYPE 3 섹션)
-    if ts:
-        ma_label = "정배열" if ts.ma_alignment == "bullish" else "역배열" if ts.ma_alignment == "bearish" else "혼조"
-        lines += [
-            "### 3-9. 기술 분석 세부 대시보드",
-            "",
-            "#### 기술 분석 세부 (Technical Dashboard)",
-            "",
-            "```",
-            f"MA 정배열   : {ts.ma_alignment} ({ma_label})",
-            f"ADX 점수    : {ts.adx_score:.1f}/25  {'[강함]' if ts.adx_score >= 18 else '[보통]' if ts.adx_score >= 10 else '[약함]'}",
-            f"RSI 점수    : {ts.rsi_score:.1f}/25  {'[적정]' if ts.rsi_score >= 15 else '[주의]'}",
-            f"MACD 점수   : {ts.macd_score:.1f}/25  {'[신호확인]' if ts.macd_score >= 15 else '[미확인]'}",
-            f"RVOL 점수   : {ts.rvol_score:.1f}/25  {'[급등]' if ts.rvol_score >= 18 else '[보통]' if ts.rvol_score >= 10 else '[약함]'}",
-            f"추세 확인   : {'확인됨' if ts.trend_confirmed else '미확인'}",
-            f"자금유입    : {'확인됨' if ts.capital_flow_confirmed else '미확인'}",
-            f"신호 합계   : {ts.signal_count}/8 (신뢰도 {confidence_pct}%)",
-            "```",
-            "",
-        ]
 
     # ── TYPE 4: Swing Analysis ──────────────────────────────────
     lines += ["## ━━━ TYPE 4 · 스윙 트레이딩 셋업 ━━━", ""]

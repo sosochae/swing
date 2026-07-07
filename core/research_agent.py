@@ -21,6 +21,7 @@ from typing import Optional
 from shared.config import get_config
 from shared.logger import get_logger
 from core.llm import call_llm, call_ddg_search, call_brave_search, rank_and_pick, fetch_url_as_markdown
+from core.obsidian import save_note_safe
 
 log = get_logger()
 cfg = get_config()
@@ -408,17 +409,6 @@ async def _search_and_fetch(
     return fetched
 
 
-async def _save_to_obsidian(path: str, content: str) -> None:
-    """Obsidian REST API로 노트 저장. 실패해도 예외 전파하지 않음."""
-    try:
-        from core.obsidian import ObsidianClient
-        obs = ObsidianClient()
-        await obs.write_note(path, content)
-        log.info("research_saved", path=path)
-    except Exception as exc:
-        log.warning("research_obsidian_fail", path=path, error=str(exc))
-
-
 def _build_report_header(ticker: str, report_type: str) -> str:
     today = date.today().isoformat()
     return f"# {report_type}: {ticker}\n\n> 생성일: {today} | 모델: {cfg.RESEARCH_MODEL}\n\n"
@@ -526,8 +516,8 @@ async def run_drop_research(
     report += synth_md
     report += f"\n\n---\n*분석 시각: {now_str} | 소스: {len(fetched)}개*\n"
 
-    obs_path = f"Research/Alert_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
-    await _save_to_obsidian(obs_path, report)
+    obs_path = f"swing-procedure/Alert_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
+    await save_note_safe(obs_path, report)
 
     log.info("drop_research_done", ticker=ticker, verdict=verdict)
     return report

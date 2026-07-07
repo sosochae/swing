@@ -272,14 +272,14 @@ async def list_tools() -> list[types.Tool]:
             description=(
                 "Obsidian 노트 내용 읽기. "
                 "경로를 지정해 매수 보고서, 정량 지표, 포지션 노트 등을 조회. "
-                "예: read_note(path='Research/NVDA_2026-06-30.md')"
+                "예: read_note(path='swing-procedure/Research/NVDA_2026-06-30.md')"
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Obsidian vault 내 경로. 예: 'Research/NVDA_2026-06-30.md'",
+                        "description": "Obsidian vault 내 경로. 예: 'swing-procedure/Research/NVDA_2026-06-30.md'",
                     },
                 },
                 "required": ["path"],
@@ -289,7 +289,7 @@ async def list_tools() -> list[types.Tool]:
             name="get_ticker_info",
             description=(
                 "종목 정량 지표 + 포지션 현황 원스톱 조회. "
-                "buy_steps에서 저장한 Research/{ticker}_{today}.md를 읽어 반환. "
+                "buy_steps에서 저장한 swing-procedure/Research/{ticker}_{today}.md를 읽어 반환. "
                 "예: get_ticker_info(ticker='NVDA') → 현재가, 목표가, straddle, EPS 컨센서스 등"
             ),
             inputSchema={
@@ -562,7 +562,7 @@ async def _get_ticker_info(ticker: str) -> dict:
     obs = ObsidianClient()
 
     # Research 노트 (buy_steps Step 5에서 저장)
-    note_path = f"Research/{ticker}_{date.today().isoformat()}.md"
+    note_path = f"{cfg.RESEARCH_NOTE_DIR}/{ticker}_{date.today().isoformat()}.md"
     content = await obs.read_note(note_path)
 
     # 포지션 현황

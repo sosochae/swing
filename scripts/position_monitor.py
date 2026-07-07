@@ -97,7 +97,7 @@ async def _send_slack_alert(ticker: str, pct_change: float, verdict: str) -> Non
             f"{emoji} *포지션 이상 감지*\n"
             f"종목: `{ticker}` | 등락: `{pct_change:.1f}%`\n"
             f"판단: *{verdict}*\n"
-            f"Obsidian Research/Alert_{ticker}_*.md 참조"
+            f"Obsidian swing-procedure/Alert_{ticker}_*.md 참조"
         )
         await slack.send_message(cfg.SLACK_CHANNEL_ALERT, msg)
     except Exception as exc:
